@@ -25,6 +25,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql+psycopg://gft:gft@localhost:5432/gft
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - name: Checkout
