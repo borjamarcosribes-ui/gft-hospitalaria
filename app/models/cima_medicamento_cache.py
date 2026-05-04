@@ -1,5 +1,5 @@
-from datetime import datetime
-from sqlalchemy import String, DateTime, JSON, Text
+from datetime import datetime, date
+from sqlalchemy import String, DateTime, Date, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
@@ -16,6 +16,10 @@ class CimaMedicamentoCache(Base):
     atc_json: Mapped[dict | None] = mapped_column(JSON)
     principios_activos_json: Mapped[dict | None] = mapped_column(JSON)
     documentos_json: Mapped[dict | None] = mapped_column(JSON)
+    url_ficha_tecnica: Mapped[str | None] = mapped_column(Text)
+    url_prospecto: Mapped[str | None] = mapped_column(Text)
+    fecha_ficha_tecnica: Mapped[date | None] = mapped_column(Date)
+    fecha_prospecto: Mapped[date | None] = mapped_column(Date)
     raw_data: Mapped[dict | None] = mapped_column(JSON)
     sync_status: Mapped[str] = mapped_column(String(32), nullable=False, default="not_implemented")
     sync_error: Mapped[str | None] = mapped_column(Text)

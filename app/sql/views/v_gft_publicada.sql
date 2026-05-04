@@ -10,6 +10,8 @@ SELECT
   c.atc_json,
   c.principios_activos_json,
   c.documentos_json,
+  c.url_ficha_tecnica,
+  c.url_prospecto,
   b.situacion_financiacion,
   g.restricciones_hospitalarias,
   g.observaciones_internas
