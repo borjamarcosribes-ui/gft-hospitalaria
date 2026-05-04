@@ -6,5 +6,4 @@ from app.api.routes.cima import router as cima_router
 app = FastAPI(title="gft-hospitalaria")
 app.include_router(health_router)
 app.include_router(imports_router)
-
 app.include_router(cima_router)
