@@ -2,6 +2,12 @@ import re
 import unicodedata
 from typing import Any
 
+from sqlalchemy.orm import Session
+
+from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
+from app.models.principio_activo import PrincipioActivo
+from app.models.principio_activo_alias import PrincipioActivoAlias
+
 
 _SPLIT_RE = re.compile(r"\s*[/+,]\s*")
 _OBJECT_FIELDS = (
@@ -121,3 +127,120 @@ def extract_principios_from_cima_data(data: Any) -> list[dict[str, Any]]:
         )
 
     return out
+
+
+
+def upsert_principios_for_cn(db: Session, cn: str, principios: list[dict]) -> dict[str, Any]:
+    if not cn or not str(cn).strip():
+        raise ValueError("cn is required")
+
+    cn = str(cn).strip()
+    principios_input = len(principios or [])
+
+    deleted_relations = db.query(MedicamentoPrincipioActivo).filter(MedicamentoPrincipioActivo.cn == cn).delete()
+
+    if not principios:
+        return {
+            "cn": cn,
+            "principios_input": principios_input,
+            "principios_validos": 0,
+            "principios_created": 0,
+            "principios_reused": 0,
+            "aliases_created": 0,
+            "aliases_reused": 0,
+            "relations_deleted": deleted_relations,
+            "relations_created": 0,
+        }
+
+    deduped: list[dict[str, Any]] = []
+    seen_norm: set[str] = set()
+
+    for item in principios:
+        if not isinstance(item, dict):
+            continue
+        nombre_normalizado = _clean_display_text(item.get("nombre_normalizado"))
+        nombre_display = _clean_display_text(item.get("nombre_display"))
+        if not nombre_normalizado or not nombre_display:
+            continue
+        if nombre_normalizado in seen_norm:
+            continue
+        seen_norm.add(nombre_normalizado)
+        deduped.append(
+            {
+                "nombre_raw": _clean_display_text(item.get("nombre_raw")) or nombre_display,
+                "nombre_display": nombre_display,
+                "nombre_normalizado": nombre_normalizado,
+                "slug": build_slug(item.get("slug") or nombre_normalizado) or nombre_normalizado,
+            }
+        )
+
+    principios_created = 0
+    principios_reused = 0
+    aliases_created = 0
+    aliases_reused = 0
+    relations_created = 0
+
+    for index, item in enumerate(deduped, start=1):
+        pa = (
+            db.query(PrincipioActivo)
+            .filter(PrincipioActivo.nombre_normalizado == item["nombre_normalizado"])
+            .one_or_none()
+        )
+        if pa is None:
+            pa = PrincipioActivo(
+                nombre_normalizado=item["nombre_normalizado"],
+                nombre_display=item["nombre_display"],
+                slug=item["slug"],
+            )
+            db.add(pa)
+            db.flush()
+            principios_created += 1
+        else:
+            principios_reused += 1
+
+        alias = (
+            db.query(PrincipioActivoAlias)
+            .filter(
+                PrincipioActivoAlias.principio_activo_id == pa.id,
+                PrincipioActivoAlias.alias_normalizado == item["nombre_normalizado"],
+                PrincipioActivoAlias.source == "cima",
+            )
+            .one_or_none()
+        )
+        if alias is None:
+            db.add(
+                PrincipioActivoAlias(
+                    alias_raw=item["nombre_raw"],
+                    alias_normalizado=item["nombre_normalizado"],
+                    principio_activo_id=pa.id,
+                    source="cima",
+                    confidence="exact",
+                    review_status="accepted",
+                )
+            )
+            aliases_created += 1
+        else:
+            aliases_reused += 1
+
+        db.add(
+            MedicamentoPrincipioActivo(
+                cn=cn,
+                principio_activo_id=pa.id,
+                orden=index,
+            )
+        )
+        relations_created += 1
+
+    db.flush()
+
+    return {
+        "cn": cn,
+        "principios_input": principios_input,
+        "principios_validos": len(deduped),
+        "principios_created": principios_created,
+        "principios_reused": principios_reused,
+        "aliases_created": aliases_created,
+        "aliases_reused": aliases_reused,
+        "relations_deleted": deleted_relations,
+        "relations_created": relations_created,
+    }
