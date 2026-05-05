@@ -1,0 +1,29 @@
+{
+  "nregistro": "67890",
+  "nombre": "Combinado Analgésico",
+  "presentacion": "10 cápsulas",
+  "formaFarmaceutica": "Cápsula dura",
+  "formaFarmaceuticaSimplificada": "cápsula",
+  "viasAdministracion": [
+    {"id": 48, "nombre": "VÍA ORAL"}
+  ],
+  "atc": [
+    {"codigo": "N02AJ06", "nombre": "Codeína y paracetamol"}
+  ],
+  "principiosActivos": [
+    {"nombre": "Paracetamol"},
+    {"nombre": "Codeína fosfato hemihidrato"}
+  ],
+  "docs": [
+    {
+      "tipo": 1,
+      "url": "https://cima.aemps.es/docs/ft/67890/FT_67890.pdf",
+      "fecha": "2024-09-15"
+    },
+    {
+      "tipo": 2,
+      "url": "https://cima.aemps.es/docs/p/67890/P_67890.pdf",
+      "fecha": "2024-09-15"
+    }
+  ]
+}

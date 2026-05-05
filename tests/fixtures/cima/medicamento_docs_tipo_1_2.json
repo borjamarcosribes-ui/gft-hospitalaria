@@ -1,0 +1,32 @@
+{
+  "nregistro": "24680",
+  "nombre": "Medicamento Documentado",
+  "presentacion": "30 sobres",
+  "formaFarmaceutica": "Granulado",
+  "formaFarmaceuticaSimplificada": "granulado",
+  "viasAdministracion": [
+    {"id": 48, "nombre": "VÍA ORAL"}
+  ],
+  "atc": [
+    {"codigo": "R05CB06", "nombre": "Acetilcisteína"}
+  ],
+  "principiosActivos": [
+    {"nombre": "Acetilcisteína"}
+  ],
+  "docs": [
+    {
+      "tipo": 1,
+      "url": "https://cima.aemps.es/docs/ft/24680/FT_24680.pdf",
+      "urlHtml": "https://cima.aemps.es/cima/dochtml/ft/24680/FT_24680.html",
+      "fecha": "2024-12-01",
+      "nombre": "Ficha técnica"
+    },
+    {
+      "tipo": 2,
+      "url": "https://cima.aemps.es/docs/p/24680/P_24680.pdf",
+      "urlHtml": "https://cima.aemps.es/cima/dochtml/p/24680/P_24680.html",
+      "fecha": "2024-12-02",
+      "nombre": "Prospecto"
+    }
+  ]
+}

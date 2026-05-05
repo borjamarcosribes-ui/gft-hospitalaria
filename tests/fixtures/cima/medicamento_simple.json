@@ -1,0 +1,23 @@
+{
+  "nregistro": "12345",
+  "nombre": "Medicamento Simple 500 mg comprimidos",
+  "presentacion": "20 comprimidos",
+  "formaFarmaceutica": "Comprimido",
+  "formaFarmaceuticaSimplificada": "comprimido",
+  "viasAdministracion": [
+    {"id": 48, "nombre": "VÍA ORAL"}
+  ],
+  "atc": [
+    {"codigo": "N02BE01", "nombre": "Paracetamol"}
+  ],
+  "principiosActivos": [
+    {"nombre": "Paracetamol"}
+  ],
+  "docs": [
+    {
+      "tipo": 1,
+      "url": "https://cima.aemps.es/docs/ft/12345/FT_12345.pdf",
+      "fecha": "2025-01-10"
+    }
+  ]
+}
