@@ -1,0 +1,33 @@
+{
+  "nregistro": "123456",
+  "nombre": "PARACETAMOL NORMON 500 mg comprimidos",
+  "presentacion": "20 comprimidos",
+  "formaFarmaceutica": "Comprimido",
+  "formaFarmaceuticaSimplificada": "comprimido",
+  "viasAdministracion": [
+    {
+      "id": 48,
+      "nombre": "Vía oral"
+    }
+  ],
+  "atc": [
+    {
+      "codigo": "N02BE01",
+      "nombre": "Paracetamol"
+    }
+  ],
+  "principiosActivos": [
+    {
+      "nombre": "Paracetamol"
+    }
+  ],
+  "docs": [
+    {
+      "tipo": 1,
+      "url": "https://cima.aemps.es/cima/pdfs/ft/123456/FT_123456.pdf",
+      "urlHtml": "https://cima.aemps.es/cima/dochtml/ft/123456/FT_123456.html",
+      "fecha": "2024-01-10",
+      "nombre": "Ficha técnica"
+    }
+  ]
+}
