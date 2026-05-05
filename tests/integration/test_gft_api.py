@@ -1,7 +1,11 @@
+import uuid
+
 from sqlalchemy import text
 
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
+from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
+from app.models.principio_activo import PrincipioActivo
 
 
 def _create_view(db_session):
@@ -127,3 +131,64 @@ def test_gft_api_does_not_expose_raw_data(client, db_session):
     assert detail_response.status_code == 200
     assert "raw_data" not in list_response.json()["items"][0]
     assert "raw_data" not in detail_response.json()
+
+
+def test_gft_list_medicamentos_q_param(client, db_session):
+    _insert_base_medicamento(db_session, "910001", publicado=True)
+    _insert_base_medicamento(db_session, "910002", publicado=True)
+    db_session.execute(text("UPDATE cima_medicamento_cache SET nombre='Aspirina infantil' WHERE cn='910001'"))
+    db_session.execute(text("UPDATE cima_medicamento_cache SET nombre='Vitamina C' WHERE cn='910002'"))
+    db_session.commit()
+    _create_view(db_session)
+
+    response = client.get("/gft/medicamentos?q=aspiri")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["cn"] == "910001"
+
+
+def test_gft_list_medicamentos_letra_param(client, db_session):
+    _insert_base_medicamento(db_session, "920001", publicado=True)
+    _insert_base_medicamento(db_session, "920002", publicado=True)
+    pa_paracetamol = PrincipioActivo(id=uuid.uuid4(), nombre_normalizado="paracetamol", nombre_display="Paracetamol", slug="paracetamol")
+    pa_ibuprofeno = PrincipioActivo(id=uuid.uuid4(), nombre_normalizado="ibuprofeno", nombre_display="Ibuprofeno", slug="ibuprofeno")
+    db_session.add_all([pa_paracetamol, pa_ibuprofeno])
+    db_session.flush()
+    db_session.add_all(
+        [
+            MedicamentoPrincipioActivo(cn="920001", principio_activo_id=pa_paracetamol.id, orden=1),
+            MedicamentoPrincipioActivo(cn="920002", principio_activo_id=pa_ibuprofeno.id, orden=1),
+        ]
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    response = client.get("/gft/medicamentos?letra=P")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["cn"] == "920001"
+
+
+def test_gft_list_medicamentos_principio_activo_param(client, db_session):
+    _insert_base_medicamento(db_session, "930001", publicado=True)
+    _insert_base_medicamento(db_session, "930002", publicado=True)
+    pa_paracetamol = PrincipioActivo(id=uuid.uuid4(), nombre_normalizado="paracetamol", nombre_display="Paracetamol", slug="paracetamol")
+    pa_ibuprofeno = PrincipioActivo(id=uuid.uuid4(), nombre_normalizado="ibuprofeno", nombre_display="Ibuprofeno", slug="ibuprofeno")
+    db_session.add_all([pa_paracetamol, pa_ibuprofeno])
+    db_session.flush()
+    db_session.add_all(
+        [
+            MedicamentoPrincipioActivo(cn="930001", principio_activo_id=pa_paracetamol.id, orden=1),
+            MedicamentoPrincipioActivo(cn="930002", principio_activo_id=pa_ibuprofeno.id, orden=1),
+        ]
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    response = client.get("/gft/medicamentos?principio_activo=ibuprofeno")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["cn"] == "930002"
