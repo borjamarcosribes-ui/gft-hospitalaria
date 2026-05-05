@@ -1,0 +1,40 @@
+{
+  "nregistro": "112233",
+  "nombre": "IBUPROFENO EXAMPLE 600 mg comprimidos recubiertos",
+  "presentacion": "40 comprimidos recubiertos",
+  "formaFarmaceutica": "Comprimido recubierto",
+  "formaFarmaceuticaSimplificada": "comprimido",
+  "viasAdministracion": [
+    {
+      "id": 48,
+      "nombre": "Vía oral"
+    }
+  ],
+  "atc": [
+    {
+      "codigo": "M01AE01",
+      "nombre": "Ibuprofeno"
+    }
+  ],
+  "principiosActivos": [
+    {
+      "nombre": "Ibuprofeno"
+    }
+  ],
+  "docs": [
+    {
+      "tipo": 1,
+      "url": "https://cima.aemps.es/cima/pdfs/ft/112233/FT_112233.pdf",
+      "urlHtml": "https://cima.aemps.es/cima/dochtml/ft/112233/FT_112233.html",
+      "fecha": "2023-12-15",
+      "nombre": "Ficha técnica"
+    },
+    {
+      "tipo": 2,
+      "url": "https://cima.aemps.es/cima/pdfs/p/112233/P_112233.pdf",
+      "urlHtml": "https://cima.aemps.es/cima/dochtml/p/112233/P_112233.html",
+      "fecha": "2024-01-02",
+      "nombre": "Prospecto"
+    }
+  ]
+}

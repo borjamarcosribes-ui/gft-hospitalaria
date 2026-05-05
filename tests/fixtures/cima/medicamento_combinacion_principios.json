@@ -1,0 +1,43 @@
+{
+  "nregistro": "654321",
+  "nombre": "AMOXICILINA/ACIDO CLAVULANICO 875 mg/125 mg comprimidos",
+  "presentacion": "14 comprimidos",
+  "formaFarmaceutica": "Comprimido recubierto con película",
+  "formaFarmaceuticaSimplificada": "comprimido",
+  "viasAdministracion": [
+    {
+      "id": 48,
+      "nombre": "Vía oral"
+    }
+  ],
+  "atc": [
+    {
+      "codigo": "J01CR02",
+      "nombre": "Amoxicilina y ácido clavulánico"
+    }
+  ],
+  "principiosActivos": [
+    {
+      "nombre": "Amoxicilina"
+    },
+    {
+      "nombre": "Ácido clavulánico"
+    }
+  ],
+  "docs": [
+    {
+      "tipo": 1,
+      "url": "https://cima.aemps.es/cima/pdfs/ft/654321/FT_654321.pdf",
+      "urlHtml": "https://cima.aemps.es/cima/dochtml/ft/654321/FT_654321.html",
+      "fecha": "2024-02-20",
+      "nombre": "Ficha técnica"
+    },
+    {
+      "tipo": 2,
+      "url": "https://cima.aemps.es/cima/pdfs/p/654321/P_654321.pdf",
+      "urlHtml": "https://cima.aemps.es/cima/dochtml/p/654321/P_654321.html",
+      "fecha": "2024-02-21",
+      "nombre": "Prospecto"
+    }
+  ]
+}
