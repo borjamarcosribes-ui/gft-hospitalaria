@@ -4,6 +4,10 @@ from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.import_row_staging import ImportRowStaging
 from app.services.cima_client import CimaClient
 from app.services.normalization_service import normalize_cn
+from app.services.principio_activo_service import (
+    extract_principios_from_cima_data,
+    upsert_principios_for_cn,
+)
 
 
 def sync_cn(db: Session, cn: str, force: bool = False):
@@ -29,6 +33,8 @@ def sync_cn(db: Session, cn: str, force: bool = False):
         row.vias_administracion_json = d.get("vias_administracion_json")
         row.atc_json = d.get("atc_json")
         row.principios_activos_json = d.get("principios_activos_json")
+        principios = extract_principios_from_cima_data(d)
+        upsert_principios_for_cn(db, cn_norm, principios)
         row.documentos_json = d.get("documentos_json")
         row.url_ficha_tecnica = d.get("url_ficha_tecnica")
         row.url_prospecto = d.get("url_prospecto")
