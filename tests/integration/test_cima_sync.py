@@ -3,6 +3,9 @@ import uuid
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.import_batch import ImportBatch
 from app.models.import_row_staging import ImportRowStaging
+from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
+from app.models.principio_activo import PrincipioActivo
+from app.models.principio_activo_alias import PrincipioActivoAlias
 from app.services.cima_sync_service import sync_cn, sync_import_batch
 
 
@@ -158,3 +161,107 @@ def test_sync_import_batch_filters_and_counts(db_session, monkeypatch):
     assert res["ok"] == 1
     assert res["not_found"] == 1
     assert res["error"] == 1
+
+
+def test_sync_cn_ok_persists_principios_relationally(db_session, monkeypatch):
+    class FakeOkPrincipios(FakeOk):
+        data = {
+            **FakeOk.data,
+            "principios_activos_json": [
+                {"nombre": "Paracetamol"},
+                {"nombre": "Codeína"},
+            ],
+        }
+
+    monkeypatch.setattr(
+        "app.services.cima_sync_service.CimaClient.get_by_cn",
+        lambda self, cn: FakeOkPrincipios(),
+    )
+
+    row = sync_cn(db_session, "123456", force=True)
+
+    rels = db_session.query(MedicamentoPrincipioActivo).filter_by(cn="123456").order_by(MedicamentoPrincipioActivo.orden).all()
+    assert row.sync_status == "ok"
+    assert db_session.query(PrincipioActivo).count() == 2
+    assert db_session.query(PrincipioActivoAlias).count() == 2
+    assert len(rels) == 2
+    assert [r.orden for r in rels] == [1, 2]
+
+
+def test_sync_cn_ok_empty_principios_clears_previous_relations(db_session, monkeypatch):
+    class FakeOkWithPrincipios(FakeOk):
+        data = {**FakeOk.data, "principios_activos_json": [{"nombre": "Paracetamol"}]}
+
+    monkeypatch.setattr(
+        "app.services.cima_sync_service.CimaClient.get_by_cn",
+        lambda self, cn: FakeOkWithPrincipios(),
+    )
+    sync_cn(db_session, "123456", force=True)
+    assert db_session.query(MedicamentoPrincipioActivo).filter_by(cn="123456").count() == 1
+
+    class FakeOkEmptyPrincipios(FakeOk):
+        data = {**FakeOk.data, "principios_activos_json": []}
+
+    monkeypatch.setattr(
+        "app.services.cima_sync_service.CimaClient.get_by_cn",
+        lambda self, cn: FakeOkEmptyPrincipios(),
+    )
+    sync_cn(db_session, "123456", force=True)
+
+    assert db_session.query(MedicamentoPrincipioActivo).filter_by(cn="123456").count() == 0
+
+
+def test_sync_cn_not_found_does_not_clear_existing_principios(db_session, monkeypatch):
+    class FakeOkWithPrincipios(FakeOk):
+        data = {**FakeOk.data, "principios_activos_json": [{"nombre": "Paracetamol"}]}
+
+    monkeypatch.setattr("app.services.cima_sync_service.CimaClient.get_by_cn", lambda self, cn: FakeOkWithPrincipios())
+    sync_cn(db_session, "123456", force=True)
+
+    monkeypatch.setattr("app.services.cima_sync_service.CimaClient.get_by_cn", lambda self, cn: FakeNotFound())
+    row = sync_cn(db_session, "123456", force=True)
+
+    assert row.sync_status == "not_found"
+    assert db_session.query(MedicamentoPrincipioActivo).filter_by(cn="123456").count() == 1
+
+
+def test_sync_cn_error_does_not_clear_existing_principios(db_session, monkeypatch):
+    class FakeOkWithPrincipios(FakeOk):
+        data = {**FakeOk.data, "principios_activos_json": [{"nombre": "Paracetamol"}]}
+
+    monkeypatch.setattr("app.services.cima_sync_service.CimaClient.get_by_cn", lambda self, cn: FakeOkWithPrincipios())
+    sync_cn(db_session, "123456", force=True)
+
+    monkeypatch.setattr("app.services.cima_sync_service.CimaClient.get_by_cn", lambda self, cn: FakeError())
+    row = sync_cn(db_session, "123456", force=True)
+
+    assert row.sync_status == "error"
+    assert db_session.query(MedicamentoPrincipioActivo).filter_by(cn="123456").count() == 1
+
+
+def test_sync_import_batch_persists_principios_via_sync_cn(db_session, monkeypatch):
+    batch = ImportBatch(filename="x.xlsx", status="validated")
+    db_session.add(batch)
+    db_session.flush()
+    db_session.add(
+        ImportRowStaging(
+            id=uuid.uuid4(),
+            batch_id=batch.id,
+            row_number=1,
+            cn_normalized="123456",
+            estado_gft="incluido",
+            estado_editorial="publicado",
+            validation_errors=[],
+        )
+    )
+    db_session.commit()
+
+    class FakeOkPrincipios(FakeOk):
+        data = {**FakeOk.data, "principios_activos_json": [{"nombre": "Paracetamol"}]}
+
+    monkeypatch.setattr("app.services.cima_sync_service.CimaClient.get_by_cn", lambda self, cn: FakeOkPrincipios())
+
+    result = sync_import_batch(db_session, batch.id, force=True)
+
+    assert result["ok"] == 1
+    assert db_session.query(MedicamentoPrincipioActivo).filter_by(cn="123456").count() == 1
