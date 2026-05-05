@@ -135,15 +135,20 @@ def _row_to_detail(row, principios: list[dict]) -> dict:
     return item
 
 
-def list_medicamentos(db: Session, limit: int = 20, offset: int = 0) -> dict:
+def list_medicamentos(
+    db: Session,
+    limit: int = 20,
+    offset: int = 0,
+    q: str | None = None,
+    letra: str | None = None,
+    principio_activo: str | None = None,
+) -> dict:
     if limit < 1:
         limit = 1
     if limit > 100:
         limit = 100
     if offset < 0:
         offset = 0
-
-    total = db.execute(text("SELECT COUNT(*) FROM v_gft_publicada")).scalar_one()
 
     rows = db.execute(
         text(
@@ -164,7 +169,51 @@ def list_medicamentos(db: Session, limit: int = 20, offset: int = 0) -> dict:
 
     enriched.sort(key=lambda x: (x[0], (x[1].get("nombre") or "").lower(), x[1]["cn"]))
     ordered_items = [item for _, item in enriched]
-    items = ordered_items[offset : offset + limit]
+    q_norm = (q or "").strip().lower()
+    letra_norm = (letra or "").strip().lower()[:1]
+    principio_raw = (principio_activo or "").strip()
+    principio_slug_norm = principio_raw.lower()
+
+    filtered_items = ordered_items
+    if q_norm:
+        def _matches_q(item: dict) -> bool:
+            principles = item.get("principios_activos", [])
+            fields = [
+                item.get("cn"),
+                item.get("nombre"),
+                item.get("presentacion"),
+                item.get("forma_farmaceutica"),
+                item.get("nemonico"),
+                item.get("restricciones_hospitalarias"),
+                *[p.get("nombre") for p in principles if isinstance(p, Mapping)],
+            ]
+            haystack = " ".join(str(value).lower() for value in fields if value)
+            return q_norm in haystack
+
+        filtered_items = [item for item in filtered_items if _matches_q(item)]
+
+    if letra_norm:
+        filtered_items = [
+            item
+            for item in filtered_items
+            if item.get("principios_activos")
+            and str(item["principios_activos"][0].get("nombre") or "").strip().lower().startswith(letra_norm)
+        ]
+
+    if principio_raw:
+        filtered_items = [
+            item
+            for item in filtered_items
+            if any(
+                str(principio.get("id")) == principio_raw
+                or str(principio.get("slug") or "").lower() == principio_slug_norm
+                for principio in item.get("principios_activos", [])
+                if isinstance(principio, Mapping)
+            )
+        ]
+
+    total = len(filtered_items)
+    items = filtered_items[offset : offset + limit]
 
     return {"total": int(total), "limit": limit, "offset": offset, "items": items}
 

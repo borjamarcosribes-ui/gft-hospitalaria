@@ -9,8 +9,22 @@ router = APIRouter(prefix="/gft", tags=["gft"])
 
 
 @router.get("/medicamentos", response_model=GFTListResponse)
-def gft_list_medicamentos(limit: int = 20, offset: int = 0, db: Session = Depends(get_db)):
-    return list_medicamentos(db, limit=limit, offset=offset)
+def gft_list_medicamentos(
+    limit: int = 20,
+    offset: int = 0,
+    q: str | None = None,
+    letra: str | None = None,
+    principio_activo: str | None = None,
+    db: Session = Depends(get_db),
+):
+    return list_medicamentos(
+        db,
+        limit=limit,
+        offset=offset,
+        q=q,
+        letra=letra,
+        principio_activo=principio_activo,
+    )
 
 
 @router.get("/medicamentos/{cn}", response_model=GFTMedicamentoDetail)

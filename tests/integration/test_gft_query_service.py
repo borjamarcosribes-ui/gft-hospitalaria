@@ -201,3 +201,116 @@ def test_list_medicamentos_pagination_applies_after_sorting(db_session):
 
     assert first_page["items"][0]["cn"] == "700002"  # Alfa
     assert second_page["items"][0]["cn"] == "700003"  # Mu
+
+
+def test_list_medicamentos_filter_q_by_nombre(db_session):
+    _insert_base_medicamento(db_session, "800001", publicado=True)
+    _insert_base_medicamento(db_session, "800002", publicado=True)
+    db_session.execute(text("UPDATE cima_medicamento_cache SET nombre='Dalsy pediátrico' WHERE cn='800002'"))
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_medicamentos(db_session, q="dalsy")
+    assert result["total"] == 1
+    assert result["items"][0]["cn"] == "800002"
+
+
+def test_list_medicamentos_filter_q_by_principio_activo(db_session):
+    _insert_base_medicamento(db_session, "810001", publicado=True)
+    _insert_base_medicamento(db_session, "810002", publicado=True)
+    pa_paracetamol = PrincipioActivo(id=uuid.uuid4(), nombre_normalizado="paracetamol", nombre_display="Paracetamol", slug="paracetamol")
+    pa_ibuprofeno = PrincipioActivo(id=uuid.uuid4(), nombre_normalizado="ibuprofeno", nombre_display="Ibuprofeno", slug="ibuprofeno")
+    db_session.add_all([pa_paracetamol, pa_ibuprofeno])
+    db_session.flush()
+    db_session.add_all(
+        [
+            MedicamentoPrincipioActivo(cn="810001", principio_activo_id=pa_paracetamol.id, orden=1),
+            MedicamentoPrincipioActivo(cn="810002", principio_activo_id=pa_ibuprofeno.id, orden=1),
+        ]
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_medicamentos(db_session, q="ibupr")
+    assert result["total"] == 1
+    assert result["items"][0]["cn"] == "810002"
+
+
+def test_list_medicamentos_filter_letra(db_session):
+    _insert_base_medicamento(db_session, "820001", publicado=True)
+    _insert_base_medicamento(db_session, "820002", publicado=True)
+    pa_paracetamol = PrincipioActivo(id=uuid.uuid4(), nombre_normalizado="paracetamol", nombre_display="Paracetamol", slug="paracetamol")
+    pa_ibuprofeno = PrincipioActivo(id=uuid.uuid4(), nombre_normalizado="ibuprofeno", nombre_display="Ibuprofeno", slug="ibuprofeno")
+    db_session.add_all([pa_paracetamol, pa_ibuprofeno])
+    db_session.flush()
+    db_session.add_all(
+        [
+            MedicamentoPrincipioActivo(cn="820001", principio_activo_id=pa_paracetamol.id, orden=1),
+            MedicamentoPrincipioActivo(cn="820002", principio_activo_id=pa_ibuprofeno.id, orden=1),
+        ]
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_medicamentos(db_session, letra="P")
+    assert result["total"] == 1
+    assert result["items"][0]["cn"] == "820001"
+
+
+def test_list_medicamentos_filter_principio_activo_by_slug(db_session):
+    _insert_base_medicamento(db_session, "830001", publicado=True)
+    _insert_base_medicamento(db_session, "830002", publicado=True)
+    pa_paracetamol = PrincipioActivo(id=uuid.uuid4(), nombre_normalizado="paracetamol", nombre_display="Paracetamol", slug="paracetamol")
+    pa_ibuprofeno = PrincipioActivo(id=uuid.uuid4(), nombre_normalizado="ibuprofeno", nombre_display="Ibuprofeno", slug="ibuprofeno")
+    db_session.add_all([pa_paracetamol, pa_ibuprofeno])
+    db_session.flush()
+    db_session.add_all(
+        [
+            MedicamentoPrincipioActivo(cn="830001", principio_activo_id=pa_paracetamol.id, orden=1),
+            MedicamentoPrincipioActivo(cn="830002", principio_activo_id=pa_ibuprofeno.id, orden=1),
+        ]
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_medicamentos(db_session, principio_activo="IBUPROFENO")
+    assert result["total"] == 1
+    assert result["items"][0]["cn"] == "830002"
+
+
+def test_list_medicamentos_filter_principio_activo_by_id(db_session):
+    _insert_base_medicamento(db_session, "840001", publicado=True)
+    _insert_base_medicamento(db_session, "840002", publicado=True)
+    pa_paracetamol = PrincipioActivo(id=uuid.uuid4(), nombre_normalizado="paracetamol", nombre_display="Paracetamol", slug="paracetamol")
+    pa_ibuprofeno = PrincipioActivo(id=uuid.uuid4(), nombre_normalizado="ibuprofeno", nombre_display="Ibuprofeno", slug="ibuprofeno")
+    db_session.add_all([pa_paracetamol, pa_ibuprofeno])
+    db_session.flush()
+    db_session.add_all(
+        [
+            MedicamentoPrincipioActivo(cn="840001", principio_activo_id=pa_paracetamol.id, orden=1),
+            MedicamentoPrincipioActivo(cn="840002", principio_activo_id=pa_ibuprofeno.id, orden=1),
+        ]
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_medicamentos(db_session, principio_activo=str(pa_paracetamol.id))
+    assert result["total"] == 1
+    assert result["items"][0]["cn"] == "840001"
+
+
+def test_list_medicamentos_filters_before_pagination(db_session):
+    _insert_base_medicamento(db_session, "850001", publicado=True)
+    _insert_base_medicamento(db_session, "850002", publicado=True)
+    _insert_base_medicamento(db_session, "850003", publicado=True)
+    db_session.execute(text("UPDATE cima_medicamento_cache SET nombre='Filtro X uno' WHERE cn='850001'"))
+    db_session.execute(text("UPDATE cima_medicamento_cache SET nombre='Filtro X dos' WHERE cn='850002'"))
+    db_session.execute(text("UPDATE cima_medicamento_cache SET nombre='Sin coincidencia' WHERE cn='850003'"))
+    db_session.commit()
+    _create_view(db_session)
+
+    page = list_medicamentos(db_session, q="filtro x", limit=1, offset=1)
+    assert page["total"] == 2
+    assert page["limit"] == 1
+    assert page["offset"] == 1
+    assert len(page["items"]) == 1
