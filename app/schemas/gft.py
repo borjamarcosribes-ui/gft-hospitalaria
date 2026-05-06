@@ -9,6 +9,18 @@ class GFTPrincipioActivoRef(BaseModel):
     nombre: str
 
 
+class GFTPrincipioActivoIndexItem(BaseModel):
+    id: UUID
+    slug: str
+    nombre: str
+    letra: str
+    count: int
+
+
+class GFTPrincipioActivoIndexResponse(BaseModel):
+    items: list[GFTPrincipioActivoIndexItem] = Field(default_factory=list)
+
+
 class GFTAtcRef(BaseModel):
     codigo: str
     nombre: str | None = None
