@@ -192,3 +192,48 @@ def test_gft_list_medicamentos_principio_activo_param(client, db_session):
     body = response.json()
     assert body["total"] == 1
     assert body["items"][0]["cn"] == "930002"
+
+
+def _set_atc_json(db_session, cn: str, atc_json):
+    medicamento = db_session.get(CimaMedicamentoCache, cn)
+    assert medicamento is not None
+    medicamento.atc_json = atc_json
+
+
+def test_gft_list_medicamentos_atc_param(client, db_session):
+    _insert_base_medicamento(db_session, "940001", publicado=True)
+    _insert_base_medicamento(db_session, "940002", publicado=True)
+    _insert_base_medicamento(db_session, "940003", publicado=True)
+    _set_atc_json(db_session, "940001", [{"codigo": "N02BE01", "nombre": "Paracetamol", "nivel": "L5"}])
+    _set_atc_json(db_session, "940002", [{"codigo": "N02AX02", "nombre": "Tramadol", "nivel": "L5"}])
+    _set_atc_json(db_session, "940003", [{"codigo": "A10BA02", "nombre": "Metformina", "nivel": "L5"}])
+    db_session.commit()
+    _create_view(db_session)
+
+    response = client.get("/gft/medicamentos?atc=N02")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert {item["cn"] for item in body["items"]} == {"940001", "940002"}
+
+
+def test_gft_list_medicamentos_atc_combines_with_q(client, db_session):
+    _insert_base_medicamento(db_session, "941001", publicado=True)
+    _insert_base_medicamento(db_session, "941002", publicado=True)
+    _insert_base_medicamento(db_session, "941003", publicado=True)
+    _set_atc_json(db_session, "941001", [{"codigo": "N02BE01", "nombre": "Paracetamol", "nivel": "L5"}])
+    _set_atc_json(db_session, "941002", [{"codigo": "N02AX02", "nombre": "Tramadol", "nivel": "L5"}])
+    _set_atc_json(db_session, "941003", [{"codigo": "A10BA02", "nombre": "Metformina", "nivel": "L5"}])
+    db_session.execute(text("UPDATE cima_medicamento_cache SET nombre='Dolor Diana' WHERE cn='941001'"))
+    db_session.execute(text("UPDATE cima_medicamento_cache SET nombre='Analgesico sin texto' WHERE cn='941002'"))
+    db_session.execute(text("UPDATE cima_medicamento_cache SET nombre='Dolor Diana fuera' WHERE cn='941003'"))
+    db_session.commit()
+    _create_view(db_session)
+
+    response = client.get("/gft/medicamentos?atc=N02&q=diana")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["cn"] == "941001"

@@ -15,6 +15,7 @@ def gft_list_medicamentos(
     q: str | None = None,
     letra: str | None = None,
     principio_activo: str | None = None,
+    atc: str | None = None,
     db: Session = Depends(get_db),
 ):
     return list_medicamentos(
@@ -24,6 +25,7 @@ def gft_list_medicamentos(
         q=q,
         letra=letra,
         principio_activo=principio_activo,
+        atc=atc,
     )
 
 

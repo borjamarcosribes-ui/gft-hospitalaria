@@ -314,3 +314,93 @@ def test_list_medicamentos_filters_before_pagination(db_session):
     assert page["limit"] == 1
     assert page["offset"] == 1
     assert len(page["items"]) == 1
+
+
+def _set_atc_json(db_session, cn: str, atc_json):
+    medicamento = db_session.get(CimaMedicamentoCache, cn)
+    assert medicamento is not None
+    medicamento.atc_json = atc_json
+
+
+def test_list_medicamentos_filter_atc_exact_or_full_prefix(db_session):
+    _insert_base_medicamento(db_session, "860001", publicado=True)
+    _insert_base_medicamento(db_session, "860002", publicado=True)
+    _set_atc_json(db_session, "860001", [{"codigo": "N02BE01", "nombre": "Paracetamol", "nivel": "L5"}])
+    _set_atc_json(db_session, "860002", [{"codigo": "A10BA02", "nombre": "Metformina", "nivel": "L5"}])
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_medicamentos(db_session, atc="N02BE01")
+
+    assert result["total"] == 1
+    assert result["items"][0]["cn"] == "860001"
+
+
+def test_list_medicamentos_filter_atc_prefix(db_session):
+    _insert_base_medicamento(db_session, "861001", publicado=True)
+    _insert_base_medicamento(db_session, "861002", publicado=True)
+    _insert_base_medicamento(db_session, "861003", publicado=True)
+    _set_atc_json(db_session, "861001", [{"codigo": "N02BE01", "nombre": "Paracetamol", "nivel": "L5"}])
+    _set_atc_json(db_session, "861002", [{"codigo": "N02AX02", "nombre": "Tramadol", "nivel": "L5"}])
+    _set_atc_json(db_session, "861003", [{"codigo": "A10BA02", "nombre": "Metformina", "nivel": "L5"}])
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_medicamentos(db_session, atc="N02")
+
+    assert result["total"] == 2
+    assert {item["cn"] for item in result["items"]} == {"861001", "861002"}
+
+
+def test_list_medicamentos_filter_atc_case_insensitive_and_strip(db_session):
+    _insert_base_medicamento(db_session, "862001", publicado=True)
+    _insert_base_medicamento(db_session, "862002", publicado=True)
+    _set_atc_json(db_session, "862001", [{"codigo": "N02BE01", "nombre": "Paracetamol", "nivel": "L5"}])
+    _set_atc_json(db_session, "862002", [{"codigo": "A10BA02", "nombre": "Metformina", "nivel": "L5"}])
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_medicamentos(db_session, atc=" n02be ")
+
+    assert result["total"] == 1
+    assert result["items"][0]["cn"] == "862001"
+
+
+def test_list_medicamentos_filter_atc_combines_with_q_before_pagination(db_session):
+    _insert_base_medicamento(db_session, "863001", publicado=True)
+    _insert_base_medicamento(db_session, "863002", publicado=True)
+    _insert_base_medicamento(db_session, "863003", publicado=True)
+    _set_atc_json(db_session, "863001", [{"codigo": "N02BE01", "nombre": "Paracetamol", "nivel": "L5"}])
+    _set_atc_json(db_session, "863002", [{"codigo": "N02AX02", "nombre": "Tramadol", "nivel": "L5"}])
+    _set_atc_json(db_session, "863003", [{"codigo": "A10BA02", "nombre": "Metformina", "nivel": "L5"}])
+    db_session.execute(text("UPDATE cima_medicamento_cache SET nombre='Dolor Diana' WHERE cn='863001'"))
+    db_session.execute(text("UPDATE cima_medicamento_cache SET nombre='Analgesico sin texto' WHERE cn='863002'"))
+    db_session.execute(text("UPDATE cima_medicamento_cache SET nombre='Dolor Diana fuera' WHERE cn='863003'"))
+    db_session.commit()
+    _create_view(db_session)
+
+    page = list_medicamentos(db_session, atc="N02", q="diana", limit=1, offset=0)
+
+    assert page["total"] == 1
+    assert page["limit"] == 1
+    assert page["offset"] == 0
+    assert len(page["items"]) == 1
+    assert page["items"][0]["cn"] == "863001"
+
+
+def test_list_medicamentos_filter_atc_ignores_missing_or_invalid_atc(db_session):
+    _insert_base_medicamento(db_session, "864001", publicado=True)
+    _insert_base_medicamento(db_session, "864002", publicado=True)
+    _insert_base_medicamento(db_session, "864003", publicado=True)
+    _insert_base_medicamento(db_session, "864004", publicado=True)
+    _set_atc_json(db_session, "864001", [{"codigo": "N02BE01", "nombre": "Paracetamol", "nivel": "L5"}])
+    _set_atc_json(db_session, "864002", None)
+    _set_atc_json(db_session, "864003", "not-json")
+    _set_atc_json(db_session, "864004", {"codigo": "N02AX02"})
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_medicamentos(db_session, atc="N02")
+
+    assert result["total"] == 1
+    assert result["items"][0]["cn"] == "864001"

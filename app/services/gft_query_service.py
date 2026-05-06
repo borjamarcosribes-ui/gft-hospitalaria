@@ -142,6 +142,7 @@ def list_medicamentos(
     q: str | None = None,
     letra: str | None = None,
     principio_activo: str | None = None,
+    atc: str | None = None,
 ) -> dict:
     if limit < 1:
         limit = 1
@@ -173,6 +174,7 @@ def list_medicamentos(
     letra_norm = (letra or "").strip().lower()[:1]
     principio_raw = (principio_activo or "").strip()
     principio_slug_norm = principio_raw.lower()
+    atc_norm = (atc or "").strip().upper()
 
     filtered_items = ordered_items
     if q_norm:
@@ -209,6 +211,17 @@ def list_medicamentos(
                 or str(principio.get("slug") or "").lower() == principio_slug_norm
                 for principio in item.get("principios_activos", [])
                 if isinstance(principio, Mapping)
+            )
+        ]
+
+    if atc_norm:
+        filtered_items = [
+            item
+            for item in filtered_items
+            if any(
+                str(atc_item.get("codigo") or "").strip().upper().startswith(atc_norm)
+                for atc_item in item.get("atc", [])
+                if isinstance(atc_item, Mapping)
             )
         ]
 
