@@ -1,11 +1,11 @@
 """extend gft public detail metadata
 
-Revision ID: 0003_extend_gft_public_detail_metadata
+Revision ID: 0003_gft_public_detail_metadata
 Revises: 0002_add_cima_document_urls
 """
 from alembic import op
 
-revision = '0003_extend_gft_public_detail_metadata'
+revision = '0003_gft_public_detail_metadata'
 down_revision = '0002_add_cima_document_urls'
 branch_labels = None
 depends_on = None
