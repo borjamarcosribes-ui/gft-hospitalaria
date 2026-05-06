@@ -1,7 +1,9 @@
+from datetime import date
 import uuid
 
 from sqlalchemy import text
 
+from app.models.bifimed_cache import BifimedCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
@@ -27,11 +29,19 @@ def _create_view(db_session):
               c.documentos_json,
               c.url_ficha_tecnica,
               c.url_prospecto,
-              NULL AS situacion_financiacion,
+              c.fecha_ficha_tecnica,
+              c.fecha_prospecto,
+              b.situacion_financiacion,
+              b.condiciones_financiacion_restringidas,
+              b.condiciones_especiales_financiacion,
+              b.estado_nomenclator,
+              b.aportacion_usuario,
+              b.subgrupo_atc,
               g.restricciones_hospitalarias,
               g.observaciones_internas
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
+            LEFT JOIN bifimed_cache b ON b.cn = g.cn
             WHERE g.estado_gft = 'incluido'
               AND g.estado_editorial = 'publicado'
             """
@@ -57,6 +67,7 @@ def _insert_base_medicamento(db_session, cn: str, publicado: bool = True):
             nombre=f"Nombre {cn}",
             presentacion=f"Presentación {cn}",
             forma_farmaceutica="Comprimido",
+            forma_farmaceutica_simplificada="comprimido",
             vias_administracion_json=[{"nombre": "Vía oral"}],
             atc_json=[{"codigo": "A01AA01", "nombre": "ATC test", "nivel": "L5"}],
             principios_activos_json=[{"nombre": "Paracetamol"}],
@@ -111,6 +122,56 @@ def test_gft_get_medicamento_detail_endpoint(client, db_session):
     assert body["url_prospecto"] == "https://example.com/pr/111111"
     assert isinstance(body["documentos"], list)
     assert body["documentos"]
+
+
+def test_gft_get_medicamento_detail_includes_metadata(client, db_session):
+    _insert_base_medicamento(db_session, "111112", publicado=True)
+    medicamento = db_session.get(CimaMedicamentoCache, "111112")
+    assert medicamento is not None
+    medicamento.fecha_ficha_tecnica = date(2024, 1, 2)
+    medicamento.fecha_prospecto = date(2024, 2, 3)
+    db_session.commit()
+    _create_view(db_session)
+
+    response = client.get("/gft/medicamentos/111112")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["forma_farmaceutica_simplificada"] == "comprimido"
+    assert body["fecha_ficha_tecnica"] == "2024-01-02"
+    assert body["fecha_prospecto"] == "2024-02-03"
+
+
+def test_gft_get_medicamento_detail_includes_financiacion_detalle(client, db_session):
+    _insert_base_medicamento(db_session, "111113", publicado=True)
+    db_session.add(
+        BifimedCache(
+            cn="111113",
+            situacion_financiacion="Financiado",
+            condiciones_financiacion_restringidas="Diagnóstico hospitalario",
+            condiciones_especiales_financiacion="Visado",
+            estado_nomenclator="Alta",
+            aportacion_usuario="Reducida",
+            subgrupo_atc="N02BE",
+            sync_status="ok",
+        )
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    response = client.get("/gft/medicamentos/111113")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["situacion_financiacion"] == "Financiado"
+    assert body["financiacion_detalle"] == {
+        "situacion_financiacion": "Financiado",
+        "condiciones_financiacion_restringidas": "Diagnóstico hospitalario",
+        "condiciones_especiales_financiacion": "Visado",
+        "estado_nomenclator": "Alta",
+        "aportacion_usuario": "Reducida",
+        "subgrupo_atc": "N02BE",
+    }
 
 
 def test_gft_get_medicamento_detail_404(client, db_session):

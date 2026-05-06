@@ -1,7 +1,9 @@
+from datetime import date
 import uuid
 
 from sqlalchemy import text
 
+from app.models.bifimed_cache import BifimedCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
@@ -33,11 +35,19 @@ def _create_view(db_session):
               c.documentos_json,
               c.url_ficha_tecnica,
               c.url_prospecto,
-              NULL AS situacion_financiacion,
+              c.fecha_ficha_tecnica,
+              c.fecha_prospecto,
+              b.situacion_financiacion,
+              b.condiciones_financiacion_restringidas,
+              b.condiciones_especiales_financiacion,
+              b.estado_nomenclator,
+              b.aportacion_usuario,
+              b.subgrupo_atc,
               g.restricciones_hospitalarias,
               g.observaciones_internas
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
+            LEFT JOIN bifimed_cache b ON b.cn = g.cn
             WHERE g.estado_gft = 'incluido'
               AND g.estado_editorial = 'publicado'
             """
@@ -63,6 +73,7 @@ def _insert_base_medicamento(db_session, cn: str, publicado: bool = True):
             nombre=f"Nombre {cn}",
             presentacion=f"Presentación {cn}",
             forma_farmaceutica="Comprimido",
+            forma_farmaceutica_simplificada="comprimido",
             vias_administracion_json=[{"nombre": "Vía oral"}],
             atc_json=[{"codigo": "A01AA01", "nombre": "ATC test", "nivel": "L5"}],
             principios_activos_json=[{"nombre": "Paracetamol"}],
@@ -100,6 +111,89 @@ def test_get_medicamento_by_cn_returns_detail(db_session):
     assert result["url_prospecto"] == "https://example.com/pr/111111"
     assert isinstance(result["documentos"], list)
     assert result["documentos"]
+
+
+def test_get_medicamento_by_cn_includes_detail_metadata(db_session):
+    _insert_base_medicamento(db_session, "111112", publicado=True)
+    medicamento = db_session.get(CimaMedicamentoCache, "111112")
+    assert medicamento is not None
+    medicamento.fecha_ficha_tecnica = date(2024, 1, 2)
+    medicamento.fecha_prospecto = date(2024, 2, 3)
+    db_session.commit()
+    _create_view(db_session)
+
+    result = get_medicamento_by_cn(db_session, "111112")
+
+    assert result is not None
+    assert result["forma_farmaceutica_simplificada"] == "comprimido"
+    assert str(result["fecha_ficha_tecnica"]) == "2024-01-02"
+    assert str(result["fecha_prospecto"]) == "2024-02-03"
+
+
+def test_get_medicamento_by_cn_includes_financiacion_detalle_when_available(db_session):
+    _insert_base_medicamento(db_session, "111113", publicado=True)
+    db_session.add(
+        BifimedCache(
+            cn="111113",
+            situacion_financiacion="Financiado",
+            condiciones_financiacion_restringidas="Diagnóstico hospitalario",
+            condiciones_especiales_financiacion="Visado",
+            estado_nomenclator="Alta",
+            aportacion_usuario="Reducida",
+            subgrupo_atc="N02BE",
+            sync_status="ok",
+        )
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    result = get_medicamento_by_cn(db_session, "111113")
+
+    assert result is not None
+    assert result["situacion_financiacion"] == "Financiado"
+    assert result["financiacion_detalle"] == {
+        "situacion_financiacion": "Financiado",
+        "condiciones_financiacion_restringidas": "Diagnóstico hospitalario",
+        "condiciones_especiales_financiacion": "Visado",
+        "estado_nomenclator": "Alta",
+        "aportacion_usuario": "Reducida",
+        "subgrupo_atc": "N02BE",
+    }
+
+
+def test_get_medicamento_by_cn_documents_are_typed_shape(db_session):
+    _insert_base_medicamento(db_session, "111114", publicado=True)
+    medicamento = db_session.get(CimaMedicamentoCache, "111114")
+    assert medicamento is not None
+    medicamento.documentos_json = [
+        {
+            "tipo": 1,
+            "url": "https://example.com/ft.pdf",
+            "urlHtml": "https://example.com/ft.html",
+            "secc": "4.1",
+            "fecha": "2024-01-02",
+            "titulo": "Ficha técnica",
+            "nombre": "Documento FT",
+            "extra": "no expuesto",
+        }
+    ]
+    db_session.commit()
+    _create_view(db_session)
+
+    result = get_medicamento_by_cn(db_session, "111114")
+
+    assert result is not None
+    assert result["documentos"] == [
+        {
+            "tipo": 1,
+            "url": "https://example.com/ft.pdf",
+            "urlHtml": "https://example.com/ft.html",
+            "secc": "4.1",
+            "fecha": "2024-01-02",
+            "titulo": "Ficha técnica",
+            "nombre": "Documento FT",
+        }
+    ]
 
 
 def test_get_medicamento_by_cn_returns_none_when_not_in_view(db_session):
@@ -556,11 +650,19 @@ def test_list_principios_activos_index_deduplicates_same_cn_same_principio(db_se
               c.documentos_json,
               c.url_ficha_tecnica,
               c.url_prospecto,
-              NULL AS situacion_financiacion,
+              c.fecha_ficha_tecnica,
+              c.fecha_prospecto,
+              b.situacion_financiacion,
+              b.condiciones_financiacion_restringidas,
+              b.condiciones_especiales_financiacion,
+              b.estado_nomenclator,
+              b.aportacion_usuario,
+              b.subgrupo_atc,
               g.restricciones_hospitalarias,
               g.observaciones_internas
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
+            LEFT JOIN bifimed_cache b ON b.cn = g.cn
             WHERE g.cn = '952001'
             UNION ALL
             SELECT
@@ -576,11 +678,19 @@ def test_list_principios_activos_index_deduplicates_same_cn_same_principio(db_se
               c.documentos_json,
               c.url_ficha_tecnica,
               c.url_prospecto,
-              NULL AS situacion_financiacion,
+              c.fecha_ficha_tecnica,
+              c.fecha_prospecto,
+              b.situacion_financiacion,
+              b.condiciones_financiacion_restringidas,
+              b.condiciones_especiales_financiacion,
+              b.estado_nomenclator,
+              b.aportacion_usuario,
+              b.subgrupo_atc,
               g.restricciones_hospitalarias,
               g.observaciones_internas
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
+            LEFT JOIN bifimed_cache b ON b.cn = g.cn
             WHERE g.cn = '952001'
             """
         )

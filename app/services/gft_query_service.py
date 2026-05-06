@@ -157,7 +157,46 @@ def _parse_documentos(documentos_json) -> list[dict]:
     parsed = _parse_json_value(documentos_json)
     if not isinstance(parsed, list):
         return []
-    return [dict(item) for item in parsed if isinstance(item, Mapping)]
+
+    documentos: list[dict] = []
+    for item in parsed:
+        if not isinstance(item, Mapping):
+            continue
+        documentos.append(
+            {
+                "tipo": item.get("tipo"),
+                "url": item.get("url"),
+                "urlHtml": item.get("urlHtml"),
+                "secc": item.get("secc"),
+                "fecha": item.get("fecha"),
+                "titulo": item.get("titulo"),
+                "nombre": item.get("nombre"),
+            }
+        )
+    return documentos
+
+
+def _row_get(row, key: str, default=None):
+    if hasattr(row, "get"):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except (KeyError, TypeError):
+        return default
+
+
+def _build_financiacion_detalle(row) -> dict | None:
+    detalle = {
+        "situacion_financiacion": _row_get(row, "situacion_financiacion"),
+        "condiciones_financiacion_restringidas": _row_get(row, "condiciones_financiacion_restringidas"),
+        "condiciones_especiales_financiacion": _row_get(row, "condiciones_especiales_financiacion"),
+        "estado_nomenclator": _row_get(row, "estado_nomenclator"),
+        "aportacion_usuario": _row_get(row, "aportacion_usuario"),
+        "subgrupo_atc": _row_get(row, "subgrupo_atc"),
+    }
+    if not any(value is not None for value in detalle.values()):
+        return None
+    return detalle
 
 
 def _row_to_list_item(row, principios: list[dict]) -> dict:
@@ -166,14 +205,17 @@ def _row_to_list_item(row, principios: list[dict]) -> dict:
         "nombre": row["nombre"],
         "presentacion": row["presentacion"],
         "forma_farmaceutica": row["forma_farmaceutica"],
+        "forma_farmaceutica_simplificada": _row_get(row, "forma_farmaceutica_simplificada"),
         "vias_administracion": _parse_vias(row["vias_administracion_json"]),
         "atc": _parse_atc(row["atc_json"]),
         "principios_activos": principios,
         "nemonico": row["nemonico"],
         "restricciones_hospitalarias": row["restricciones_hospitalarias"],
-        "situacion_financiacion": row["situacion_financiacion"],
+        "situacion_financiacion": _row_get(row, "situacion_financiacion"),
         "url_ficha_tecnica": row["url_ficha_tecnica"],
         "url_prospecto": row["url_prospecto"],
+        "fecha_ficha_tecnica": _row_get(row, "fecha_ficha_tecnica"),
+        "fecha_prospecto": _row_get(row, "fecha_prospecto"),
     }
 
 
@@ -181,6 +223,7 @@ def _row_to_detail(row, principios: list[dict]) -> dict:
     item = _row_to_list_item(row, principios)
     item["observaciones_internas_publicables"] = row["observaciones_internas"]
     item["documentos"] = _parse_documentos(row["documentos_json"])
+    item["financiacion_detalle"] = _build_financiacion_detalle(row)
     return item
 
 

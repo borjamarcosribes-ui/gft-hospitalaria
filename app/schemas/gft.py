@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -38,11 +39,31 @@ class GFTAtcIndexResponse(BaseModel):
     items: list[GFTAtcIndexItem] = Field(default_factory=list)
 
 
+class GFTDocumentoCimaRef(BaseModel):
+    tipo: int | str | None = None
+    url: str | None = None
+    urlHtml: str | None = None
+    secc: str | None = None
+    fecha: str | None = None
+    titulo: str | None = None
+    nombre: str | None = None
+
+
+class GFTFinanciacionDetalle(BaseModel):
+    situacion_financiacion: str | None = None
+    condiciones_financiacion_restringidas: str | None = None
+    condiciones_especiales_financiacion: str | None = None
+    estado_nomenclator: str | None = None
+    aportacion_usuario: str | None = None
+    subgrupo_atc: str | None = None
+
+
 class GFTMedicamentoListItem(BaseModel):
     cn: str
     nombre: str | None = None
     presentacion: str | None = None
     forma_farmaceutica: str | None = None
+    forma_farmaceutica_simplificada: str | None = None
     vias_administracion: list[str] = Field(default_factory=list)
     atc: list[GFTAtcRef] = Field(default_factory=list)
     principios_activos: list[GFTPrincipioActivoRef] = Field(default_factory=list)
@@ -51,11 +72,14 @@ class GFTMedicamentoListItem(BaseModel):
     situacion_financiacion: str | None = None
     url_ficha_tecnica: str | None = None
     url_prospecto: str | None = None
+    fecha_ficha_tecnica: date | None = None
+    fecha_prospecto: date | None = None
 
 
 class GFTMedicamentoDetail(GFTMedicamentoListItem):
     observaciones_internas_publicables: str | None = None
-    documentos: list[dict] = Field(default_factory=list)
+    documentos: list[GFTDocumentoCimaRef] = Field(default_factory=list)
+    financiacion_detalle: GFTFinanciacionDetalle | None = None
 
 
 class GFTListResponse(BaseModel):
