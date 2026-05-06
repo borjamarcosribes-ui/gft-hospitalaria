@@ -6,7 +6,7 @@ from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
 from app.models.principio_activo import PrincipioActivo
-from app.services.gft_query_service import get_medicamento_by_cn, list_medicamentos
+from app.services.gft_query_service import get_medicamento_by_cn, list_atc_index, list_medicamentos
 
 
 def _create_view(db_session):
@@ -404,3 +404,74 @@ def test_list_medicamentos_filter_atc_ignores_missing_or_invalid_atc(db_session)
 
     assert result["total"] == 1
     assert result["items"][0]["cn"] == "864001"
+
+
+
+def test_list_atc_index_returns_present_codes_with_counts(db_session):
+    _insert_base_medicamento(db_session, "870001", publicado=True)
+    _insert_base_medicamento(db_session, "870002", publicado=True)
+    _insert_base_medicamento(db_session, "870003", publicado=True)
+    _set_atc_json(db_session, "870001", [{"codigo": "N02BE01", "nombre": "Paracetamol", "nivel": "L5"}])
+    _set_atc_json(db_session, "870002", [{"codigo": "N02AX02", "nombre": "Tramadol", "nivel": "L5"}])
+    _set_atc_json(db_session, "870003", [{"codigo": "A10BA02", "nombre": "Metformina", "nivel": "L5"}])
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_atc_index(db_session)
+    items_by_code = {item["codigo"]: item for item in result["items"]}
+
+    for codigo in {"N", "N02", "N02B", "N02BE01", "N02AX02", "A", "A10", "A10BA02"}:
+        assert codigo in items_by_code
+    assert items_by_code["N"]["count"] == 2
+    assert items_by_code["N02"]["count"] == 2
+    assert items_by_code["A"]["count"] == 1
+    assert [item["codigo"] for item in result["items"]] == sorted(items_by_code)
+
+
+def test_list_atc_index_deduplicates_same_cn_same_prefix(db_session):
+    _insert_base_medicamento(db_session, "871001", publicado=True)
+    _set_atc_json(
+        db_session,
+        "871001",
+        [
+            {"codigo": "N02BE01", "nombre": "Paracetamol", "nivel": "L5"},
+            {"codigo": "N02AX02", "nombre": "Tramadol", "nivel": "L5"},
+        ],
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_atc_index(db_session)
+    items_by_code = {item["codigo"]: item for item in result["items"]}
+
+    assert items_by_code["N"]["count"] == 1
+    assert items_by_code["N02"]["count"] == 1
+
+
+def test_list_atc_index_uses_name_only_for_exact_payload_code(db_session):
+    _insert_base_medicamento(db_session, "872001", publicado=True)
+    _set_atc_json(db_session, "872001", [{"codigo": "N02BE01", "nombre": "Paracetamol", "nivel": "L5"}])
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_atc_index(db_session)
+    items_by_code = {item["codigo"]: item for item in result["items"]}
+
+    assert items_by_code["N02BE01"]["nombre"] == "Paracetamol"
+    for codigo in ("N", "N02", "N02B", "N02BE"):
+        assert items_by_code[codigo]["nombre"] is None
+
+
+def test_list_atc_index_ignores_invalid_or_missing_atc(db_session):
+    _insert_base_medicamento(db_session, "873001", publicado=True)
+    _insert_base_medicamento(db_session, "873002", publicado=True)
+    _insert_base_medicamento(db_session, "873003", publicado=True)
+    _set_atc_json(db_session, "873001", None)
+    _set_atc_json(db_session, "873002", "not-json")
+    _set_atc_json(db_session, "873003", {"codigo": "N02AX02"})
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_atc_index(db_session)
+
+    assert result == {"items": []}

@@ -15,6 +15,17 @@ class GFTAtcRef(BaseModel):
     nivel: str | None = None
 
 
+class GFTAtcIndexItem(BaseModel):
+    codigo: str
+    nombre: str | None = None
+    nivel: str
+    count: int
+
+
+class GFTAtcIndexResponse(BaseModel):
+    items: list[GFTAtcIndexItem] = Field(default_factory=list)
+
+
 class GFTMedicamentoListItem(BaseModel):
     cn: str
     nombre: str | None = None

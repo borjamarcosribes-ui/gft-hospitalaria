@@ -74,6 +74,55 @@ def _parse_atc(atc_json) -> list[dict]:
     return out
 
 
+def _infer_atc_level(codigo: str) -> str | None:
+    length = len(codigo)
+    if length == 1:
+        return "L1"
+    if length == 3:
+        return "L2"
+    if length == 4:
+        return "L3"
+    if length == 5:
+        return "L4"
+    if length >= 7:
+        return "L5"
+    return None
+
+
+def _expand_atc_code(codigo: str) -> list[tuple[str, str]]:
+    code = codigo.strip().upper()
+    if not code:
+        return []
+
+    expanded: list[tuple[str, str]] = []
+    for length in (1, 3, 4, 5):
+        if len(code) >= length:
+            prefix = code[:length]
+            level = _infer_atc_level(prefix)
+            if level is not None:
+                expanded.append((prefix, level))
+
+    if len(code) >= 7:
+        level = _infer_atc_level(code)
+        if level is not None and all(prefix != code for prefix, _ in expanded):
+            expanded.append((code, level))
+
+    return expanded
+
+
+def _merge_atc_index_entry(
+    index: dict[str, dict],
+    codigo: str,
+    nivel: str,
+    cn: str,
+    nombre: str | None = None,
+) -> None:
+    entry = index.setdefault(codigo, {"codigo": codigo, "nombre": None, "nivel": nivel, "cns": set()})
+    entry["cns"].add(cn)
+    if nombre and entry["nombre"] is None:
+        entry["nombre"] = nombre
+
+
 def _get_principios_for_cns(db: Session, cns: list[str]) -> dict[str, list[dict]]:
     if not cns:
         return {}
@@ -229,6 +278,55 @@ def list_medicamentos(
     items = filtered_items[offset : offset + limit]
 
     return {"total": int(total), "limit": limit, "offset": offset, "items": items}
+
+
+def list_atc_index(db: Session) -> dict:
+    rows = db.execute(
+        text(
+            """
+            SELECT cn, atc_json
+            FROM v_gft_publicada
+            """
+        )
+    ).mappings().all()
+
+    index: dict[str, dict] = {}
+    for row in rows:
+        cn = str(row["cn"] or "").strip()
+        if not cn:
+            continue
+
+        seen_for_cn: set[str] = set()
+        for atc_item in _parse_atc(row["atc_json"]):
+            raw_code = str(atc_item.get("codigo") or "").strip().upper()
+            if not raw_code:
+                continue
+
+            exact_name = atc_item.get("nombre")
+            exact_name = str(exact_name).strip() if exact_name is not None else None
+            if exact_name == "":
+                exact_name = None
+
+            for codigo, nivel in _expand_atc_code(raw_code):
+                if codigo in seen_for_cn:
+                    continue
+                seen_for_cn.add(codigo)
+                nombre = exact_name if codigo == raw_code else None
+                _merge_atc_index_entry(index, codigo, nivel, cn, nombre=nombre)
+
+    items = []
+    for codigo in sorted(index):
+        entry = index[codigo]
+        items.append(
+            {
+                "codigo": entry["codigo"],
+                "nombre": entry["nombre"],
+                "nivel": entry["nivel"],
+                "count": len(entry["cns"]),
+            }
+        )
+
+    return {"items": items}
 
 
 def get_medicamento_by_cn(db: Session, cn: str) -> dict | None:

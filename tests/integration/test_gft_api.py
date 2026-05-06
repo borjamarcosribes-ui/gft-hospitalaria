@@ -237,3 +237,42 @@ def test_gft_list_medicamentos_atc_combines_with_q(client, db_session):
     body = response.json()
     assert body["total"] == 1
     assert body["items"][0]["cn"] == "941001"
+
+
+
+def test_gft_atc_index_endpoint(client, db_session):
+    _insert_base_medicamento(db_session, "942001", publicado=True)
+    _insert_base_medicamento(db_session, "942002", publicado=True)
+    _insert_base_medicamento(db_session, "942003", publicado=True)
+    _set_atc_json(db_session, "942001", [{"codigo": "N02BE01", "nombre": "Paracetamol", "nivel": "L5"}])
+    _set_atc_json(db_session, "942002", [{"codigo": "N02AX02", "nombre": "Tramadol", "nivel": "L5"}])
+    _set_atc_json(db_session, "942003", [{"codigo": "A10BA02", "nombre": "Metformina", "nivel": "L5"}])
+    db_session.commit()
+    _create_view(db_session)
+
+    response = client.get("/gft/atc")
+
+    assert response.status_code == 200
+    body = response.json()
+    items_by_code = {item["codigo"]: item for item in body["items"]}
+    assert {"N", "N02", "N02BE01", "N02AX02", "A", "A10", "A10BA02"}.issubset(items_by_code)
+    assert items_by_code["N"]["count"] == 2
+    assert items_by_code["N02"]["count"] == 2
+    assert items_by_code["A"]["count"] == 1
+
+
+def test_gft_atc_index_endpoint_ignores_unpublished(client, db_session):
+    _insert_base_medicamento(db_session, "943001", publicado=True)
+    _insert_base_medicamento(db_session, "943002", publicado=False)
+    _set_atc_json(db_session, "943001", [{"codigo": "N02BE01", "nombre": "Paracetamol", "nivel": "L5"}])
+    _set_atc_json(db_session, "943002", [{"codigo": "A10BA02", "nombre": "Metformina", "nivel": "L5"}])
+    db_session.commit()
+    _create_view(db_session)
+
+    response = client.get("/gft/atc")
+
+    assert response.status_code == 200
+    body = response.json()
+    codes = {item["codigo"] for item in body["items"]}
+    assert "N" in codes
+    assert "A" not in codes
