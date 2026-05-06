@@ -2,8 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.schemas.gft import GFTAtcIndexResponse, GFTListResponse, GFTMedicamentoDetail
-from app.services.gft_query_service import get_medicamento_by_cn, list_atc_index, list_medicamentos
+from app.schemas.gft import (
+    GFTAtcIndexResponse,
+    GFTListResponse,
+    GFTMedicamentoDetail,
+    GFTPrincipioActivoIndexResponse,
+)
+from app.services.gft_query_service import (
+    get_medicamento_by_cn,
+    list_atc_index,
+    list_medicamentos,
+    list_principios_activos_index,
+)
 
 router = APIRouter(prefix="/gft", tags=["gft"])
 
@@ -32,6 +42,11 @@ def gft_list_medicamentos(
 @router.get("/atc", response_model=GFTAtcIndexResponse)
 def gft_atc_index(db: Session = Depends(get_db)):
     return list_atc_index(db)
+
+
+@router.get("/principios-activos", response_model=GFTPrincipioActivoIndexResponse)
+def gft_principios_activos_index(db: Session = Depends(get_db)):
+    return list_principios_activos_index(db)
 
 
 @router.get("/medicamentos/{cn}", response_model=GFTMedicamentoDetail)

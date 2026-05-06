@@ -280,6 +280,76 @@ def list_medicamentos(
     return {"total": int(total), "limit": limit, "offset": offset, "items": items}
 
 
+def _usable_principio_name(row) -> str | None:
+    nombre = str(row.nombre_display or "").strip()
+    if nombre:
+        return nombre
+
+    nombre = str(row.nombre_normalizado or "").strip()
+    if nombre:
+        return nombre
+
+    return None
+
+
+def list_principios_activos_index(db: Session) -> dict:
+    rows = db.execute(text("SELECT cn FROM v_gft_publicada")).mappings().all()
+    cns = [str(row["cn"] or "").strip() for row in rows if str(row["cn"] or "").strip()]
+    if not cns:
+        return {"items": []}
+
+    rows = (
+        db.query(
+            MedicamentoPrincipioActivo.cn,
+            PrincipioActivo.id,
+            PrincipioActivo.slug,
+            PrincipioActivo.nombre_display,
+            PrincipioActivo.nombre_normalizado,
+        )
+        .join(PrincipioActivo, PrincipioActivo.id == MedicamentoPrincipioActivo.principio_activo_id)
+        .filter(MedicamentoPrincipioActivo.cn.in_(cns))
+        .all()
+    )
+
+    index: dict[str, dict] = {}
+    for row in rows:
+        slug = str(row.slug or "").strip()
+        if not slug:
+            continue
+
+        nombre = _usable_principio_name(row)
+        if nombre is None:
+            continue
+
+        key = str(row.id)
+        entry = index.setdefault(
+            key,
+            {
+                "id": row.id,
+                "slug": slug,
+                "nombre": nombre,
+                "sort_name": str(row.nombre_normalizado or nombre).strip().casefold(),
+                "cns": set(),
+            },
+        )
+        entry["cns"].add(str(row.cn or "").strip())
+
+    items = []
+    for entry in sorted(index.values(), key=lambda item: (item["sort_name"], item["slug"])):
+        nombre = entry["nombre"]
+        items.append(
+            {
+                "id": entry["id"],
+                "slug": entry["slug"],
+                "nombre": nombre,
+                "letra": nombre[0].upper(),
+                "count": len(entry["cns"]),
+            }
+        )
+
+    return {"items": items}
+
+
 def list_atc_index(db: Session) -> dict:
     rows = db.execute(
         text(

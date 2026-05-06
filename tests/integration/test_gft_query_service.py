@@ -6,7 +6,12 @@ from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
 from app.models.principio_activo import PrincipioActivo
-from app.services.gft_query_service import get_medicamento_by_cn, list_atc_index, list_medicamentos
+from app.services.gft_query_service import (
+    get_medicamento_by_cn,
+    list_atc_index,
+    list_medicamentos,
+    list_principios_activos_index,
+)
 
 
 def _create_view(db_session):
@@ -473,5 +478,143 @@ def test_list_atc_index_ignores_invalid_or_missing_atc(db_session):
     _create_view(db_session)
 
     result = list_atc_index(db_session)
+
+    assert result == {"items": []}
+
+
+def _add_principio_relacion(db_session, cn: str, nombre: str, slug: str | None = None):
+    principio = PrincipioActivo(
+        id=uuid.uuid4(),
+        nombre_normalizado=(slug or nombre).lower(),
+        nombre_display=nombre,
+        slug=slug or nombre.lower(),
+    )
+    db_session.add(principio)
+    db_session.flush()
+    db_session.add(MedicamentoPrincipioActivo(cn=cn, principio_activo_id=principio.id, orden=1))
+    return principio
+
+
+def test_list_principios_activos_index_returns_only_published_principios(db_session):
+    _insert_base_medicamento(db_session, "950001", publicado=True)
+    _insert_base_medicamento(db_session, "950002", publicado=True)
+    _insert_base_medicamento(db_session, "950003", publicado=False)
+    _add_principio_relacion(db_session, "950001", "Paracetamol", "paracetamol")
+    _add_principio_relacion(db_session, "950002", "Ibuprofeno", "ibuprofeno")
+    _add_principio_relacion(db_session, "950003", "Metformina", "metformina")
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_principios_activos_index(db_session)
+
+    slugs = {item["slug"] for item in result["items"]}
+    assert slugs == {"ibuprofeno", "paracetamol"}
+
+
+def test_list_principios_activos_index_counts_unique_cns(db_session):
+    _insert_base_medicamento(db_session, "951001", publicado=True)
+    _insert_base_medicamento(db_session, "951002", publicado=True)
+    principio = _add_principio_relacion(db_session, "951001", "Paracetamol", "paracetamol")
+    db_session.add(MedicamentoPrincipioActivo(cn="951002", principio_activo_id=principio.id, orden=1))
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_principios_activos_index(db_session)
+
+    assert result["items"] == [
+        {
+            "id": principio.id,
+            "slug": "paracetamol",
+            "nombre": "Paracetamol",
+            "letra": "P",
+            "count": 2,
+        }
+    ]
+
+
+def test_list_principios_activos_index_deduplicates_same_cn_same_principio(db_session):
+    _insert_base_medicamento(db_session, "952001", publicado=True)
+    principio = _add_principio_relacion(db_session, "952001", "Paracetamol", "paracetamol")
+    db_session.commit()
+    # The relation table primary key prevents duplicate CN/principio rows, so the
+    # view is duplicated to exercise the service-level CN set deduplication.
+    db_session.execute(text("DROP VIEW IF EXISTS v_gft_publicada"))
+    db_session.execute(
+        text(
+            """
+            CREATE VIEW v_gft_publicada AS
+            SELECT
+              g.cn,
+              g.nemonico,
+              c.nombre,
+              c.presentacion,
+              c.forma_farmaceutica,
+              c.forma_farmaceutica_simplificada,
+              c.vias_administracion_json,
+              c.atc_json,
+              c.principios_activos_json,
+              c.documentos_json,
+              c.url_ficha_tecnica,
+              c.url_prospecto,
+              NULL AS situacion_financiacion,
+              g.restricciones_hospitalarias,
+              g.observaciones_internas
+            FROM gft_estado_presentacion g
+            LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
+            WHERE g.cn = '952001'
+            UNION ALL
+            SELECT
+              g.cn,
+              g.nemonico,
+              c.nombre,
+              c.presentacion,
+              c.forma_farmaceutica,
+              c.forma_farmaceutica_simplificada,
+              c.vias_administracion_json,
+              c.atc_json,
+              c.principios_activos_json,
+              c.documentos_json,
+              c.url_ficha_tecnica,
+              c.url_prospecto,
+              NULL AS situacion_financiacion,
+              g.restricciones_hospitalarias,
+              g.observaciones_internas
+            FROM gft_estado_presentacion g
+            LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
+            WHERE g.cn = '952001'
+            """
+        )
+    )
+    db_session.commit()
+
+    result = list_principios_activos_index(db_session)
+
+    assert result["items"][0]["id"] == principio.id
+    assert result["items"][0]["count"] == 1
+
+
+def test_list_principios_activos_index_letra_and_order(db_session):
+    _insert_base_medicamento(db_session, "953001", publicado=True)
+    _insert_base_medicamento(db_session, "953002", publicado=True)
+    _add_principio_relacion(db_session, "953001", "Paracetamol", "paracetamol")
+    _add_principio_relacion(db_session, "953002", "Ibuprofeno", "ibuprofeno")
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_principios_activos_index(db_session)
+
+    assert [(item["nombre"], item["letra"]) for item in result["items"]] == [
+        ("Ibuprofeno", "I"),
+        ("Paracetamol", "P"),
+    ]
+
+
+def test_list_principios_activos_index_empty_when_no_publicados(db_session):
+    _insert_base_medicamento(db_session, "954001", publicado=False)
+    _add_principio_relacion(db_session, "954001", "Paracetamol", "paracetamol")
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_principios_activos_index(db_session)
 
     assert result == {"items": []}

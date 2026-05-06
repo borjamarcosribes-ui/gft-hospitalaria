@@ -276,3 +276,58 @@ def test_gft_atc_index_endpoint_ignores_unpublished(client, db_session):
     codes = {item["codigo"] for item in body["items"]}
     assert "N" in codes
     assert "A" not in codes
+
+
+def _add_principio_relacion(db_session, cn: str, nombre: str, slug: str | None = None):
+    principio = PrincipioActivo(
+        id=uuid.uuid4(),
+        nombre_normalizado=(slug or nombre).lower(),
+        nombre_display=nombre,
+        slug=slug or nombre.lower(),
+    )
+    db_session.add(principio)
+    db_session.flush()
+    db_session.add(MedicamentoPrincipioActivo(cn=cn, principio_activo_id=principio.id, orden=1))
+    return principio
+
+
+def test_gft_principios_activos_index_endpoint(client, db_session):
+    _insert_base_medicamento(db_session, "955001", publicado=True)
+    _insert_base_medicamento(db_session, "955002", publicado=True)
+    principio = _add_principio_relacion(db_session, "955001", "Paracetamol", "paracetamol")
+    db_session.add(MedicamentoPrincipioActivo(cn="955002", principio_activo_id=principio.id, orden=1))
+    db_session.commit()
+    _create_view(db_session)
+
+    response = client.get("/gft/principios-activos")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "items": [
+            {
+                "id": str(principio.id),
+                "slug": "paracetamol",
+                "nombre": "Paracetamol",
+                "letra": "P",
+                "count": 2,
+            }
+        ]
+    }
+
+
+def test_gft_principios_activos_index_endpoint_ignores_unpublished(client, db_session):
+    _insert_base_medicamento(db_session, "956001", publicado=True)
+    _insert_base_medicamento(db_session, "956002", publicado=False)
+    _add_principio_relacion(db_session, "956001", "Paracetamol", "paracetamol")
+    _add_principio_relacion(db_session, "956002", "Ibuprofeno", "ibuprofeno")
+    db_session.commit()
+    _create_view(db_session)
+
+    response = client.get("/gft/principios-activos")
+
+    assert response.status_code == 200
+    body = response.json()
+    slugs = {item["slug"] for item in body["items"]}
+    assert slugs == {"paracetamol"}
+    assert "ibuprofeno" not in slugs
