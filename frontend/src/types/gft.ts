@@ -28,6 +28,31 @@ export interface GFTMedicamentoListItem {
   fecha_prospecto: string | null;
 }
 
+export interface GFTDocumentoCimaRef {
+  tipo: number | string | null;
+  url: string | null;
+  urlHtml: string | null;
+  secc: string | null;
+  fecha: string | null;
+  titulo: string | null;
+  nombre: string | null;
+}
+
+export interface GFTFinanciacionDetalle {
+  situacion_financiacion: string | null;
+  condiciones_financiacion_restringidas: string | null;
+  condiciones_especiales_financiacion: string | null;
+  estado_nomenclator: string | null;
+  aportacion_usuario: string | null;
+  subgrupo_atc: string | null;
+}
+
+export interface GFTMedicamentoDetail extends GFTMedicamentoListItem {
+  observaciones_internas_publicables: string | null;
+  documentos: GFTDocumentoCimaRef[];
+  financiacion_detalle: GFTFinanciacionDetalle | null;
+}
+
 export interface GFTListResponse {
   total: number;
   limit: number;

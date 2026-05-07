@@ -1,6 +1,7 @@
 import type {
   GFTAtcIndexResponse,
   GFTListResponse,
+  GFTMedicamentoDetail,
   GFTPrincipioActivoIndexResponse,
   ListMedicamentosParams,
 } from '../types/gft';
@@ -59,6 +60,10 @@ export async function listMedicamentos(params: ListMedicamentosParams): Promise<
   }
 
   return response.json() as Promise<GFTListResponse>;
+}
+
+export function getMedicamentoByCn(cn: string): Promise<GFTMedicamentoDetail> {
+  return fetchJson<GFTMedicamentoDetail>(`/gft/medicamentos/${encodeURIComponent(cn)}`);
 }
 
 export function listPrincipiosActivos(): Promise<GFTPrincipioActivoIndexResponse> {

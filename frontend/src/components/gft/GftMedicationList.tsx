@@ -5,9 +5,10 @@ interface GftMedicationListProps {
   data: GFTListResponse | null;
   loading: boolean;
   error: string | null;
+  onViewDetail(cn: string): void;
 }
 
-export function GftMedicationList({ data, loading, error }: GftMedicationListProps) {
+export function GftMedicationList({ data, loading, error, onViewDetail }: GftMedicationListProps) {
   if (loading && !data) {
     return <section className="gft-state">Cargando medicamentos de la guía…</section>;
   }
@@ -33,7 +34,7 @@ export function GftMedicationList({ data, loading, error }: GftMedicationListPro
       </div>
       <div className="gft-results__list">
         {data.items.map((medicamento) => (
-          <GftMedicationCard key={medicamento.cn} medicamento={medicamento} />
+          <GftMedicationCard key={medicamento.cn} medicamento={medicamento} onViewDetail={onViewDetail} />
         ))}
       </div>
     </section>
