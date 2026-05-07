@@ -120,7 +120,11 @@ export function GftMedicationDetailPanel({ cn, detail, loading, error, onClose }
   }
 
   return (
-    <section className="gft-detail" aria-live="polite" aria-label="Detalle del medicamento seleccionado">
+    <section
+      className="gft-detail gft-detail--inline"
+      aria-live="polite"
+      aria-label="Detalle del medicamento seleccionado"
+    >
       <div className="gft-detail__header">
         <div>
           <p className="gft-detail__eyebrow">Detalle de medicamento</p>
