@@ -3,7 +3,6 @@ import { GftActiveFilters } from '../components/gft/GftActiveFilters';
 import { GftAtcFilter } from '../components/gft/GftAtcFilter';
 import { GftAZFilter } from '../components/gft/GftAZFilter';
 import { GftInstitutionalHeader } from '../components/gft/GftInstitutionalHeader';
-import { GftMedicationDetailPanel } from '../components/gft/GftMedicationDetailPanel';
 import { GftMedicationList } from '../components/gft/GftMedicationList';
 import { GftPagination } from '../components/gft/GftPagination';
 import { GftPrincipioActivoFilter } from '../components/gft/GftPrincipioActivoFilter';
@@ -237,15 +236,17 @@ export function GftPage() {
           onClearAll={handleClearAllFilters}
         />
 
-        <GftMedicationDetailPanel
-          cn={selectedCn}
-          detail={selectedDetail}
-          loading={detailLoading}
-          error={detailError}
-          onClose={handleCloseDetail}
+        <GftMedicationList
+          data={data}
+          loading={loading}
+          error={error}
+          selectedCn={selectedCn}
+          selectedDetail={selectedDetail}
+          detailLoading={detailLoading}
+          detailError={detailError}
+          onViewDetail={handleViewDetail}
+          onCloseDetail={handleCloseDetail}
         />
-
-        <GftMedicationList data={data} loading={loading} error={error} onViewDetail={handleViewDetail} />
 
         {data ? (
           <GftPagination

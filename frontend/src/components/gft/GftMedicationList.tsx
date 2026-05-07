@@ -1,14 +1,31 @@
-import type { GFTListResponse } from '../../types/gft';
+import { Fragment } from 'react';
+import type { GFTListResponse, GFTMedicamentoDetail } from '../../types/gft';
 import { GftMedicationCard } from './GftMedicationCard';
+import { GftMedicationDetailPanel } from './GftMedicationDetailPanel';
 
 interface GftMedicationListProps {
   data: GFTListResponse | null;
   loading: boolean;
   error: string | null;
+  selectedCn: string | null;
+  selectedDetail: GFTMedicamentoDetail | null;
+  detailLoading: boolean;
+  detailError: string | null;
   onViewDetail(cn: string): void;
+  onCloseDetail(): void;
 }
 
-export function GftMedicationList({ data, loading, error, onViewDetail }: GftMedicationListProps) {
+export function GftMedicationList({
+  data,
+  loading,
+  error,
+  selectedCn,
+  selectedDetail,
+  detailLoading,
+  detailError,
+  onViewDetail,
+  onCloseDetail,
+}: GftMedicationListProps) {
   if (loading && !data) {
     return <section className="gft-state">Cargando medicamentos de la guía…</section>;
   }
@@ -33,9 +50,24 @@ export function GftMedicationList({ data, loading, error, onViewDetail }: GftMed
         <p>{data.total} resultado{data.total === 1 ? '' : 's'} encontrado{data.total === 1 ? '' : 's'}</p>
       </div>
       <div className="gft-results__list">
-        {data.items.map((medicamento) => (
-          <GftMedicationCard key={medicamento.cn} medicamento={medicamento} onViewDetail={onViewDetail} />
-        ))}
+        {data.items.map((medicamento) => {
+          const isSelected = selectedCn === medicamento.cn;
+
+          return (
+            <Fragment key={medicamento.cn}>
+              <GftMedicationCard medicamento={medicamento} selected={isSelected} onViewDetail={onViewDetail} />
+              {isSelected ? (
+                <GftMedicationDetailPanel
+                  cn={selectedCn}
+                  detail={selectedDetail}
+                  loading={detailLoading}
+                  error={detailError}
+                  onClose={onCloseDetail}
+                />
+              ) : null}
+            </Fragment>
+          );
+        })}
       </div>
     </section>
   );
