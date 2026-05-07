@@ -3,6 +3,7 @@ import { GftDocumentLinks } from './GftDocumentLinks';
 
 interface GftMedicationCardProps {
   medicamento: GFTMedicamentoListItem;
+  onViewDetail(cn: string): void;
 }
 
 function joinPrincipios(principios: GFTPrincipioActivoRef[]): string {
@@ -30,7 +31,7 @@ function joinVias(vias: string[]): string {
   return vias.length > 0 ? vias.join(', ') : 'No informado';
 }
 
-export function GftMedicationCard({ medicamento }: GftMedicationCardProps) {
+export function GftMedicationCard({ medicamento, onViewDetail }: GftMedicationCardProps) {
   const title = medicamento.nombre ?? 'Medicamento sin nombre informado';
   const forma = medicamento.forma_farmaceutica_simplificada ?? medicamento.forma_farmaceutica ?? 'No informada';
 
@@ -79,6 +80,16 @@ export function GftMedicationCard({ medicamento }: GftMedicationCardProps) {
           ) : null}
         </div>
       ) : null}
+
+      <div className="gft-card__actions">
+        <button
+          className="gft-button gft-button--detail"
+          type="button"
+          onClick={() => onViewDetail(medicamento.cn)}
+        >
+          Ver detalle
+        </button>
+      </div>
 
       <GftDocumentLinks
         fichaTecnicaUrl={medicamento.url_ficha_tecnica}

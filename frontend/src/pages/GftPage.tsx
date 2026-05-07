@@ -1,14 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { GftActiveFilters } from '../components/gft/GftActiveFilters';
 import { GftAtcFilter } from '../components/gft/GftAtcFilter';
 import { GftAZFilter } from '../components/gft/GftAZFilter';
 import { GftInstitutionalHeader } from '../components/gft/GftInstitutionalHeader';
+import { GftMedicationDetailPanel } from '../components/gft/GftMedicationDetailPanel';
 import { GftMedicationList } from '../components/gft/GftMedicationList';
 import { GftPagination } from '../components/gft/GftPagination';
 import { GftPrincipioActivoFilter } from '../components/gft/GftPrincipioActivoFilter';
 import { GftSearchBar } from '../components/gft/GftSearchBar';
-import { listAtcIndex, listMedicamentos, listPrincipiosActivos } from '../services/gftApi';
-import type { GFTAtcIndexResponse, GFTListResponse, GFTPrincipioActivoIndexResponse } from '../types/gft';
+import { getMedicamentoByCn, listAtcIndex, listMedicamentos, listPrincipiosActivos } from '../services/gftApi';
+import type {
+  GFTAtcIndexResponse,
+  GFTListResponse,
+  GFTMedicamentoDetail,
+  GFTPrincipioActivoIndexResponse,
+} from '../types/gft';
 
 const PAGE_SIZE = 20;
 
@@ -26,6 +32,11 @@ export function GftPage() {
   const [error, setError] = useState<string | null>(null);
   const [filtersLoading, setFiltersLoading] = useState(false);
   const [filtersError, setFiltersError] = useState<string | null>(null);
+  const [selectedCn, setSelectedCn] = useState<string | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<GFTMedicamentoDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const detailRequestId = useRef(0);
 
   useEffect(() => {
     let ignore = false;
@@ -147,6 +158,38 @@ export function GftPage() {
     setOffset(0);
   }
 
+  async function handleViewDetail(cn: string) {
+    const requestId = detailRequestId.current + 1;
+    detailRequestId.current = requestId;
+    setSelectedCn(cn);
+    setSelectedDetail(null);
+    setDetailError(null);
+    setDetailLoading(true);
+
+    try {
+      const response = await getMedicamentoByCn(cn);
+      if (detailRequestId.current === requestId) {
+        setSelectedDetail(response);
+      }
+    } catch (caughtError) {
+      if (detailRequestId.current === requestId) {
+        setDetailError(caughtError instanceof Error ? caughtError.message : 'Error inesperado al cargar el detalle.');
+      }
+    } finally {
+      if (detailRequestId.current === requestId) {
+        setDetailLoading(false);
+      }
+    }
+  }
+
+  function handleCloseDetail() {
+    detailRequestId.current += 1;
+    setSelectedCn(null);
+    setSelectedDetail(null);
+    setDetailError(null);
+    setDetailLoading(false);
+  }
+
   return (
     <div className="gft-page">
       <GftInstitutionalHeader />
@@ -194,7 +237,15 @@ export function GftPage() {
           onClearAll={handleClearAllFilters}
         />
 
-        <GftMedicationList data={data} loading={loading} error={error} />
+        <GftMedicationDetailPanel
+          cn={selectedCn}
+          detail={selectedDetail}
+          loading={detailLoading}
+          error={detailError}
+          onClose={handleCloseDetail}
+        />
+
+        <GftMedicationList data={data} loading={loading} error={error} onViewDetail={handleViewDetail} />
 
         {data ? (
           <GftPagination
