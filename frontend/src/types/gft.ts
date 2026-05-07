@@ -35,8 +35,34 @@ export interface GFTListResponse {
   items: GFTMedicamentoListItem[];
 }
 
+export interface GFTAtcIndexItem {
+  codigo: string;
+  nombre: string | null;
+  nivel: string;
+  count: number;
+}
+
+export interface GFTAtcIndexResponse {
+  items: GFTAtcIndexItem[];
+}
+
+export interface GFTPrincipioActivoIndexItem {
+  id: string;
+  slug: string;
+  nombre: string;
+  letra: string;
+  count: number;
+}
+
+export interface GFTPrincipioActivoIndexResponse {
+  items: GFTPrincipioActivoIndexItem[];
+}
+
 export interface ListMedicamentosParams {
   q?: string;
+  letra?: string;
+  principio_activo?: string;
+  atc?: string;
   limit: number;
   offset: number;
 }
