@@ -5,8 +5,23 @@ from app.core.database import get_db
 from app.models.import_batch import ImportBatch
 from app.models.import_row_staging import ImportRowStaging
 from app.services.excel_import_service import process_excel_upload
+from app.services.gft_excel_dry_run_service import dry_run_gft_excel
 
 router = APIRouter(prefix="/imports", tags=["imports"])
+
+
+def _parse_sheet_name(value: str | None) -> str | int | None:
+    if value is None:
+        return None
+
+    stripped = value.strip()
+    if stripped == "":
+        return None
+
+    try:
+        return int(stripped)
+    except ValueError:
+        return stripped
 
 
 @router.post('/excel')
@@ -21,6 +36,21 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_d
         "ok_rows": batch.ok_rows,
         "error_rows": batch.error_rows,
     }
+
+
+@router.post('/excel/dry-run')
+async def dry_run_import_excel(file: UploadFile = File(...), sheet_name: str | None = None):
+    try:
+        content = await file.read()
+        result = dry_run_gft_excel(
+            content,
+            filename=file.filename,
+            sheet_name=_parse_sheet_name(sheet_name),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No se pudo validar el Excel: {exc}") from exc
+
+    return result.to_dict()
 
 
 @router.get('/{batch_id}')
