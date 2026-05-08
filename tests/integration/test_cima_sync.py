@@ -1,4 +1,5 @@
 import uuid
+from types import SimpleNamespace
 
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.import_batch import ImportBatch
@@ -142,6 +143,33 @@ def test_sync_import_batch_filters_and_counts(db_session, monkeypatch):
                 estado_editorial="publicado",
                 validation_errors=["err"],
             ),
+            ImportRowStaging(
+                id=uuid.uuid4(),
+                batch_id=batch.id,
+                row_number=7,
+                cn_normalized="666666",
+                estado_gft="pendiente_revision",
+                estado_editorial="publicado",
+                validation_errors=[],
+            ),
+            ImportRowStaging(
+                id=uuid.uuid4(),
+                batch_id=batch.id,
+                row_number=8,
+                cn_normalized="",
+                estado_gft="incluido",
+                estado_editorial="publicado",
+                validation_errors=["err"],
+            ),
+            ImportRowStaging(
+                id=uuid.uuid4(),
+                batch_id=batch.id,
+                row_number=9,
+                cn_normalized="777777",
+                estado_gft="incluido",
+                estado_editorial=None,
+                validation_errors=[],
+            ),
         ]
     )
     db_session.commit()
@@ -157,10 +185,148 @@ def test_sync_import_batch_filters_and_counts(db_session, monkeypatch):
 
     res = sync_import_batch(db_session, batch.id, force=True)
 
+    assert res["eligible_cn"] == 3
     assert res["total_cn"] == 3
+    assert res["total_rows"] == 9
     assert res["ok"] == 1
     assert res["not_found"] == 1
     assert res["error"] == 1
+    assert res["skipped_excluded"] == 1
+    assert res["skipped_errors"] == 2
+    assert res["skipped_pending"] == 1
+    assert res["skipped_missing_estado_editorial"] == 1
+    assert res["skipped_missing_cn"] == 0
+    assert res["deduplicated_rows"] == 1
+
+
+def test_sync_import_batch_does_not_call_cima_without_eligible_cn(db_session, monkeypatch):
+    batch = ImportBatch(filename="x.xlsx", status="validated")
+    db_session.add(batch)
+    db_session.flush()
+    db_session.add_all(
+        [
+            ImportRowStaging(
+                id=uuid.uuid4(),
+                batch_id=batch.id,
+                row_number=1,
+                cn_normalized="444444",
+                estado_gft="excluido",
+                estado_editorial="publicado",
+                validation_errors=[],
+            ),
+            ImportRowStaging(
+                id=uuid.uuid4(),
+                batch_id=batch.id,
+                row_number=2,
+                cn_normalized="666666",
+                estado_gft="pendiente_revision",
+                estado_editorial="publicado",
+                validation_errors=[],
+            ),
+            ImportRowStaging(
+                id=uuid.uuid4(),
+                batch_id=batch.id,
+                row_number=3,
+                cn_normalized="555555",
+                estado_gft="incluido",
+                estado_editorial="publicado",
+                validation_errors=["err"],
+            ),
+        ]
+    )
+    db_session.commit()
+
+    def fail_if_called(self, cn):
+        raise AssertionError("CIMA should not be called without eligible CN")
+
+    monkeypatch.setattr("app.services.cima_sync_service.CimaClient.get_by_cn", fail_if_called)
+
+    res = sync_import_batch(db_session, batch.id, force=True)
+
+    assert res["eligible_cn"] == 0
+    assert res["total_cn"] == 0
+    assert res["ok"] == 0
+    assert res["not_found"] == 0
+    assert res["error"] == 0
+
+
+def test_sync_import_batch_propagates_force(db_session, monkeypatch):
+    batch = ImportBatch(filename="x.xlsx", status="validated")
+    db_session.add(batch)
+    db_session.flush()
+    db_session.add(
+        ImportRowStaging(
+            id=uuid.uuid4(),
+            batch_id=batch.id,
+            row_number=1,
+            cn_normalized="123456",
+            estado_gft="incluido",
+            estado_editorial="publicado",
+            validation_errors=[],
+        )
+    )
+    db_session.commit()
+    calls = []
+
+    def fake_sync_cn(db, cn, force=False):
+        calls.append((cn, force))
+        return SimpleNamespace(sync_status="ok")
+
+    monkeypatch.setattr("app.services.cima_sync_service.sync_cn", fake_sync_cn)
+
+    res = sync_import_batch(db_session, batch.id, force=True)
+
+    assert res["ok"] == 1
+    assert calls == [("123456", True)]
+
+
+def test_sync_import_batch_endpoint_missing_batch_returns_404(client):
+    response = client.post(f"/cima/sync/import-batch/{uuid.uuid4()}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Import batch not found"
+
+
+def test_sync_import_batch_endpoint_returns_summary(client, db_session, monkeypatch):
+    batch = ImportBatch(filename="x.xlsx", status="validated")
+    db_session.add(batch)
+    db_session.flush()
+    db_session.add(
+        ImportRowStaging(
+            id=uuid.uuid4(),
+            batch_id=batch.id,
+            row_number=1,
+            cn_normalized="123456",
+            estado_gft="incluido",
+            estado_editorial="publicado",
+            validation_errors=[],
+        )
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "app.services.cima_sync_service.CimaClient.get_by_cn",
+        lambda self, cn: FakeOk(),
+    )
+
+    response = client.post(f"/cima/sync/import-batch/{batch.id}?force=true")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "batch_id": str(batch.id),
+        "eligible_cn": 1,
+        "total_cn": 1,
+        "total_rows": 1,
+        "ok": 1,
+        "not_found": 0,
+        "error": 0,
+        "skipped_errors": 0,
+        "skipped_missing_cn": 0,
+        "skipped_pending": 0,
+        "skipped_excluded": 0,
+        "skipped_missing_estado_editorial": 0,
+        "deduplicated_rows": 0,
+    }
 
 
 def test_sync_cn_ok_persists_principios_relationally(db_session, monkeypatch):
