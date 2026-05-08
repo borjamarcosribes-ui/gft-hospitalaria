@@ -50,9 +50,9 @@ def normalize_cn(value):
 
 def classify_observaciones_revision(value):
     key = _norm_key(value)
-    included = {"si", "guia"}
+    included = {"si"}
     excluded = {"no", "no guia", "bloquear", "no aparece en clinic", "sin planificador o consumo"}
-    pending = {"si?", "no?", "???", "", "nulo", "none", "vacio", "nan"}
+    pending = {"guia", "si?", "no?", "???", "", "nulo", "none", "vacio", "nan"}
     if key in included:
         return "incluido"
     if key in excluded:

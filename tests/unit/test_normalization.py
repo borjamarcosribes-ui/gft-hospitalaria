@@ -8,7 +8,8 @@ from app.services.normalization_service import (
 def test_classify_cases():
     assert classify_observaciones_revision("SÍ") == "incluido"
     assert classify_observaciones_revision("SI") == "incluido"
-    assert classify_observaciones_revision("guía") == "incluido"
+    assert classify_observaciones_revision("guía") == "pendiente_revision"
+    assert classify_observaciones_revision("guia") == "pendiente_revision"
     assert classify_observaciones_revision("NO") == "excluido"
     assert classify_observaciones_revision("no guia") == "excluido"
     assert classify_observaciones_revision("bloquear") == "excluido"
