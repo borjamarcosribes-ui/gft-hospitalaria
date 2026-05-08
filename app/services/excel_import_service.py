@@ -4,7 +4,6 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from app.models.import_batch import ImportBatch
 from app.models.import_row_staging import ImportRowStaging
-from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.services.normalization_service import (
     normalize_cn,
     classify_observaciones_revision,
@@ -74,7 +73,6 @@ def process_excel_upload(db: Session, file_bytes: bytes, filename: str):
                 batch.error_rows += 1
             else:
                 batch.ok_rows += 1
-                upsert_gft_estado_presentacion(db, batch.id, cn, estado_gft, estado_editorial, row)
             batch.processed_rows += 1
 
         batch.finished_at = datetime.utcnow()
@@ -85,22 +83,3 @@ def process_excel_upload(db: Session, file_bytes: bytes, filename: str):
     db.commit()
     db.refresh(batch)
     return batch
-
-
-def upsert_gft_estado_presentacion(db: Session, batch_id, cn, estado_gft, estado_editorial, row):
-    existing = db.get(GFTEstadoPresentacion, cn)
-    if existing:
-        target = existing
-    else:
-        target = GFTEstadoPresentacion(cn=cn)
-        db.add(target)
-    target.estado_gft = estado_gft
-    target.estado_editorial = estado_editorial
-    target.nemonico = _safe_value(row, "Nemónico")
-    target.restricciones_hospitalarias = _safe_value(row, "Restricciones hospitalarias")
-    target.observaciones_internas = _safe_value(row, "Observaciones internas GFT")
-    target.comentario_revision = _safe_value(row, "Comentario revisión")
-    target.revisado_por = _safe_value(row, "Revisado por")
-    target.last_import_batch_id = batch_id
-    target.last_imported_at = datetime.utcnow()
-    target.updated_at = datetime.utcnow()

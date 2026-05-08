@@ -5,6 +5,7 @@ from app.core.database import get_db
 from app.models.import_batch import ImportBatch
 from app.models.import_row_staging import ImportRowStaging
 from app.services.excel_import_service import process_excel_upload
+from app.services.import_apply_service import apply_import_batch
 from app.services.gft_excel_dry_run_service import dry_run_gft_excel
 
 router = APIRouter(prefix="/imports", tags=["imports"])
@@ -51,6 +52,14 @@ async def dry_run_import_excel(file: UploadFile = File(...), sheet_name: str | N
         raise HTTPException(status_code=400, detail=f"No se pudo validar el Excel: {exc}") from exc
 
     return result.to_dict()
+
+
+@router.post('/{batch_id}/apply')
+def apply_import(batch_id: UUID, db: Session = Depends(get_db)):
+    result = apply_import_batch(db, batch_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Batch no encontrado")
+    return result
 
 
 @router.get('/{batch_id}')
