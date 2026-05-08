@@ -79,10 +79,10 @@ def summarize_import_batch(db: Session, batch_id: UUID) -> dict | None:
         if _has_items(row.validation_warnings):
             summary["warning_rows"] += 1
 
-        if not row.cn_normalized:
-            summary["skipped_missing_cn"] += 1
-        elif _has_items(row.validation_errors):
+        if _has_items(row.validation_errors):
             summary["skipped_errors"] += 1
+        elif not row.cn_normalized:
+            summary["skipped_missing_cn"] += 1
         elif row.estado_gft not in APPLICABLE_ESTADOS_GFT:
             summary["skipped_pending"] += 1
             summary["pending_items"].append(

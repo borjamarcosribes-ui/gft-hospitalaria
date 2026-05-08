@@ -55,11 +55,12 @@ def test_imports_summary_after_excel_upload_classifies_rows(client):
     assert payload["pending_rows"] == 1
     assert payload["applicable_rows"] == 2
     assert payload["skipped_pending"] == 1
-    assert payload["skipped_missing_cn"] == 1
-    assert payload["skipped_errors"] >= 1
+    assert payload["skipped_missing_cn"] == 0
+    assert payload["skipped_errors"] == 2
     assert payload["not_applicable_rows"] == payload["staging_total_rows"] - payload["applicable_rows"]
 
     assert any(item["cn"] == "333333" for item in payload["pending_items"])
+    assert any(item["cn"] is None and "CN vacío" in item["validation_errors"] for item in payload["error_items"])
     assert any(item["cn"] == "444444" for item in payload["error_items"])
 
 
