@@ -4,8 +4,10 @@ from types import SimpleNamespace
 import pandas as pd
 from sqlalchemy import text
 
+from app.models.bifimed_cache import BifimedCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
+from app.services.bifimed_client import BifimedFetchResult
 
 
 def _create_view(db_session):
@@ -163,6 +165,58 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
     assert cima_cache is not None
     assert cima_cache.sync_status == "ok"
 
+    called_bifimed_cns = []
+
+    def fake_bifimed_get_by_cn(self, cn):
+        called_bifimed_cns.append(cn)
+        if cn != "111111":
+            raise AssertionError(f"Unexpected BIFIMED call for CN {cn}")
+        return BifimedFetchResult(
+            status="ok",
+            data={
+                "situacion_financiacion": "Si",
+                "condiciones_financiacion_restringidas": "Visado",
+                "condiciones_especiales_financiacion": "Financiación especial test",
+                "estado_nomenclator": "ALTA",
+                "aportacion_usuario": "NORMAL",
+                "subgrupo_atc": "N02BE01 - Paracetamol",
+                "detalle_financiacion_json": {
+                    "Código nacional": "111111",
+                    "Situación de financiación": "Si",
+                    "Condiciones financiación restringidas": "Visado",
+                    "Condiciones especiales de financiación": "Financiación especial test",
+                    "Estado de Nomenclátor": "ALTA",
+                    "Aportación usuario": "NORMAL",
+                    "Subgrupo ATC/Descripción": "N02BE01 - Paracetamol",
+                },
+            },
+            error=None,
+            raw_payload={"test": "bifimed-payload"},
+        )
+
+    monkeypatch.setattr(
+        "app.services.bifimed_sync_service.BifimedClient.get_by_cn", fake_bifimed_get_by_cn
+    )
+
+    bifimed_sync_response = client.post(f"/bifimed/sync/import-batch/{batch_id}?force=true")
+
+    assert bifimed_sync_response.status_code == 200
+    bifimed_sync_payload = bifimed_sync_response.json()
+    assert bifimed_sync_payload["eligible_cn"] == 1
+    assert bifimed_sync_payload["ok"] == 1
+    assert bifimed_sync_payload["skipped_excluded"] == 1
+    assert bifimed_sync_payload["skipped_pending"] == 1
+    assert bifimed_sync_payload["error"] == 0
+    assert bifimed_sync_payload["not_found"] == 0
+    assert called_bifimed_cns == ["111111"]
+
+    db_session.expire_all()
+    assert db_session.query(GFTEstadoPresentacion).count() == 0
+    bifimed_cache = db_session.get(BifimedCache, "111111")
+    assert bifimed_cache is not None
+    assert bifimed_cache.sync_status == "ok"
+    assert bifimed_cache.situacion_financiacion == "Si"
+
     apply_response = client.post(f"/imports/{batch_id}/apply")
 
     assert apply_response.status_code == 200
@@ -191,6 +245,7 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
     assert list_payload["total"] == 1
     assert list_payload["items"][0]["cn"] == "111111"
     assert list_payload["items"][0]["nombre"] == "Paracetamol Test"
+    assert list_payload["items"][0]["situacion_financiacion"] == "Si"
     assert list_payload["items"][0]["url_ficha_tecnica"] == "https://example.test/ft/111111"
     assert list_payload["items"][0]["url_prospecto"] == "https://example.test/pr/111111"
     assert "222222" not in listed_cns
@@ -205,6 +260,14 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
     assert detail_payload["nemonico"] == "NEM-111111"
     assert detail_payload["restricciones_hospitalarias"] == "Uso restringido test"
     assert detail_payload["observaciones_internas_publicables"] == "Observación visible test"
+    assert detail_payload["financiacion_detalle"] == {
+        "situacion_financiacion": "Si",
+        "condiciones_financiacion_restringidas": "Visado",
+        "condiciones_especiales_financiacion": "Financiación especial test",
+        "estado_nomenclator": "ALTA",
+        "aportacion_usuario": "NORMAL",
+        "subgrupo_atc": "N02BE01 - Paracetamol",
+    }
     assert any(item["codigo"] == "N02BE01" for item in detail_payload["atc"])
     assert "Vía oral" in detail_payload["vias_administracion"]
     assert {doc["url"] for doc in detail_payload["documentos"]} == {
