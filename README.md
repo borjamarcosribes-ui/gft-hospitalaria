@@ -42,3 +42,7 @@ Columnas opcionales:
 ## Publicación futura
 
 La web y el PDF futuros deberán leer desde la vista SQL `v_gft_publicada`.
+
+## BIFIMED
+
+La estrategia técnica de BIFIMED está documentada en [docs/bifimed_audit.md](docs/bifimed_audit.md). El cliente, el parser y la sincronización BIFIMED todavía no están implementados.
