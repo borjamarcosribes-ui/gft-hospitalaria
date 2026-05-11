@@ -7,7 +7,8 @@
 - Patrón de detalle observado:
   `medicamentos.do?cn=<CN>&metodo=verDetalle`
 - Nota: el Nomenclátor cambia mensualmente; no se debe fijar en código un mes concreto.
-- Para la v1 se asume navegación en castellano porque las etiquetas contractuales se extraerán en castellano.
+- La v1 del parser depende explícitamente de etiquetas en castellano.
+- La generalización multilingüe queda fuera de alcance de la v1.
 
 ## Casos revisados
 
@@ -51,9 +52,9 @@ Campos observados que no se normalizan todavía a columnas propias:
 
 Estos campos no se pierden conceptualmente: en v1 deben quedar disponibles en `detalle_financiacion_json` cuando se extraigan como pares etiqueta/valor y en `raw_data` como respuesta bruta trazable. La decisión de normalizarlos a columnas propias queda fuera de este PR.
 
-## Contrato propuesto del futuro cliente
+## Contrato del cliente v1
 
-`BifimedClientResult`:
+`BifimedFetchResult`:
 
 - `status`: `ok` | `not_found` | `error`
 - `data`: `dict` normalizado con campos v1.
@@ -66,25 +67,24 @@ Criterios:
 - `not_found`: no se obtiene una ficha válida para el CN solicitado.
 - `error`: fallo técnico, parseo imposible o respuesta inesperada.
 
-## Reglas de parsing propuestas
+## Reglas de parsing v1
 
 - Extracción por etiquetas textuales, no por posición fija.
 - Tolerar celdas vacías.
 - Normalizar espacios y NBSP.
 - Mantener texto semántico sin sobre-normalizar valores como `Si`, `Sí para determinadas indicaciones/condiciones` o `No incluido`.
 - No interpretar clínicamente las indicaciones en esta primera fase.
-- Diseñar el parser para no depender del idioma de navegación si la etiqueta cambia; en v1 usar páginas en castellano y documentarlo explícitamente.
+- La v1 del parser depende explícitamente de las etiquetas textuales en castellano definidas como contrato.
+- La generalización multilingüe o la tolerancia a cambios de idioma queda fuera de alcance de la v1.
 
 ## Riesgos abiertos
 
-- No hay API pública documentada equivalente a CIMA; la primera implementación prevista será parseo HTML conservador.
+- No hay API pública documentada equivalente a CIMA; la v1 usa parseo HTML conservador.
 - La estructura puede variar con cambios del portal.
-- La detección de `not_found` debe verificarse en el PR del cliente con respuestas reales o fixtures adicionales.
+- La detección de `not_found` se basa en HTTP 404 o en ausencia de una ficha válida cuyo `Código nacional` coincida con el CN solicitado.
 - El acceso deberá ser respetuoso: timeout, reintentos limitados, caché y baja frecuencia.
 
-## Decisiones para el siguiente PR
+## Decisiones fuera de esta v1
 
-- Implementar `BifimedClient.get_by_cn(cn)`.
-- Añadir parser HTML con tests sobre fixtures.
 - Crear `sync_bifimed_cn(db, cn, force=False)`.
 - Exponer `POST /bifimed/sync/{cn}` y `GET /bifimed/cache/{cn}`.
