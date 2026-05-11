@@ -144,6 +144,13 @@ def test_bifimed_sync_endpoint(client, monkeypatch):
     }
 
 
+def test_bifimed_sync_endpoint_invalid_cn(client):
+    response = client.post("/bifimed/sync/abc")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "CN inválido"
+
+
 def test_bifimed_cache_endpoint(client, db_session):
     db_session.add(
         BifimedCache(

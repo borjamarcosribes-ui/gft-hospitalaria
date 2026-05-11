@@ -13,7 +13,10 @@ router = APIRouter(prefix="/bifimed", tags=["bifimed"])
 def sync_bifimed_cn_endpoint(
     cn: str, force: bool = False, db: Session = Depends(get_db)
 ):
-    row = sync_bifimed_cn(db, cn, force=force)
+    try:
+        row = sync_bifimed_cn(db, cn, force=force)
+    except NormalizationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {
         "cn": row.cn,
         "sync_status": row.sync_status,
