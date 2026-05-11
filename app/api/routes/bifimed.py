@@ -1,12 +1,25 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.bifimed_cache import BifimedCache
-from app.services.bifimed_sync_service import sync_bifimed_cn
+from app.models.import_batch import ImportBatch
+from app.services.bifimed_sync_service import sync_bifimed_cn, sync_import_batch
 from app.services.normalization_service import NormalizationError, normalize_cn
 
 router = APIRouter(prefix="/bifimed", tags=["bifimed"])
+
+
+@router.post("/sync/import-batch/{batch_id}")
+def sync_bifimed_import_batch_endpoint(
+    batch_id: UUID, force: bool = False, db: Session = Depends(get_db)
+):
+    batch = db.get(ImportBatch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Import batch not found")
+    return sync_import_batch(db, batch_id, force=force)
 
 
 @router.post("/sync/{cn}")
