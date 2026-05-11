@@ -1,6 +1,11 @@
+from types import SimpleNamespace
+from uuid import uuid4
+
 from app.models.bifimed_cache import BifimedCache
+from app.models.import_batch import ImportBatch
+from app.models.import_row_staging import ImportRowStaging
 from app.services.bifimed_client import BifimedFetchResult
-from app.services.bifimed_sync_service import sync_bifimed_cn
+from app.services.bifimed_sync_service import sync_bifimed_cn, sync_import_batch
 
 
 def _bifimed_data(
@@ -184,3 +189,168 @@ def test_bifimed_cache_endpoint_invalid_cn(client):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "CN inválido"
+
+
+def _create_import_batch(db_session):
+    batch = ImportBatch(filename="bifimed.xlsx", sha256="test-sha")
+    db_session.add(batch)
+    db_session.commit()
+    db_session.refresh(batch)
+    return batch
+
+
+def _add_staging_row(
+    db_session,
+    batch,
+    row_number,
+    cn_normalized,
+    estado_gft="incluido",
+    estado_editorial="publicado",
+    validation_errors=None,
+):
+    row = ImportRowStaging(
+        batch_id=batch.id,
+        row_number=row_number,
+        cn_raw=cn_normalized,
+        cn_normalized=cn_normalized,
+        estado_gft=estado_gft,
+        estado_editorial=estado_editorial,
+        validation_errors=validation_errors or [],
+        validation_warnings=[],
+        raw_payload={},
+    )
+    db_session.add(row)
+    return row
+
+
+def test_sync_bifimed_import_batch_syncs_only_eligible_included_rows(
+    db_session, monkeypatch
+):
+    batch = _create_import_batch(db_session)
+    _add_staging_row(db_session, batch, 1, "111111")
+    _add_staging_row(db_session, batch, 2, "111111")
+    _add_staging_row(db_session, batch, 3, "222222")
+    _add_staging_row(db_session, batch, 4, "333333")
+    _add_staging_row(db_session, batch, 5, "444444", estado_gft="excluido")
+    _add_staging_row(db_session, batch, 6, "555555", validation_errors=["bad"])
+    _add_staging_row(db_session, batch, 7, "666666", estado_gft="pendiente_revision")
+    _add_staging_row(db_session, batch, 8, "", validation_errors=["bad"])
+    _add_staging_row(db_session, batch, 9, "777777", estado_editorial=None)
+    db_session.commit()
+
+    statuses = {"111111": "ok", "222222": "not_found", "333333": "error"}
+    calls = []
+
+    def fake_sync_bifimed_cn(db, cn, force=False):
+        calls.append((cn, force))
+        return SimpleNamespace(sync_status=statuses[cn])
+
+    monkeypatch.setattr(
+        "app.services.bifimed_sync_service.sync_bifimed_cn", fake_sync_bifimed_cn
+    )
+
+    summary = sync_import_batch(db_session, batch.id)
+
+    assert calls == [("111111", False), ("222222", False), ("333333", False)]
+    assert summary["batch_id"] == str(batch.id)
+    assert summary["eligible_cn"] == 3
+    assert summary["total_cn"] == 3
+    assert summary["total_rows"] == 9
+    assert summary["ok"] == 1
+    assert summary["not_found"] == 1
+    assert summary["error"] == 1
+    assert summary["skipped_excluded"] == 1
+    assert summary["skipped_errors"] == 2
+    assert summary["skipped_pending"] == 1
+    assert summary["skipped_missing_estado_editorial"] == 1
+    assert summary["skipped_missing_cn"] == 0
+    assert summary["deduplicated_rows"] == 1
+
+
+def test_sync_bifimed_import_batch_does_not_call_when_no_eligible_cn(
+    db_session, monkeypatch
+):
+    batch = _create_import_batch(db_session)
+    _add_staging_row(db_session, batch, 1, "111111", estado_gft="excluido")
+    _add_staging_row(db_session, batch, 2, "222222", estado_gft="pendiente_revision")
+    _add_staging_row(db_session, batch, 3, "333333", validation_errors=["bad"])
+    db_session.commit()
+
+    calls = []
+
+    def fake_sync_bifimed_cn(db, cn, force=False):
+        calls.append((cn, force))
+        return SimpleNamespace(sync_status="ok")
+
+    monkeypatch.setattr(
+        "app.services.bifimed_sync_service.sync_bifimed_cn", fake_sync_bifimed_cn
+    )
+
+    summary = sync_import_batch(db_session, batch.id)
+
+    assert summary["eligible_cn"] == 0
+    assert summary["total_cn"] == 0
+    assert summary["ok"] == 0
+    assert summary["not_found"] == 0
+    assert summary["error"] == 0
+    assert calls == []
+
+
+def test_bifimed_import_batch_endpoint_404(client):
+    response = client.post(f"/bifimed/sync/import-batch/{uuid4()}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Import batch not found"
+
+
+def test_bifimed_import_batch_endpoint_returns_summary(client, db_session, monkeypatch):
+    batch = _create_import_batch(db_session)
+    expected = {
+        "batch_id": str(batch.id),
+        "eligible_cn": 1,
+        "total_cn": 1,
+        "total_rows": 1,
+        "ok": 1,
+        "not_found": 0,
+        "error": 0,
+        "skipped_errors": 0,
+        "skipped_missing_cn": 0,
+        "skipped_pending": 0,
+        "skipped_excluded": 0,
+        "skipped_missing_estado_editorial": 0,
+        "deduplicated_rows": 0,
+    }
+
+    def fake_sync_import_batch(db, batch_id, force=False):
+        assert batch_id == batch.id
+        assert force is False
+        return expected
+
+    monkeypatch.setattr(
+        "app.api.routes.bifimed.sync_import_batch", fake_sync_import_batch
+    )
+
+    response = client.post(f"/bifimed/sync/import-batch/{batch.id}")
+
+    assert response.status_code == 200
+    assert response.json() == expected
+
+
+def test_sync_bifimed_import_batch_propagates_force(db_session, monkeypatch):
+    batch = _create_import_batch(db_session)
+    _add_staging_row(db_session, batch, 1, "111111")
+    db_session.commit()
+    calls = []
+
+    def fake_sync_bifimed_cn(db, cn, force=False):
+        calls.append((cn, force))
+        return SimpleNamespace(sync_status="ok")
+
+    monkeypatch.setattr(
+        "app.services.bifimed_sync_service.sync_bifimed_cn", fake_sync_bifimed_cn
+    )
+
+    summary = sync_import_batch(db_session, batch.id, force=True)
+
+    assert calls == [("111111", True)]
+    assert summary["ok"] == 1
