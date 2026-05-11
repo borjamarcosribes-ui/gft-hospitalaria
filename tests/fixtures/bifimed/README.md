@@ -9,4 +9,4 @@ Deben ser:
 - No copias completas de páginas oficiales del Ministerio de Sanidad.
 - Pensadas para probar el contrato del parser sin depender de red ni de la disponibilidad del portal.
 
-Estas fixtures no pretenden reproducir el marcado completo del portal. Solo fijan un subconjunto estable de etiquetas y valores representativos para validar la extracción v1 y la correspondencia con `bifimed_cache`.
+Estas fixtures no pretenden reproducir el marcado completo del portal. Solo fijan un subconjunto estable de etiquetas y valores representativos para validar la extracción v1 y la correspondencia con `bifimed_cache`. También cubren tablas anidadas para asegurar que el parser extrae solo pares principales de la ficha.
