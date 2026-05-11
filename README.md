@@ -45,4 +45,9 @@ La web y el PDF futuros deberán leer desde la vista SQL `v_gft_publicada`.
 
 ## BIFIMED
 
-La estrategia técnica de BIFIMED está documentada en [docs/bifimed_audit.md](docs/bifimed_audit.md). El cliente, el parser y la sincronización BIFIMED todavía no están implementados.
+BIFIMED ya está implementado para parser, cliente, sincronización individual y sincronización por batch. La estrategia técnica está documentada en [docs/bifimed_audit.md](docs/bifimed_audit.md).
+
+
+## CIMA ficha técnica segmentada
+
+La estrategia técnica y de flujo para la futura ficha técnica segmentada de CIMA está documentada en [docs/cima_ficha_tecnica_segmentada_audit.md](docs/cima_ficha_tecnica_segmentada_audit.md). La implementación queda pendiente: este módulo todavía no incorpora cliente, parser, sincronización, migraciones ni fixtures contractuales.
