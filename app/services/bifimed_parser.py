@@ -26,6 +26,11 @@ def extract_label_value_pairs(html: str) -> dict[str, str]:
     pairs: dict[str, str] = {}
 
     for row in soup.find_all("tr"):
+        # Las fichas BIFIMED pueden contener tablas internas de indicaciones;
+        # sus filas no forman parte de los pares principales de la ficha.
+        if row.find_parent("tr") is not None:
+            continue
+
         cells = row.find_all(["th", "td"], recursive=False)
         if len(cells) < 2:
             continue

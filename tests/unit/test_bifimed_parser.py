@@ -31,6 +31,24 @@ def test_parse_detail_ok_restricted_fixture():
     assert data["aportacion_usuario"] == "ESPECIAL"
 
 
+def test_extract_label_value_pairs_ignores_nested_table_rows():
+    html = _load_fixture("detail_ok_nested_indications.html")
+
+    pairs = extract_label_value_pairs(html)
+
+    assert "Indicaciones autorizadas" in pairs
+    assert "Indicación autorizada" not in pairs
+    assert "Texto de indicación de ejemplo" not in pairs
+
+    data = parse_bifimed_detail_html(html, requested_cn="767418")
+
+    assert data is not None
+    assert data["situacion_financiacion"] == "Sí para determinadas indicaciones/condiciones"
+    assert data["estado_nomenclator"] == "H-ALTA"
+    assert data["aportacion_usuario"] == "SIN APORTACION"
+    assert data["subgrupo_atc"] == "B06AC07 - Garadacimab"
+
+
 def test_parse_detail_ok_not_included_fixture():
     data = parse_bifimed_detail_html(_load_fixture("detail_ok_not_included.html"), requested_cn="718395")
 

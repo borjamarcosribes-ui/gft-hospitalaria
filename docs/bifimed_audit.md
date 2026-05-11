@@ -24,7 +24,7 @@
 
 | Etiqueta BIFIMED | Columna `bifimed_cache` | Notas |
 | --- | --- | --- |
-| Situación de financiación | `situacion_financiacion` | Mantener el texto semántico observado, por ejemplo `Si`, `Sí para determinadas indicaciones/condiciones` o `No incluido`. |
+| Situación de financiación | `situacion_financiacion` | Mantener el texto semántico observado, por ejemplo `Si`, `Sí para determinadas indicaciones/condiciones`, `No incluido` o `Excluido`; no reinterpretar estos valores. |
 | Condiciones financiación restringidas | `condiciones_financiacion_restringidas` | Puede venir vacío o contener valores como `Visado`; no inferir reglas clínicas. |
 | Condiciones especiales de financiación | `condiciones_especiales_financiacion` | Puede contener condiciones administrativas o grupos; preservar texto normalizado solo en espacios. |
 | Estado de Nomenclátor | `estado_nomenclator` | Puede venir vacío o contener estados como `ALTA`, `H-ALTA` o `FINANCIADO PENDIENTE DE ALTA`. |
@@ -72,8 +72,9 @@ Criterios:
 - Extracción por etiquetas textuales, no por posición fija.
 - Tolerar celdas vacías.
 - Normalizar espacios y NBSP.
-- Mantener texto semántico sin sobre-normalizar valores como `Si`, `Sí para determinadas indicaciones/condiciones` o `No incluido`.
+- Mantener texto semántico sin sobre-normalizar valores observados en datos reales como `Si`, `Sí para determinadas indicaciones/condiciones`, `No incluido` o `Excluido`; no reinterpretarlos.
 - No interpretar clínicamente las indicaciones en esta primera fase.
+- Ignorar filas de tablas anidadas para evitar que subtablas de indicaciones contaminen los pares principales de la ficha.
 - La v1 del parser depende explícitamente de las etiquetas textuales en castellano definidas como contrato.
 - La generalización multilingüe o la tolerancia a cambios de idioma queda fuera de alcance de la v1.
 
