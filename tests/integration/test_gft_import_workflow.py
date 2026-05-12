@@ -5,9 +5,11 @@ import pandas as pd
 from sqlalchemy import text
 
 from app.models.bifimed_cache import BifimedCache
+from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.services.bifimed_client import BifimedFetchResult
+from app.services.cima_segmented_client import CimaSegmentedFetchResult
 
 
 def _create_view(db_session):
@@ -164,6 +166,65 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
     cima_cache = db_session.get(CimaMedicamentoCache, "111111")
     assert cima_cache is not None
     assert cima_cache.sync_status == "ok"
+    assert cima_cache.nregistro == "NR111111"
+
+    called_segmented_nregistros = []
+
+    def fake_segmented_get_section_content(
+        self, nregistro, tipo_documento=1, seccion="4.1"
+    ):
+        called_segmented_nregistros.append(nregistro)
+        if nregistro != "NR111111":
+            raise AssertionError(f"Unexpected CIMA segmented call for nregistro {nregistro}")
+        return CimaSegmentedFetchResult(
+            status="ok",
+            data={
+                "nregistro": nregistro,
+                "tipo_documento": tipo_documento,
+                "seccion": seccion,
+                "titulo": "Indicaciones terapéuticas",
+                "contenido_html": "<div><p>Indicación test FT</p></div>",
+                "contenido_texto": "Indicación test FT",
+            },
+            error=None,
+            raw_payload={"json": [{"seccion": seccion}], "text": "Indicación test FT"},
+        )
+
+    monkeypatch.setattr(
+        "app.services.cima_segmented_client.CimaSegmentedClient.get_section_content",
+        fake_segmented_get_section_content,
+    )
+
+    segmented_sync_response = client.post(
+        f"/cima/segmented/sync/import-batch/{batch_id}?force=true"
+    )
+
+    assert segmented_sync_response.status_code == 200
+    segmented_sync_payload = segmented_sync_response.json()
+    assert segmented_sync_payload["eligible_cn"] == 1
+    assert segmented_sync_payload["total_cn"] == 1
+    assert segmented_sync_payload["eligible_nregistro"] == 1
+    assert segmented_sync_payload["total_nregistro"] == 1
+    assert segmented_sync_payload["ok"] == 1
+    assert segmented_sync_payload["error"] == 0
+    assert segmented_sync_payload["not_found"] == 0
+    assert segmented_sync_payload["not_segmented"] == 0
+    assert segmented_sync_payload["section_unavailable"] == 0
+    assert segmented_sync_payload["skipped_excluded"] == 1
+    assert segmented_sync_payload["skipped_pending"] == 1
+    assert called_segmented_nregistros == ["NR111111"]
+
+    db_session.expire_all()
+    assert db_session.query(GFTEstadoPresentacion).count() == 0
+    segmented_cache = (
+        db_session.query(CimaFichaTecnicaCache)
+        .filter_by(nregistro="NR111111", tipo_documento=1, seccion="4.1")
+        .one_or_none()
+    )
+    assert segmented_cache is not None
+    assert segmented_cache.sync_status == "ok"
+    assert segmented_cache.contenido_texto == "Indicación test FT"
+    assert segmented_cache.cn == "111111"
 
     called_bifimed_cns = []
 
