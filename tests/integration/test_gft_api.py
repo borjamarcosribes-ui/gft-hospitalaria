@@ -4,6 +4,7 @@ import uuid
 from sqlalchemy import text
 
 from app.models.bifimed_cache import BifimedCache
+from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
@@ -37,11 +38,17 @@ def _create_view(db_session):
               b.estado_nomenclator,
               b.aportacion_usuario,
               b.subgrupo_atc,
+              ft41.contenido_texto AS indicaciones_ficha_tecnica,
               g.restricciones_hospitalarias,
               g.observaciones_internas
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
             LEFT JOIN bifimed_cache b ON b.cn = g.cn
+            LEFT JOIN cima_ficha_tecnica_cache ft41
+              ON ft41.nregistro = c.nregistro
+             AND ft41.tipo_documento = 1
+             AND ft41.seccion = '4.1'
+             AND ft41.sync_status = 'ok'
             WHERE g.estado_gft = 'incluido'
               AND g.estado_editorial = 'publicado'
             """
@@ -64,6 +71,7 @@ def _insert_base_medicamento(db_session, cn: str, publicado: bool = True):
     db_session.add(
         CimaMedicamentoCache(
             cn=cn,
+            nregistro=f"NR{cn}",
             nombre=f"Nombre {cn}",
             presentacion=f"Presentación {cn}",
             forma_farmaceutica="Comprimido",
@@ -80,6 +88,29 @@ def _insert_base_medicamento(db_session, cn: str, publicado: bool = True):
     db_session.commit()
 
 
+def _add_indicaciones_cache(
+    db_session,
+    cn: str,
+    contenido_texto: str = "Indicación FT test",
+    sync_status: str = "ok",
+):
+    db_session.add(
+        CimaFichaTecnicaCache(
+            cn=cn,
+            nregistro=f"NR{cn}",
+            tipo_documento=1,
+            seccion="4.1",
+            titulo="Indicaciones terapéuticas",
+            contenido_html="<p>No público</p>",
+            contenido_texto=contenido_texto,
+            raw_data={"not": "public"},
+            sync_status=sync_status,
+            sync_error="No público" if sync_status != "ok" else None,
+        )
+    )
+    db_session.commit()
+
+
 def test_gft_list_medicamentos_endpoint(client, db_session):
     _insert_base_medicamento(db_session, "123456", publicado=True)
     _insert_base_medicamento(db_session, "654321", publicado=False)
@@ -91,6 +122,7 @@ def test_gft_list_medicamentos_endpoint(client, db_session):
     body = response.json()
     assert body["total"] == 1
     assert body["items"][0]["cn"] == "123456"
+    assert body["items"][0]["indicaciones_ficha_tecnica"] is None
 
 
 def test_gft_list_medicamentos_pagination_params(client, db_session):
@@ -120,8 +152,55 @@ def test_gft_get_medicamento_detail_endpoint(client, db_session):
     assert body["nombre"] == "Nombre 111111"
     assert body["url_ficha_tecnica"] == "https://example.com/ft/111111"
     assert body["url_prospecto"] == "https://example.com/pr/111111"
+    assert body["indicaciones_ficha_tecnica"] is None
     assert isinstance(body["documentos"], list)
     assert body["documentos"]
+
+
+def test_gft_list_medicamentos_exposes_indicaciones_ficha_tecnica(client, db_session):
+    _insert_base_medicamento(db_session, "777001", publicado=True)
+    _add_indicaciones_cache(db_session, "777001", "Indicación pública desde FT")
+    _create_view(db_session)
+
+    response = client.get("/gft/medicamentos")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"][0]["indicaciones_ficha_tecnica"] == "Indicación pública desde FT"
+    assert "contenido_html" not in body["items"][0]
+    assert "raw_data" not in body["items"][0]
+    assert "sync_status" not in body["items"][0]
+    assert "sync_error" not in body["items"][0]
+
+
+def test_gft_get_medicamento_detail_exposes_indicaciones_ficha_tecnica(client, db_session):
+    _insert_base_medicamento(db_session, "777002", publicado=True)
+    _add_indicaciones_cache(db_session, "777002", "Indicación detalle desde FT")
+    _create_view(db_session)
+
+    response = client.get("/gft/medicamentos/777002")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["indicaciones_ficha_tecnica"] == "Indicación detalle desde FT"
+    assert "contenido_html" not in body
+    assert "raw_data" not in body
+    assert "sync_status" not in body
+    assert "sync_error" not in body
+
+
+def test_gft_indicaciones_ficha_tecnica_requires_ok_cache(client, db_session):
+    _insert_base_medicamento(db_session, "777003", publicado=True)
+    _add_indicaciones_cache(db_session, "777003", "No debe exponerse", sync_status="error")
+    _create_view(db_session)
+
+    list_response = client.get("/gft/medicamentos")
+    detail_response = client.get("/gft/medicamentos/777003")
+
+    assert list_response.status_code == 200
+    assert detail_response.status_code == 200
+    assert list_response.json()["items"][0]["indicaciones_ficha_tecnica"] is None
+    assert detail_response.json()["indicaciones_ficha_tecnica"] is None
 
 
 def test_gft_get_medicamento_detail_includes_metadata(client, db_session):
