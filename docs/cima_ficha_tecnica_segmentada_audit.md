@@ -126,5 +126,6 @@ Se añaden fixtures sintéticas mínimas basadas en la forma real observada del 
 ## Próximo paso técnico
 
 - Ya existe sync individual de sección segmentada mediante `sync_cima_segmented_section`, persistiendo contra `cima_ficha_tecnica_cache` con identidad `nregistro + tipo_documento + seccion`.
-- El siguiente paso será crear un endpoint de sincronización individual o implementar un sync por batch derivado de `nregistro` únicos procedentes de CIMA medicamento.
+- Ya existen endpoints individuales por `nregistro` para sincronizar (`POST /cima/segmented/sync/{nregistro}`) y consultar caché (`GET /cima/segmented/cache/{nregistro}`) sin exponer `raw_data`.
+- El siguiente paso será implementar un sync por batch derivado de `nregistro` únicos disponibles en CIMA medicamento.
 - La publicación en la GFT pública queda pendiente; no se modifica todavía `v_gft_publicada` ni se expone el contenido cacheado en endpoints públicos.
