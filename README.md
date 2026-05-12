@@ -51,3 +51,7 @@ BIFIMED ya está implementado para parser, cliente, sincronización individual y
 ## CIMA ficha técnica segmentada
 
 La estrategia técnica y de flujo para la futura ficha técnica segmentada de CIMA está documentada en [docs/cima_ficha_tecnica_segmentada_audit.md](docs/cima_ficha_tecnica_segmentada_audit.md). La implementación queda pendiente: este módulo todavía no incorpora cliente, parser, sincronización, migraciones ni fixtures contractuales.
+
+## API pública GFT
+
+El contrato actual de la API pública `/gft` y el origen de sus campos están documentados en [docs/gft_public_api_contract.md](docs/gft_public_api_contract.md).
