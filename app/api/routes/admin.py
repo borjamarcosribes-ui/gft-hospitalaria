@@ -3,11 +3,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.admin_security import require_admin_api_key
 from app.core.database import get_db
+from app.core.enums import ESTADO_EDITORIAL_VALUES, ESTADO_GFT_VALUES
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.services.gft_editorial_service import (
     GFTEditorialValidationError,
@@ -93,9 +94,76 @@ class GFTEditorialAdminListResponse(BaseModel):
     items: list[GFTEditorialAdminListItem]
 
 
+class GFTEditorialAdminSummaryResponse(BaseModel):
+    total: int
+    by_estado_gft: dict[str, int]
+    by_estado_editorial: dict[str, int]
+    by_combination: dict[str, int]
+    publicados_en_gft: int
+    incluidos_no_publicados: int
+    pendientes_revision: int
+    excluidos: int
+
+
 @router.get("/health")
 def admin_health(_: None = Depends(require_admin_api_key)):
     return {"status": "ok"}
+
+
+@router.get(
+    "/gft/medicamentos/editorial/summary",
+    response_model=GFTEditorialAdminSummaryResponse,
+)
+def get_gft_medicamentos_editorial_summary(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_api_key),
+):
+    by_estado_gft = {estado: 0 for estado in ESTADO_GFT_VALUES}
+    for estado_gft, count in (
+        db.query(GFTEstadoPresentacion.estado_gft, func.count())
+        .group_by(GFTEstadoPresentacion.estado_gft)
+        .all()
+    ):
+        by_estado_gft[estado_gft] = count
+
+    by_estado_editorial = {estado: 0 for estado in ESTADO_EDITORIAL_VALUES}
+    for estado_editorial, count in (
+        db.query(GFTEstadoPresentacion.estado_editorial, func.count())
+        .group_by(GFTEstadoPresentacion.estado_editorial)
+        .all()
+    ):
+        by_estado_editorial[estado_editorial] = count
+
+    combination_rows = (
+        db.query(
+            GFTEstadoPresentacion.estado_gft,
+            GFTEstadoPresentacion.estado_editorial,
+            func.count(),
+        )
+        .group_by(
+            GFTEstadoPresentacion.estado_gft,
+            GFTEstadoPresentacion.estado_editorial,
+        )
+        .all()
+    )
+    by_combination = {
+        f"{estado_gft}|{estado_editorial}": count
+        for estado_gft, estado_editorial, count in combination_rows
+    }
+
+    total = sum(by_estado_gft.values())
+
+    return GFTEditorialAdminSummaryResponse(
+        total=total,
+        by_estado_gft=by_estado_gft,
+        by_estado_editorial=by_estado_editorial,
+        by_combination=by_combination,
+        publicados_en_gft=by_combination.get("incluido|publicado", 0),
+        incluidos_no_publicados=by_estado_gft.get("incluido", 0)
+        - by_combination.get("incluido|publicado", 0),
+        pendientes_revision=by_estado_gft.get("pendiente_revision", 0),
+        excluidos=by_estado_gft.get("excluido", 0),
+    )
 
 
 @router.get("/gft/medicamentos/editorial", response_model=GFTEditorialAdminListResponse)
@@ -118,12 +186,16 @@ def list_gft_medicamentos_editorial(
     if estado_gft is not None:
         normalized_estado_gft = estado_gft.strip()
         if normalized_estado_gft:
-            query = query.filter(GFTEstadoPresentacion.estado_gft == normalized_estado_gft)
+            query = query.filter(
+                GFTEstadoPresentacion.estado_gft == normalized_estado_gft
+            )
 
     if estado_editorial is not None:
         normalized_estado_editorial = estado_editorial.strip()
         if normalized_estado_editorial:
-            query = query.filter(GFTEstadoPresentacion.estado_editorial == normalized_estado_editorial)
+            query = query.filter(
+                GFTEstadoPresentacion.estado_editorial == normalized_estado_editorial
+            )
 
     if q is not None:
         normalized_q = q.strip()
@@ -142,12 +214,18 @@ def list_gft_medicamentos_editorial(
             )
 
     total = query.count()
-    items = query.order_by(GFTEstadoPresentacion.cn.asc()).offset(offset).limit(limit).all()
+    items = (
+        query.order_by(GFTEstadoPresentacion.cn.asc()).offset(offset).limit(limit).all()
+    )
 
-    return GFTEditorialAdminListResponse(total=total, limit=limit, offset=offset, items=items)
+    return GFTEditorialAdminListResponse(
+        total=total, limit=limit, offset=offset, items=items
+    )
 
 
-@router.get("/gft/medicamentos/{cn}/editorial", response_model=GFTEditorialAdminResponse)
+@router.get(
+    "/gft/medicamentos/{cn}/editorial", response_model=GFTEditorialAdminResponse
+)
 def get_gft_medicamento_editorial(
     cn: str,
     db: Session = Depends(get_db),
@@ -164,7 +242,9 @@ def get_gft_medicamento_editorial(
     return row
 
 
-@router.patch("/gft/medicamentos/{cn}/editorial", response_model=GFTEditorialUpdateResponse)
+@router.patch(
+    "/gft/medicamentos/{cn}/editorial", response_model=GFTEditorialUpdateResponse
+)
 def update_gft_medicamento_editorial(
     cn: str,
     body: GFTEditorialUpdateRequest,
