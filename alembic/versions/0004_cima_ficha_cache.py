@@ -1,12 +1,12 @@
 """prepare cima ficha tecnica segmented cache
 
-Revision ID: 0004_cima_ficha_tecnica_segmented_cache
+Revision ID: 0004_cima_ficha_cache
 Revises: 0003_gft_public_detail_metadata
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = '0004_cima_ficha_tecnica_segmented_cache'
+revision = '0004_cima_ficha_cache'
 down_revision = '0003_gft_public_detail_metadata'
 branch_labels = None
 depends_on = None
