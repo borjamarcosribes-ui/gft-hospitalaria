@@ -238,3 +238,114 @@ def test_admin_gft_editorial_patch_public_gft_reflects_update(client, db_session
     assert update_response.status_code == 200
     assert public_response.status_code == 200
     assert public_response.json()["ajuste_insuficiencia_renal"] == "Ajustar FG"
+
+
+def test_admin_gft_editorial_get_requires_admin_key(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111")
+
+    response = client.get("/admin/gft/medicamentos/111111/editorial")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Missing admin API key"
+
+
+def test_admin_gft_editorial_get_returns_existing_editorial_state(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(
+        db_session,
+        cn="111111",
+        estado_gft="incluido",
+        estado_editorial="borrador",
+        nemonico="NEMO",
+        ajuste_insuficiencia_renal="Ajustar FG",
+        precauciones_embarazo="Evitar",
+    )
+
+    response = client.get("/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cn"] == "111111"
+    assert body["estado_gft"] == "incluido"
+    assert body["estado_editorial"] == "borrador"
+    assert body["nemonico"] == "NEMO"
+    assert body["ajuste_insuficiencia_renal"] == "Ajustar FG"
+    assert body["precauciones_embarazo"] == "Evitar"
+    assert "last_import_batch_id" in body
+    assert "last_imported_at" in body
+
+
+def test_admin_gft_editorial_get_returns_unpublished_rows(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(
+        db_session,
+        cn="111111",
+        estado_gft="pendiente_revision",
+        estado_editorial="borrador",
+        ajuste_insuficiencia_hepatica="Precaución",
+    )
+    _create_public_gft_view(db_session)
+
+    response = client.get("/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cn"] == "111111"
+    assert body["estado_gft"] == "pendiente_revision"
+    assert body["estado_editorial"] == "borrador"
+    assert body["ajuste_insuficiencia_hepatica"] == "Precaución"
+
+
+def test_admin_gft_editorial_get_missing_cn_returns_404(client, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+
+    response = client.get("/admin/gft/medicamentos/999999/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Medicamento GFT no encontrado"
+
+
+def test_admin_gft_editorial_get_empty_cn_returns_400(client, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+
+    response = client.get("/admin/gft/medicamentos/%20%20/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "CN obligatorio"
+
+
+def test_admin_gft_editorial_get_does_not_create_rows(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+
+    response = client.get("/admin/gft/medicamentos/999999/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Medicamento GFT no encontrado"
+    assert db_session.query(GFTEstadoPresentacion).count() == 0
+
+
+def test_admin_gft_editorial_patch_then_get_returns_updated_values(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(
+        db_session,
+        cn="111111",
+        estado_gft="incluido",
+        estado_editorial="borrador",
+        ajuste_insuficiencia_renal="Texto previo",
+    )
+
+    patch_response = client.patch(
+        "/admin/gft/medicamentos/111111/editorial",
+        headers=ADMIN_HEADERS,
+        json={"ajuste_insuficiencia_renal": "Ajustar FG actualizado"},
+    )
+    get_response = client.get("/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS)
+
+    assert patch_response.status_code == 200
+    assert get_response.status_code == 200
+    body = get_response.json()
+    assert body["cn"] == "111111"
+    assert body["estado_gft"] == "incluido"
+    assert body["estado_editorial"] == "borrador"
+    assert body["ajuste_insuficiencia_renal"] == "Ajustar FG actualizado"
