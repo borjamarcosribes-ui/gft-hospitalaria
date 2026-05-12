@@ -4,6 +4,7 @@ from app.api.routes.imports import router as imports_router
 from app.api.routes.cima import router as cima_router
 from app.api.routes.bifimed import router as bifimed_router
 from app.api.routes.gft import router as gft_router
+from app.api.routes.admin import router as admin_router
 
 app = FastAPI(title="gft-hospitalaria")
 app.include_router(health_router)
@@ -11,3 +12,4 @@ app.include_router(imports_router)
 app.include_router(cima_router)
 app.include_router(bifimed_router)
 app.include_router(gft_router)
+app.include_router(admin_router)
