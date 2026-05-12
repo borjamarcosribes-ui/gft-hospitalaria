@@ -18,6 +18,8 @@ X-Admin-API-Key: <valor de ADMIN_API_KEY>
 
 Si el header no se envía, la API responde HTTP 401. Si el valor no coincide con `ADMIN_API_KEY`, la API responde HTTP 403.
 
+Actualmente usan este guard los endpoints `GET /admin/health` y `PATCH /admin/gft/medicamentos/{cn}/editorial`.
+
 ## Alcance y limitaciones
 
 Esta protección sirve como guard temporal para endpoints internos/admin antes de exponer rutas de escritura. No debe usarse como seguridad definitiva en producción pública.
