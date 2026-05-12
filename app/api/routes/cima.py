@@ -5,7 +5,10 @@ from app.core.database import get_db
 from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.import_batch import ImportBatch
-from app.services.cima_segmented_sync_service import sync_cima_segmented_section
+from app.services.cima_segmented_sync_service import (
+    sync_cima_segmented_section,
+    sync_import_batch_segmented_sections,
+)
 from app.services.cima_sync_service import sync_cn, sync_import_batch
 from app.services.normalization_service import normalize_cn, NormalizationError
 
@@ -57,6 +60,26 @@ def sync_import_batch_endpoint(batch_id: UUID, force: bool = False, db: Session 
     if not batch:
         raise HTTPException(status_code=404, detail="Import batch not found")
     return sync_import_batch(db, batch_id, force=force)
+
+
+@router.post("/segmented/sync/import-batch/{batch_id}")
+def sync_segmented_import_batch_endpoint(
+    batch_id: UUID,
+    tipo_documento: int = 1,
+    seccion: str = "4.1",
+    force: bool = False,
+    db: Session = Depends(get_db),
+):
+    batch = db.get(ImportBatch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Import batch not found")
+    return sync_import_batch_segmented_sections(
+        db=db,
+        batch_id=batch_id,
+        tipo_documento=tipo_documento,
+        seccion=seccion,
+        force=force,
+    )
 
 
 @router.post("/segmented/sync/{nregistro}")
