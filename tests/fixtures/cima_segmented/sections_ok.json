@@ -1,0 +1,7 @@
+[
+  {"seccion":"1","titulo":"NOMBRE DEL MEDICAMENTO","orden":1},
+  {"seccion":"4","titulo":"DATOS CLÍNICOS","orden":1},
+  {"seccion":"4.1","titulo":"Indicaciones terapéuticas","orden":2},
+  {"seccion":"4.2","titulo":"Posología y forma de administración","orden":3},
+  {"seccion":"4.6","titulo":"Fertilidad, embarazo y lactancia","orden":11}
+]
