@@ -41,6 +41,10 @@ def _create_view(db_session):
               b.subgrupo_atc,
               ft41.contenido_texto AS indicaciones_ficha_tecnica,
               g.restricciones_hospitalarias,
+              g.ajuste_insuficiencia_renal,
+              g.ajuste_insuficiencia_hepatica,
+              g.precauciones_embarazo,
+              g.precauciones_lactancia,
               g.observaciones_internas
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
@@ -314,6 +318,10 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
     assert list_payload["items"][0]["nombre"] == "Paracetamol Test"
     assert list_payload["items"][0]["situacion_financiacion"] == "Si"
     assert list_payload["items"][0]["indicaciones_ficha_tecnica"] == "Indicación test FT"
+    assert list_payload["items"][0]["ajuste_insuficiencia_renal"] is None
+    assert list_payload["items"][0]["ajuste_insuficiencia_hepatica"] is None
+    assert list_payload["items"][0]["precauciones_embarazo"] is None
+    assert list_payload["items"][0]["precauciones_lactancia"] is None
     assert list_payload["items"][0]["url_ficha_tecnica"] == "https://example.test/ft/111111"
     assert list_payload["items"][0]["url_prospecto"] == "https://example.test/pr/111111"
     assert "222222" not in listed_cns
@@ -328,6 +336,10 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
     assert detail_payload["nemonico"] == "NEM-111111"
     assert detail_payload["restricciones_hospitalarias"] == "Uso restringido test"
     assert detail_payload["indicaciones_ficha_tecnica"] == "Indicación test FT"
+    assert detail_payload["ajuste_insuficiencia_renal"] is None
+    assert detail_payload["ajuste_insuficiencia_hepatica"] is None
+    assert detail_payload["precauciones_embarazo"] is None
+    assert detail_payload["precauciones_lactancia"] is None
     assert detail_payload["observaciones_internas_publicables"] == "Observación visible test"
     assert detail_payload["financiacion_detalle"] == {
         "situacion_financiacion": "Si",

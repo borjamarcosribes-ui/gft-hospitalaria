@@ -75,6 +75,10 @@ Estas reglas convierten `v_gft_publicada` en la frontera contractual entre los p
 | `situacion_financiacion` | `bifimed_cache.situacion_financiacion` | Resumen de situación de financiación disponible en listado y detalle. |
 | `financiacion_detalle` | `bifimed_cache` | Disponible en el detalle; agrupa `situacion_financiacion`, `condiciones_financiacion_restringidas`, `condiciones_especiales_financiacion`, `estado_nomenclator`, `aportacion_usuario` y `subgrupo_atc`. |
 | `restricciones_hospitalarias` | `gft_estado_presentacion.restricciones_hospitalarias` | Restricciones hospitalarias publicadas actualmente como texto. |
+| `ajuste_insuficiencia_renal` | `gft_estado_presentacion.ajuste_insuficiencia_renal` | Campo editorial hospitalario; no se calcula automáticamente. |
+| `ajuste_insuficiencia_hepatica` | `gft_estado_presentacion.ajuste_insuficiencia_hepatica` | Campo editorial hospitalario; no se calcula automáticamente. |
+| `precauciones_embarazo` | `gft_estado_presentacion.precauciones_embarazo` | Campo editorial hospitalario; no sustituye ficha técnica ni revisión clínica. |
+| `precauciones_lactancia` | `gft_estado_presentacion.precauciones_lactancia` | Campo editorial hospitalario; no sustituye ficha técnica ni revisión clínica. |
 | `observaciones_internas_publicables` | `gft_estado_presentacion.observaciones_internas` | Disponible en el detalle. El schema público actual lo expone con nombre publicable; si en el futuro existen observaciones internas no publicables, deberán separarse explícitamente. |
 
 ## F. Campos técnicos que NO se exponen
@@ -95,7 +99,7 @@ La API pública `/gft` no debe exponer campos técnicos internos ni payloads de 
 
 ### `gft_estado_presentacion`
 
-Fuente del estado GFT, estado editorial, CN, nemónico, restricciones hospitalarias y observaciones actualmente mapeadas como publicables en el detalle.
+Fuente del estado GFT, estado editorial, CN, nemónico, restricciones hospitalarias, campos clínicos editoriales hospitalarios y observaciones actualmente mapeadas como publicables en el detalle.
 
 ### `cima_medicamento_cache`
 
@@ -125,10 +129,7 @@ Vista SQL de composición pública. Une las fuentes internas necesarias y aplica
 
 ## I. Pendiente de implementar
 
-- Ajuste por insuficiencia renal.
-- Ajuste por insuficiencia hepática.
-- Embarazo.
-- Lactancia.
+- Carga/edición desde panel de administración de ajuste renal, ajuste hepático, embarazo y lactancia, si procede.
 - Restricciones hospitalarias estructuradas/enriquecidas.
 - Panel de administración editorial.
 - Exportación PDF.
