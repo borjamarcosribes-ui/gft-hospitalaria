@@ -44,6 +44,7 @@ def test_get_sections_ok(monkeypatch):
     assert result.data["nregistro"] == "70030"
     assert result.data["tipo_documento"] == 1
     assert any(section["seccion"] == "4.1" for section in result.data["secciones"])
+    assert result.raw_payload == {"json": load_json("sections_ok.json")}
 
 
 def test_get_sections_error_payload_maps_to_not_segmented(monkeypatch):
@@ -56,7 +57,7 @@ def test_get_sections_error_payload_maps_to_not_segmented(monkeypatch):
     result = CimaSegmentedClient(base_url="https://example.test/cima").get_sections("70030")
 
     assert result.status == "not_segmented"
-    assert result.raw_payload == load_json("content_section_unavailable.json")
+    assert result.raw_payload == {"json": load_json("content_section_unavailable.json")}
 
 
 def test_get_section_content_ok(monkeypatch):

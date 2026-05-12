@@ -42,11 +42,11 @@ class CimaSegmentedClient:
             return CimaSegmentedFetchResult(status="error", error=str(exc)[:200])
 
         if isinstance(payload, dict) and "error" in payload:
-            return CimaSegmentedFetchResult(status="not_segmented", raw_payload=payload)
+            return CimaSegmentedFetchResult(status="not_segmented", raw_payload={"json": payload})
 
         sections = parse_sections_payload(payload)
         if sections is None or sections == []:
-            return CimaSegmentedFetchResult(status="not_segmented", raw_payload=payload)
+            return CimaSegmentedFetchResult(status="not_segmented", raw_payload={"json": payload})
 
         return CimaSegmentedFetchResult(
             status="ok",
@@ -55,7 +55,7 @@ class CimaSegmentedClient:
                 "tipo_documento": tipo_documento,
                 "secciones": sections,
             },
-            raw_payload=payload,
+            raw_payload={"json": payload},
         )
 
     def get_section_content(
