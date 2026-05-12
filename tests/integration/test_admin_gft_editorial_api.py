@@ -121,9 +121,13 @@ def test_admin_gft_editorial_patch_updates_fields(client, db_session, monkeypatc
     assert row.fecha_revision is not None
 
 
-def test_admin_gft_editorial_patch_clears_field_with_null(client, db_session, monkeypatch):
+def test_admin_gft_editorial_patch_clears_field_with_null(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
-    _insert_gft_estado(db_session, cn="111111", ajuste_insuficiencia_renal="Texto previo")
+    _insert_gft_estado(
+        db_session, cn="111111", ajuste_insuficiencia_renal="Texto previo"
+    )
 
     response = client.patch(
         "/admin/gft/medicamentos/111111/editorial",
@@ -138,9 +142,13 @@ def test_admin_gft_editorial_patch_clears_field_with_null(client, db_session, mo
     assert row.ajuste_insuficiencia_renal is None
 
 
-def test_admin_gft_editorial_patch_preserves_omitted_fields(client, db_session, monkeypatch):
+def test_admin_gft_editorial_patch_preserves_omitted_fields(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
-    _insert_gft_estado(db_session, cn="111111", ajuste_insuficiencia_hepatica="Texto previo")
+    _insert_gft_estado(
+        db_session, cn="111111", ajuste_insuficiencia_hepatica="Texto previo"
+    )
 
     response = client.patch(
         "/admin/gft/medicamentos/111111/editorial",
@@ -168,7 +176,9 @@ def test_admin_gft_editorial_patch_missing_cn_returns_404(client, monkeypatch):
     assert response.json()["detail"] == "Medicamento GFT no encontrado"
 
 
-def test_admin_gft_editorial_patch_rejects_only_revisado_por(client, db_session, monkeypatch):
+def test_admin_gft_editorial_patch_rejects_only_revisado_por(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
     _insert_gft_estado(db_session, cn="111111")
 
@@ -182,11 +192,17 @@ def test_admin_gft_editorial_patch_rejects_only_revisado_por(client, db_session,
     assert response.json()["detail"] == "No hay campos para actualizar"
 
 
-def test_admin_gft_editorial_patch_rejects_forbidden_body_fields(client, db_session, monkeypatch):
+def test_admin_gft_editorial_patch_rejects_forbidden_body_fields(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
     _insert_gft_estado(db_session, cn="111111")
 
-    for payload in ({"estado_gft": "excluido"}, {"estado_editorial": "borrador"}, {"cn": "222222"}):
+    for payload in (
+        {"estado_gft": "excluido"},
+        {"estado_editorial": "borrador"},
+        {"cn": "222222"},
+    ):
         response = client.patch(
             "/admin/gft/medicamentos/111111/editorial",
             headers=ADMIN_HEADERS,
@@ -196,7 +212,9 @@ def test_admin_gft_editorial_patch_rejects_forbidden_body_fields(client, db_sess
         assert response.status_code == 422
 
 
-def test_admin_gft_editorial_patch_does_not_change_publication_state(client, db_session, monkeypatch):
+def test_admin_gft_editorial_patch_does_not_change_publication_state(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
     _insert_gft_estado(
         db_session,
@@ -218,7 +236,9 @@ def test_admin_gft_editorial_patch_does_not_change_publication_state(client, db_
     assert row.estado_editorial == "publicado"
 
 
-def test_admin_gft_editorial_patch_public_gft_reflects_update(client, db_session, monkeypatch):
+def test_admin_gft_editorial_patch_public_gft_reflects_update(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
     _insert_gft_estado(
         db_session,
@@ -250,7 +270,9 @@ def test_admin_gft_editorial_get_requires_admin_key(client, db_session, monkeypa
     assert response.json()["detail"] == "Missing admin API key"
 
 
-def test_admin_gft_editorial_get_returns_existing_editorial_state(client, db_session, monkeypatch):
+def test_admin_gft_editorial_get_returns_existing_editorial_state(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
     _insert_gft_estado(
         db_session,
@@ -262,7 +284,9 @@ def test_admin_gft_editorial_get_returns_existing_editorial_state(client, db_ses
         precauciones_embarazo="Evitar",
     )
 
-    response = client.get("/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS)
+    response = client.get(
+        "/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -276,7 +300,9 @@ def test_admin_gft_editorial_get_returns_existing_editorial_state(client, db_ses
     assert "last_imported_at" in body
 
 
-def test_admin_gft_editorial_get_returns_unpublished_rows(client, db_session, monkeypatch):
+def test_admin_gft_editorial_get_returns_unpublished_rows(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
     _insert_gft_estado(
         db_session,
@@ -287,7 +313,9 @@ def test_admin_gft_editorial_get_returns_unpublished_rows(client, db_session, mo
     )
     _create_public_gft_view(db_session)
 
-    response = client.get("/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS)
+    response = client.get(
+        "/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -300,7 +328,9 @@ def test_admin_gft_editorial_get_returns_unpublished_rows(client, db_session, mo
 def test_admin_gft_editorial_get_missing_cn_returns_404(client, monkeypatch):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
 
-    response = client.get("/admin/gft/medicamentos/999999/editorial", headers=ADMIN_HEADERS)
+    response = client.get(
+        "/admin/gft/medicamentos/999999/editorial", headers=ADMIN_HEADERS
+    )
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Medicamento GFT no encontrado"
@@ -309,7 +339,9 @@ def test_admin_gft_editorial_get_missing_cn_returns_404(client, monkeypatch):
 def test_admin_gft_editorial_get_empty_cn_returns_400(client, monkeypatch):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
 
-    response = client.get("/admin/gft/medicamentos/%20%20/editorial", headers=ADMIN_HEADERS)
+    response = client.get(
+        "/admin/gft/medicamentos/%20%20/editorial", headers=ADMIN_HEADERS
+    )
 
     assert response.status_code == 400
     assert response.json()["detail"] == "CN obligatorio"
@@ -318,14 +350,18 @@ def test_admin_gft_editorial_get_empty_cn_returns_400(client, monkeypatch):
 def test_admin_gft_editorial_get_does_not_create_rows(client, db_session, monkeypatch):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
 
-    response = client.get("/admin/gft/medicamentos/999999/editorial", headers=ADMIN_HEADERS)
+    response = client.get(
+        "/admin/gft/medicamentos/999999/editorial", headers=ADMIN_HEADERS
+    )
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Medicamento GFT no encontrado"
     assert db_session.query(GFTEstadoPresentacion).count() == 0
 
 
-def test_admin_gft_editorial_patch_then_get_returns_updated_values(client, db_session, monkeypatch):
+def test_admin_gft_editorial_patch_then_get_returns_updated_values(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
     _insert_gft_estado(
         db_session,
@@ -340,7 +376,9 @@ def test_admin_gft_editorial_patch_then_get_returns_updated_values(client, db_se
         headers=ADMIN_HEADERS,
         json={"ajuste_insuficiencia_renal": "Ajustar FG actualizado"},
     )
-    get_response = client.get("/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS)
+    get_response = client.get(
+        "/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS
+    )
 
     assert patch_response.status_code == 200
     assert get_response.status_code == 200
@@ -349,6 +387,131 @@ def test_admin_gft_editorial_patch_then_get_returns_updated_values(client, db_se
     assert body["estado_gft"] == "incluido"
     assert body["estado_editorial"] == "borrador"
     assert body["ajuste_insuficiencia_renal"] == "Ajustar FG actualizado"
+
+
+def test_admin_gft_editorial_summary_requires_admin_key(client, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+
+    response = client.get("/admin/gft/medicamentos/editorial/summary")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Missing admin API key"
+
+
+def test_admin_gft_editorial_summary_empty_database(client, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+
+    response = client.get(
+        "/admin/gft/medicamentos/editorial/summary", headers=ADMIN_HEADERS
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 0
+    assert body["by_estado_gft"] == {
+        "incluido": 0,
+        "excluido": 0,
+        "pendiente_revision": 0,
+    }
+    assert body["by_estado_editorial"] == {
+        "borrador": 0,
+        "validado": 0,
+        "publicado": 0,
+        "retirado": 0,
+    }
+    assert body["by_combination"] == {}
+    assert body["publicados_en_gft"] == 0
+    assert body["incluidos_no_publicados"] == 0
+    assert body["pendientes_revision"] == 0
+    assert body["excluidos"] == 0
+
+
+def test_admin_gft_editorial_summary_counts_states(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(
+        db_session, cn="111111", estado_gft="incluido", estado_editorial="publicado"
+    )
+    _insert_gft_estado(
+        db_session, cn="222222", estado_gft="incluido", estado_editorial="borrador"
+    )
+    _insert_gft_estado(
+        db_session,
+        cn="333333",
+        estado_gft="pendiente_revision",
+        estado_editorial="borrador",
+    )
+    _insert_gft_estado(
+        db_session, cn="444444", estado_gft="excluido", estado_editorial="retirado"
+    )
+
+    response = client.get(
+        "/admin/gft/medicamentos/editorial/summary", headers=ADMIN_HEADERS
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 4
+    assert body["by_estado_gft"]["incluido"] == 2
+    assert body["by_estado_gft"]["pendiente_revision"] == 1
+    assert body["by_estado_gft"]["excluido"] == 1
+    assert body["by_estado_editorial"]["publicado"] == 1
+    assert body["by_estado_editorial"]["borrador"] == 2
+    assert body["by_estado_editorial"]["retirado"] == 1
+    assert body["by_estado_editorial"]["validado"] == 0
+    assert body["by_combination"]["incluido|publicado"] == 1
+    assert body["by_combination"]["incluido|borrador"] == 1
+    assert body["by_combination"]["pendiente_revision|borrador"] == 1
+    assert body["by_combination"]["excluido|retirado"] == 1
+    assert body["publicados_en_gft"] == 1
+    assert body["incluidos_no_publicados"] == 1
+    assert body["pendientes_revision"] == 1
+    assert body["excluidos"] == 1
+
+
+def test_admin_gft_editorial_summary_includes_unknown_states(
+    client, db_session, monkeypatch
+):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(
+        db_session,
+        cn="111111",
+        estado_gft="otro",
+        estado_editorial="otro_editorial",
+    )
+
+    response = client.get(
+        "/admin/gft/medicamentos/editorial/summary", headers=ADMIN_HEADERS
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["by_estado_gft"]["incluido"] == 0
+    assert body["by_estado_gft"]["otro"] == 1
+    assert body["by_estado_editorial"]["publicado"] == 0
+    assert body["by_estado_editorial"]["otro_editorial"] == 1
+    assert body["by_combination"]["otro|otro_editorial"] == 1
+
+
+def test_admin_gft_editorial_summary_route_order(client, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+
+    response = client.get(
+        "/admin/gft/medicamentos/editorial/summary", headers=ADMIN_HEADERS
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {
+        "total",
+        "by_estado_gft",
+        "by_estado_editorial",
+        "by_combination",
+        "publicados_en_gft",
+        "incluidos_no_publicados",
+        "pendientes_revision",
+        "excluidos",
+    }
 
 
 def test_admin_gft_editorial_list_requires_admin_key(client, monkeypatch):
@@ -391,7 +554,9 @@ def test_admin_gft_editorial_list_returns_rows(client, db_session, monkeypatch):
     assert "comentario_revision" not in body["items"][0]
 
 
-def test_admin_gft_editorial_list_filters_by_estado_gft(client, db_session, monkeypatch):
+def test_admin_gft_editorial_list_filters_by_estado_gft(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
     _insert_gft_estado(db_session, cn="111111", estado_gft="incluido")
     _insert_gft_estado(db_session, cn="222222", estado_gft="pendiente_revision")
@@ -408,7 +573,9 @@ def test_admin_gft_editorial_list_filters_by_estado_gft(client, db_session, monk
     assert body["items"][0]["estado_gft"] == "pendiente_revision"
 
 
-def test_admin_gft_editorial_list_filters_by_estado_editorial(client, db_session, monkeypatch):
+def test_admin_gft_editorial_list_filters_by_estado_editorial(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
     _insert_gft_estado(db_session, cn="111111", estado_editorial="publicado")
     _insert_gft_estado(db_session, cn="222222", estado_editorial="borrador")
@@ -425,13 +592,19 @@ def test_admin_gft_editorial_list_filters_by_estado_editorial(client, db_session
     assert body["items"][0]["estado_editorial"] == "borrador"
 
 
-def test_admin_gft_editorial_list_filters_by_q_cn_or_nemonico(client, db_session, monkeypatch):
+def test_admin_gft_editorial_list_filters_by_q_cn_or_nemonico(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
     _insert_gft_estado(db_session, cn="111111", nemonico="ALFA")
     _insert_gft_estado(db_session, cn="222222", nemonico="BETA")
 
-    alfa_response = client.get("/admin/gft/medicamentos/editorial?q=ALFA", headers=ADMIN_HEADERS)
-    cn_response = client.get("/admin/gft/medicamentos/editorial?q=222", headers=ADMIN_HEADERS)
+    alfa_response = client.get(
+        "/admin/gft/medicamentos/editorial?q=ALFA", headers=ADMIN_HEADERS
+    )
+    cn_response = client.get(
+        "/admin/gft/medicamentos/editorial?q=222", headers=ADMIN_HEADERS
+    )
 
     assert alfa_response.status_code == 200
     assert [item["cn"] for item in alfa_response.json()["items"]] == ["111111"]
@@ -439,12 +612,16 @@ def test_admin_gft_editorial_list_filters_by_q_cn_or_nemonico(client, db_session
     assert [item["cn"] for item in cn_response.json()["items"]] == ["222222"]
 
 
-def test_admin_gft_editorial_list_filters_by_q_clinical_text(client, db_session, monkeypatch):
+def test_admin_gft_editorial_list_filters_by_q_clinical_text(
+    client, db_session, monkeypatch
+):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
     _insert_gft_estado(db_session, cn="111111", ajuste_insuficiencia_renal="Ajustar FG")
     _insert_gft_estado(db_session, cn="222222", ajuste_insuficiencia_renal="Sin ajuste")
 
-    response = client.get("/admin/gft/medicamentos/editorial?q=fg", headers=ADMIN_HEADERS)
+    response = client.get(
+        "/admin/gft/medicamentos/editorial?q=fg", headers=ADMIN_HEADERS
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -485,7 +662,9 @@ def test_admin_gft_editorial_list_rejects_invalid_limit(client, monkeypatch):
 def test_admin_gft_editorial_list_rejects_invalid_offset(client, monkeypatch):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
 
-    response = client.get("/admin/gft/medicamentos/editorial?offset=-1", headers=ADMIN_HEADERS)
+    response = client.get(
+        "/admin/gft/medicamentos/editorial?offset=-1", headers=ADMIN_HEADERS
+    )
 
     assert response.status_code == 400
     assert response.json()["detail"] == "offset debe ser mayor o igual a 0"

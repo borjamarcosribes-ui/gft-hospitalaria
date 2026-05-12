@@ -51,6 +51,37 @@ Parámetros de consulta disponibles:
 
 La respuesta devuelve `total`, `limit`, `offset` e `items` ordenados por `CN` ascendente. Cada elemento incluye estados, nemónico, campos clínicos/editoriales básicos y metadatos de revisión/importación disponibles.
 
+## Endpoint admin de resumen editorial
+
+La API interna permite obtener un resumen de estados GFT/editoriales para la cabecera o cuadro de mando del futuro panel de administración mediante:
+
+```http
+GET /admin/gft/medicamentos/editorial/summary
+X-Admin-API-Key: <ADMIN_API_KEY>
+```
+
+El endpoint requiere el header `X-Admin-API-Key` y utiliza la protección admin común. Está pensado para mostrar métricas agregadas sin cargar el listado completo.
+
+Comportamiento y alcance:
+
+- Lee directamente de `gft_estado_presentacion`.
+- No usa la vista pública `v_gft_publicada`.
+- Cuenta medicamentos publicados y no publicados, incluyendo borradores, pendientes, excluidos y retirados.
+- No filtra por `estado_gft` ni por `estado_editorial`.
+- No crea medicamentos nuevos ni filas nuevas.
+- No cambia las reglas de publicación de la GFT pública.
+
+La respuesta devuelve:
+
+- `total`: número total de filas en `gft_estado_presentacion`.
+- `by_estado_gft`: contador por `estado_gft`, incluyendo siempre los estados conocidos aunque su valor sea 0 y añadiendo estados no previstos si existieran en base de datos.
+- `by_estado_editorial`: contador por `estado_editorial`, incluyendo siempre los estados conocidos aunque su valor sea 0 y añadiendo estados no previstos si existieran en base de datos.
+- `by_combination`: contador por combinación `estado_gft|estado_editorial`.
+- `publicados_en_gft`: filas con `estado_gft = "incluido"` y `estado_editorial = "publicado"`.
+- `incluidos_no_publicados`: filas con `estado_gft = "incluido"` y `estado_editorial != "publicado"`.
+- `pendientes_revision`: filas con `estado_gft = "pendiente_revision"`.
+- `excluidos`: filas con `estado_gft = "excluido"`.
+
 ## Endpoint admin de consulta editorial
 
 La API interna permite consultar los campos clínicos/editoriales actuales de un medicamento GFT existente mediante:
