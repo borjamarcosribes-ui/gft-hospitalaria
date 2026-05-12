@@ -48,12 +48,12 @@ El batch futuro deberá operar sobre `nregistro` únicos derivados de los CN inc
 
 | Sección | Uso previsto | ¿Publicar automáticamente en v1? |
 | --- | --- | --- |
-| 4.1 Indicaciones terapéuticas | Publicar automáticamente como `indicaciones_ficha_tecnica`. | Sí |
+| 4.1 Indicaciones terapéuticas | Preparar contenido oficial para futura publicación como `indicaciones_ficha_tecnica`. | No, pendiente de endpoint/publicación pública |
 | 4.6 Fertilidad, embarazo y lactancia | Candidata futura para texto oficial. | No |
 | 4.2 Posología y forma de administración | Candidata futura. | No |
 | Otras secciones | Fuera de v1. | No |
 
-La sección 4.1 sí es un campo mínimo ya requerido en la GFT. La sección 4.6 puede aportar texto oficial, pero no sustituye por sí sola un futuro resumen hospitalario práctico de embarazo/lactancia. Ajuste renal y hepático no se asumirán automáticamente de una única sección en v1.
+La sección 4.1 sí es un campo mínimo ya requerido en la GFT, pero en esta fase solo se sincroniza y cachea; no se publica todavía en la GFT pública. La sección 4.6 puede aportar texto oficial, pero no sustituye por sí sola un futuro resumen hospitalario práctico de embarazo/lactancia. Ajuste renal y hepático no se asumirán automáticamente de una única sección en v1.
 
 ## Revisión del modelo actual existente
 
@@ -125,5 +125,6 @@ Se añaden fixtures sintéticas mínimas basadas en la forma real observada del 
 
 ## Próximo paso técnico
 
-- Implementar sync individual de la sección 4.1 usando `CimaSegmentedClient` y `CimaFichaTecnicaCache`.
-- Integrar el sync después de CIMA medicamento para partir de `nregistro` únicos ya conocidos.
+- Ya existe sync individual de sección segmentada mediante `sync_cima_segmented_section`, persistiendo contra `cima_ficha_tecnica_cache` con identidad `nregistro + tipo_documento + seccion`.
+- El siguiente paso será crear un endpoint de sincronización individual o implementar un sync por batch derivado de `nregistro` únicos procedentes de CIMA medicamento.
+- La publicación en la GFT pública queda pendiente; no se modifica todavía `v_gft_publicada` ni se expone el contenido cacheado en endpoints públicos.
