@@ -88,42 +88,46 @@ Esta tabla deberá revisarse antes de usarse en producción para alinear restric
 
 ## Estados previstos
 
-El futuro módulo deberá distinguir, como mínimo:
+El núcleo puro debe distinguir, como mínimo:
 
 - `ok`
 - `not_found`
-- `not_segmented` / `section_unavailable`
+- `not_segmented` para ausencia de listado segmentado o respuesta de error en el endpoint de secciones
+- `section_unavailable` para ausencia de una sección concreta o respuesta de error en el endpoint de contenido
 - `error`
 
-La nomenclatura exacta entre `not_segmented` y `section_unavailable` queda pendiente de validar con respuestas reales del endpoint antes de implementar el cliente. En particular, hay que observar si CIMA diferencia entre documento no segmentado, documento inexistente y sección concreta no disponible.
+## Hallazgos de prueba real controlada
+
+La prueba real controlada contra CIMA `docSegmentado` permitió fijar el contrato mínimo del parser y del cliente segmentado:
+
+- CN probados: `661406`, `689877`, `767418`.
+- `nregistro` observados desde CIMA medicamento: `70030`, `55211`, `1241885003`.
+- Los documentos de ficha técnica (`tipo=1`) mostraron `secc=True` en los tres casos.
+- `GET /docSegmentado/secciones/1?nregistro=70030` con `Accept: application/json` devolvió HTTP 200 y una lista JSON de secciones con campos como `seccion`, `titulo` y `orden`.
+- `GET /docSegmentado/contenido/1?nregistro=70030&seccion=4.1` con `Accept: application/json` devolvió HTTP 200 y una lista JSON con `contenido` en HTML.
+- La misma llamada de contenido con `Accept: text/plain` devolvió texto plano limpio.
+- Una sección inexistente, por ejemplo `9.9`, devolvió HTTP 200 con `{"error":"No existen secciones para el medicamento indicado"}`.
+- Implicación técnica: HTTP 200 con un objeto `error` no debe tratarse como `ok`; debe mapearse a `not_segmented` en el endpoint de secciones y a `section_unavailable` en el endpoint de contenido.
 
 ## Riesgos abiertos
 
 - No todas las fichas técnicas están segmentadas.
-- La respuesta exacta de los endpoints debe verificarse con llamadas reales antes de fijar fixtures y parser.
+- La respuesta del endpoint puede evolucionar; las fixtures fijan únicamente el contrato mínimo observado para parser y cliente.
 - Puede haber varios CN asociados al mismo `nregistro`.
 - Puede haber CN sin `nregistro` si CIMA medicamento no se sincronizó o falló.
 - La actualización de ficha técnica puede cambiar sin que cambie el estado GFT; habrá que definir después la política de refresco.
 
 ## Fixtures contractuales
 
-No se añaden fixtures contractuales en este PR. Antes de fijarlas se validará la forma real de la respuesta JSON del endpoint `docSegmentado` con llamadas controladas, porque la documentación disponible no es suficiente para cerrar de forma segura el contrato del parser.
+Se añaden fixtures sintéticas mínimas basadas en la forma real observada del endpoint `docSegmentado`. No son copias completas de respuestas oficiales y se usan únicamente para fijar el contrato de parser y cliente sin llamadas reales en tests:
 
-Las fixtures sintéticas mínimas deberán crearse únicamente después de confirmar la estructura real de:
-
-- el listado de secciones;
-- el contenido de la sección 4.1;
-- los casos sin segmentación o sin sección.
+- listado de secciones;
+- contenido JSON de la sección 4.1;
+- contenido `text/plain` de la sección 4.1;
+- objeto de error para sección no disponible.
 
 ## Próximo paso técnico
 
-- Ejecutar una prueba real controlada del endpoint `docSegmentado` con varios `nregistro`.
-- Capturar la forma real de:
-  - listado de secciones;
-  - contenido de la sección 4.1;
-  - caso sin segmentación / sin sección.
-- Con esa evidencia, crear:
-  - fixtures sintéticas mínimas;
-  - cliente;
-  - parser;
-  - sync individual.
+- Implementar sync individual usando `cima_ficha_tecnica_cache`, previa revisión/migración del modelo.
+- Alinear la tabla con la identidad lógica `(nregistro, tipo_documento, seccion)` y con estados de sincronización explícitos.
+- Integrar el sync después de CIMA medicamento para partir de `nregistro` únicos ya conocidos.
