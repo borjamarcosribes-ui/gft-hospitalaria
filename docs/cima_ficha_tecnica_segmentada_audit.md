@@ -57,34 +57,31 @@ La sección 4.1 sí es un campo mínimo ya requerido en la GFT. La sección 4.6 
 
 ## Revisión del modelo actual existente
 
-El modelo `app/models/cima_ficha_tecnica_cache.py` ya existe y define la tabla `cima_ficha_tecnica_cache`. Actualmente contiene los campos:
+El modelo `app/models/cima_ficha_tecnica_cache.py` ya existe y define la tabla `cima_ficha_tecnica_cache`. La tabla queda preparada para persistir secciones segmentadas de CIMA con los campos:
 
-- `id`
-- `cn`
-- `nregistro`
-- `tipo_documento`
-- `seccion`
-- `titulo`
-- `contenido_html`
-- `contenido_texto`
-- `fecha_documento`
-- `last_synced_at`
+- `id` como clave primaria técnica.
+- `cn` opcional, solo como referencia/trazabilidad.
+- `nregistro` obligatorio.
+- `tipo_documento` obligatorio.
+- `seccion` obligatoria.
+- `titulo` obligatorio.
+- `contenido_html` nullable.
+- `contenido_texto` nullable.
+- `fecha_documento` nullable.
+- `raw_data` nullable para conservar la respuesta original/parcial del endpoint segmentado.
+- `sync_status` obligatorio para reflejar el estado de sincronización.
+- `sync_error` nullable para conservar errores de sincronización.
+- `last_synced_at` nullable.
 
-Decisiones y requisitos para una futura implementación:
+La identidad lógica queda alineada con la decisión de auditoría mediante una restricción única sobre `(nregistro, tipo_documento, seccion)`. El CN no forma parte de esta identidad y varias presentaciones pueden seguir referenciando el mismo `nregistro`.
 
-- Probable unicidad lógica por `(nregistro, tipo_documento, seccion)`.
-- Conviene añadir `sync_status` y `sync_error`.
-- Valorar `raw_data` para trazabilidad.
-- `cn` debe ser opcional y no parte de la identidad.
-- La futura exposición pública deberá unir:
+La futura exposición pública deberá unir:
 
 ```text
 gft_estado_presentacion.cn
 -> cima_medicamento_cache.nregistro
 -> cima_ficha_tecnica_cache.nregistro + tipo_documento=1 + seccion='4.1'
 ```
-
-Esta tabla deberá revisarse antes de usarse en producción para alinear restricciones, estados de sincronización y trazabilidad con la semántica real observada del endpoint segmentado.
 
 ## Estados previstos
 
@@ -128,6 +125,5 @@ Se añaden fixtures sintéticas mínimas basadas en la forma real observada del 
 
 ## Próximo paso técnico
 
-- Implementar sync individual usando `cima_ficha_tecnica_cache`, previa revisión/migración del modelo.
-- Alinear la tabla con la identidad lógica `(nregistro, tipo_documento, seccion)` y con estados de sincronización explícitos.
+- Implementar sync individual de la sección 4.1 usando `CimaSegmentedClient` y `CimaFichaTecnicaCache`.
 - Integrar el sync después de CIMA medicamento para partir de `nregistro` únicos ya conocidos.
