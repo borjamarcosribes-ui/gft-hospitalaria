@@ -22,6 +22,10 @@ SELECT
   b.subgrupo_atc,
   ft41.contenido_texto AS indicaciones_ficha_tecnica,
   g.restricciones_hospitalarias,
+  g.ajuste_insuficiencia_renal,
+  g.ajuste_insuficiencia_hepatica,
+  g.precauciones_embarazo,
+  g.precauciones_lactancia,
   g.observaciones_internas
 FROM gft_estado_presentacion g
 LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn

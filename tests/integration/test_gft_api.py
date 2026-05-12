@@ -40,6 +40,10 @@ def _create_view(db_session):
               b.subgrupo_atc,
               ft41.contenido_texto AS indicaciones_ficha_tecnica,
               g.restricciones_hospitalarias,
+              g.ajuste_insuficiencia_renal,
+              g.ajuste_insuficiencia_hepatica,
+              g.precauciones_embarazo,
+              g.precauciones_lactancia,
               g.observaciones_internas
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
@@ -57,14 +61,28 @@ def _create_view(db_session):
     db_session.commit()
 
 
-def _insert_base_medicamento(db_session, cn: str, publicado: bool = True):
+def _insert_base_medicamento(
+    db_session,
+    cn: str,
+    publicado: bool = True,
+    estado_gft: str = "incluido",
+    estado_editorial: str | None = None,
+    ajuste_insuficiencia_renal: str | None = None,
+    ajuste_insuficiencia_hepatica: str | None = None,
+    precauciones_embarazo: str | None = None,
+    precauciones_lactancia: str | None = None,
+):
     db_session.add(
         GFTEstadoPresentacion(
             cn=cn,
-            estado_gft="incluido",
-            estado_editorial="publicado" if publicado else "borrador",
+            estado_gft=estado_gft,
+            estado_editorial=estado_editorial or ("publicado" if publicado else "borrador"),
             nemonico=f"NEM-{cn}",
             restricciones_hospitalarias="Uso hospitalario",
+            ajuste_insuficiencia_renal=ajuste_insuficiencia_renal,
+            ajuste_insuficiencia_hepatica=ajuste_insuficiencia_hepatica,
+            precauciones_embarazo=precauciones_embarazo,
+            precauciones_lactancia=precauciones_lactancia,
             observaciones_internas="Observación interna",
         )
     )
@@ -156,6 +174,80 @@ def test_gft_get_medicamento_detail_endpoint(client, db_session):
     assert isinstance(body["documentos"], list)
     assert body["documentos"]
 
+
+def test_gft_list_medicamentos_exposes_clinical_editorial_fields(client, db_session):
+    _insert_base_medicamento(
+        db_session,
+        "777101",
+        publicado=True,
+        ajuste_insuficiencia_renal="Ajuste renal editorial",
+        ajuste_insuficiencia_hepatica="Ajuste hepático editorial",
+        precauciones_embarazo="Precaución embarazo editorial",
+        precauciones_lactancia="Precaución lactancia editorial",
+    )
+    _create_view(db_session)
+
+    response = client.get("/gft/medicamentos")
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["ajuste_insuficiencia_renal"] == "Ajuste renal editorial"
+    assert item["ajuste_insuficiencia_hepatica"] == "Ajuste hepático editorial"
+    assert item["precauciones_embarazo"] == "Precaución embarazo editorial"
+    assert item["precauciones_lactancia"] == "Precaución lactancia editorial"
+
+
+def test_gft_detail_exposes_clinical_editorial_fields(client, db_session):
+    _insert_base_medicamento(
+        db_session,
+        "777102",
+        publicado=True,
+        ajuste_insuficiencia_renal="Ajuste renal detalle",
+        ajuste_insuficiencia_hepatica="Ajuste hepático detalle",
+        precauciones_embarazo="Precaución embarazo detalle",
+        precauciones_lactancia="Precaución lactancia detalle",
+    )
+    _create_view(db_session)
+
+    response = client.get("/gft/medicamentos/777102")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ajuste_insuficiencia_renal"] == "Ajuste renal detalle"
+    assert body["ajuste_insuficiencia_hepatica"] == "Ajuste hepático detalle"
+    assert body["precauciones_embarazo"] == "Precaución embarazo detalle"
+    assert body["precauciones_lactancia"] == "Precaución lactancia detalle"
+
+
+def test_gft_clinical_editorial_fields_are_null_when_empty(client, db_session):
+    _insert_base_medicamento(db_session, "777103", publicado=True)
+    _create_view(db_session)
+
+    list_response = client.get("/gft/medicamentos")
+    detail_response = client.get("/gft/medicamentos/777103")
+
+    assert list_response.status_code == 200
+    assert detail_response.status_code == 200
+    item = list_response.json()["items"][0]
+    detail = detail_response.json()
+    for payload in (item, detail):
+        assert payload["ajuste_insuficiencia_renal"] is None
+        assert payload["ajuste_insuficiencia_hepatica"] is None
+        assert payload["precauciones_embarazo"] is None
+        assert payload["precauciones_lactancia"] is None
+
+
+def test_gft_publication_rules_do_not_change_for_clinical_editorial_fields(client, db_session):
+    _insert_base_medicamento(db_session, "777104", publicado=True)
+    _insert_base_medicamento(db_session, "777105", publicado=True, estado_gft="excluido")
+    _insert_base_medicamento(db_session, "777106", publicado=True, estado_editorial="borrador")
+    _insert_base_medicamento(db_session, "777107", publicado=True, estado_editorial="pendiente")
+    _create_view(db_session)
+
+    response = client.get("/gft/medicamentos")
+
+    assert response.status_code == 200
+    assert [item["cn"] for item in response.json()["items"]] == ["777104"]
 
 def test_gft_list_medicamentos_exposes_indicaciones_ficha_tecnica(client, db_session):
     _insert_base_medicamento(db_session, "777001", publicado=True)

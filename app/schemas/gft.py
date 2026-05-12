@@ -69,6 +69,10 @@ class GFTMedicamentoListItem(BaseModel):
     principios_activos: list[GFTPrincipioActivoRef] = Field(default_factory=list)
     nemonico: str | None = None
     restricciones_hospitalarias: str | None = None
+    ajuste_insuficiencia_renal: str | None = None
+    ajuste_insuficiencia_hepatica: str | None = None
+    precauciones_embarazo: str | None = None
+    precauciones_lactancia: str | None = None
     situacion_financiacion: str | None = None
     url_ficha_tecnica: str | None = None
     url_prospecto: str | None = None
