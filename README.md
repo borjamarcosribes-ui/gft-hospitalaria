@@ -55,3 +55,7 @@ La estrategia técnica y de flujo para la futura ficha técnica segmentada de CI
 ## API pública GFT
 
 El contrato actual de la API pública `/gft` y el origen de sus campos están documentados en [docs/gft_public_api_contract.md](docs/gft_public_api_contract.md).
+
+## Edición clínica/editorial GFT
+
+El flujo previsto para edición clínica/editorial hospitalaria está documentado en [docs/gft_editorial_workflow.md](docs/gft_editorial_workflow.md).
