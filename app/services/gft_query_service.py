@@ -216,6 +216,7 @@ def _row_to_list_item(row, principios: list[dict]) -> dict:
         "url_prospecto": row["url_prospecto"],
         "fecha_ficha_tecnica": _row_get(row, "fecha_ficha_tecnica"),
         "fecha_prospecto": _row_get(row, "fecha_prospecto"),
+        "indicaciones_ficha_tecnica": _row_get(row, "indicaciones_ficha_tecnica"),
     }
 
 

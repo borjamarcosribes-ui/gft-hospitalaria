@@ -20,10 +20,16 @@ SELECT
   b.estado_nomenclator,
   b.aportacion_usuario,
   b.subgrupo_atc,
+  ft41.contenido_texto AS indicaciones_ficha_tecnica,
   g.restricciones_hospitalarias,
   g.observaciones_internas
 FROM gft_estado_presentacion g
 LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
 LEFT JOIN bifimed_cache b ON b.cn = g.cn
+LEFT JOIN cima_ficha_tecnica_cache ft41
+  ON ft41.nregistro = c.nregistro
+ AND ft41.tipo_documento = 1
+ AND ft41.seccion = '4.1'
+ AND ft41.sync_status = 'ok'
 WHERE g.estado_gft = 'incluido'
   AND g.estado_editorial = 'publicado';

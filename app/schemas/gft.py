@@ -74,6 +74,7 @@ class GFTMedicamentoListItem(BaseModel):
     url_prospecto: str | None = None
     fecha_ficha_tecnica: date | None = None
     fecha_prospecto: date | None = None
+    indicaciones_ficha_tecnica: str | None = None
 
 
 class GFTMedicamentoDetail(GFTMedicamentoListItem):

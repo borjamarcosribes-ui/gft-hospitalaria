@@ -3,7 +3,7 @@
 ## Objetivo funcional
 
 - Incorporar de forma automática a la GFT, en una primera versión, el texto oficial de “Indicaciones terapéuticas” de ficha técnica.
-- Mapear inicialmente la sección 4.1 de ficha técnica al futuro campo público: `indicaciones_ficha_tecnica`.
+- Mapear inicialmente la sección 4.1 de ficha técnica al campo público: `indicaciones_ficha_tecnica`.
 
 ## Fuente oficial observada
 
@@ -48,12 +48,12 @@ El batch futuro deberá operar sobre `nregistro` únicos derivados de los CN inc
 
 | Sección | Uso previsto | ¿Publicar automáticamente en v1? |
 | --- | --- | --- |
-| 4.1 Indicaciones terapéuticas | Preparar contenido oficial para futura publicación como `indicaciones_ficha_tecnica`. | No, pendiente de endpoint/publicación pública |
+| 4.1 Indicaciones terapéuticas | Alimentar el campo público `indicaciones_ficha_tecnica` desde la caché segmentada. | Sí, en `/gft` cuando la caché está en estado `ok` |
 | 4.6 Fertilidad, embarazo y lactancia | Candidata futura para texto oficial. | No |
 | 4.2 Posología y forma de administración | Candidata futura. | No |
 | Otras secciones | Fuera de v1. | No |
 
-La sección 4.1 sí es un campo mínimo ya requerido en la GFT, pero en esta fase solo se sincroniza y cachea; no se publica todavía en la GFT pública. La sección 4.6 puede aportar texto oficial, pero no sustituye por sí sola un futuro resumen hospitalario práctico de embarazo/lactancia. Ajuste renal y hepático no se asumirán automáticamente de una única sección en v1.
+La sección 4.1 sí es un campo mínimo ya requerido en la GFT y se expone públicamente como `indicaciones_ficha_tecnica` en `/gft/medicamentos` y `/gft/medicamentos/{cn}` cuando existe caché segmentada coincidente con `tipo_documento=1`, `seccion='4.1'` y `sync_status='ok'`. La exposición pública utiliza únicamente `contenido_texto`; `contenido_html`, `raw_data`, `sync_status` y `sync_error` permanecen fuera de la respuesta pública. La sección 4.6 puede aportar texto oficial en el futuro, pero no sustituye por sí sola un futuro resumen hospitalario práctico de embarazo/lactancia. Ajuste renal y hepático no se asumirán automáticamente de una única sección en v1.
 
 ## Revisión del modelo actual existente
 
@@ -128,5 +128,6 @@ Se añaden fixtures sintéticas mínimas basadas en la forma real observada del 
 - Ya existe sync individual de sección segmentada mediante `sync_cima_segmented_section`, persistiendo contra `cima_ficha_tecnica_cache` con identidad `nregistro + tipo_documento + seccion`.
 - Ya existen endpoints individuales por `nregistro` para sincronizar (`POST /cima/segmented/sync/{nregistro}`) y consultar caché (`GET /cima/segmented/cache/{nregistro}`) sin exponer `raw_data`.
 - Ya existe sync por batch de CIMA ficha técnica segmentada derivado de los `nregistro` únicos disponibles en la caché de CIMA medicamento para CN incluidos válidos del staging.
-- El flujo E2E completo de importación ya incluye CIMA ficha técnica segmentada batch después de CIMA medicamento y antes de BIFIMED, sin exponer todavía el contenido cacheado en la GFT pública.
-- El siguiente paso será exponer `indicaciones_ficha_tecnica` en la vista pública y en los endpoints `/gft`, actualizando la publicación sin modificar antes de tiempo la respuesta pública actual.
+- El flujo E2E completo de importación ya incluye CIMA ficha técnica segmentada batch después de CIMA medicamento y antes de BIFIMED.
+- `indicaciones_ficha_tecnica` ya se expone en la vista pública y en los endpoints `/gft` desde la sección 4.1 cacheada. La unión pública parte de `cima_medicamento_cache.nregistro` hacia `cima_ficha_tecnica_cache.nregistro` y filtra `tipo_documento=1`, `seccion='4.1'` y `sync_status='ok'`.
+- La respuesta pública solo incluye `contenido_texto` como `indicaciones_ficha_tecnica`; no expone `contenido_html`, `raw_data`, `sync_status` ni `sync_error`.
