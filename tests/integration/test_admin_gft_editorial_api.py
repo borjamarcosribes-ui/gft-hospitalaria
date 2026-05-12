@@ -349,3 +349,157 @@ def test_admin_gft_editorial_patch_then_get_returns_updated_values(client, db_se
     assert body["estado_gft"] == "incluido"
     assert body["estado_editorial"] == "borrador"
     assert body["ajuste_insuficiencia_renal"] == "Ajustar FG actualizado"
+
+
+def test_admin_gft_editorial_list_requires_admin_key(client, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+
+    response = client.get("/admin/gft/medicamentos/editorial")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Missing admin API key"
+
+
+def test_admin_gft_editorial_list_returns_rows(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(
+        db_session,
+        cn="111111",
+        estado_gft="incluido",
+        estado_editorial="publicado",
+        nemonico="AAA",
+    )
+    _insert_gft_estado(
+        db_session,
+        cn="222222",
+        estado_gft="pendiente_revision",
+        estado_editorial="borrador",
+        nemonico="BBB",
+    )
+
+    response = client.get("/admin/gft/medicamentos/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert body["limit"] == 50
+    assert body["offset"] == 0
+    assert [item["cn"] for item in body["items"]] == ["111111", "222222"]
+    assert body["items"][0]["estado_editorial"] == "publicado"
+    assert body["items"][1]["estado_editorial"] == "borrador"
+    assert "observaciones_internas" not in body["items"][0]
+    assert "comentario_revision" not in body["items"][0]
+
+
+def test_admin_gft_editorial_list_filters_by_estado_gft(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido")
+    _insert_gft_estado(db_session, cn="222222", estado_gft="pendiente_revision")
+
+    response = client.get(
+        "/admin/gft/medicamentos/editorial?estado_gft=pendiente_revision",
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert [item["cn"] for item in body["items"]] == ["222222"]
+    assert body["items"][0]["estado_gft"] == "pendiente_revision"
+
+
+def test_admin_gft_editorial_list_filters_by_estado_editorial(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_editorial="publicado")
+    _insert_gft_estado(db_session, cn="222222", estado_editorial="borrador")
+
+    response = client.get(
+        "/admin/gft/medicamentos/editorial?estado_editorial=borrador",
+        headers=ADMIN_HEADERS,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert [item["cn"] for item in body["items"]] == ["222222"]
+    assert body["items"][0]["estado_editorial"] == "borrador"
+
+
+def test_admin_gft_editorial_list_filters_by_q_cn_or_nemonico(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", nemonico="ALFA")
+    _insert_gft_estado(db_session, cn="222222", nemonico="BETA")
+
+    alfa_response = client.get("/admin/gft/medicamentos/editorial?q=ALFA", headers=ADMIN_HEADERS)
+    cn_response = client.get("/admin/gft/medicamentos/editorial?q=222", headers=ADMIN_HEADERS)
+
+    assert alfa_response.status_code == 200
+    assert [item["cn"] for item in alfa_response.json()["items"]] == ["111111"]
+    assert cn_response.status_code == 200
+    assert [item["cn"] for item in cn_response.json()["items"]] == ["222222"]
+
+
+def test_admin_gft_editorial_list_filters_by_q_clinical_text(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", ajuste_insuficiencia_renal="Ajustar FG")
+    _insert_gft_estado(db_session, cn="222222", ajuste_insuficiencia_renal="Sin ajuste")
+
+    response = client.get("/admin/gft/medicamentos/editorial?q=fg", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert [item["cn"] for item in body["items"]] == ["111111"]
+
+
+def test_admin_gft_editorial_list_paginates(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111")
+    _insert_gft_estado(db_session, cn="222222")
+    _insert_gft_estado(db_session, cn="333333")
+
+    response = client.get(
+        "/admin/gft/medicamentos/editorial?limit=2&offset=1", headers=ADMIN_HEADERS
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 3
+    assert body["limit"] == 2
+    assert body["offset"] == 1
+    assert [item["cn"] for item in body["items"]] == ["222222", "333333"]
+
+
+def test_admin_gft_editorial_list_rejects_invalid_limit(client, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+
+    for limit in (0, 201):
+        response = client.get(
+            f"/admin/gft/medicamentos/editorial?limit={limit}", headers=ADMIN_HEADERS
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "limit debe estar entre 1 y 200"
+
+
+def test_admin_gft_editorial_list_rejects_invalid_offset(client, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+
+    response = client.get("/admin/gft/medicamentos/editorial?offset=-1", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "offset debe ser mayor o igual a 0"
+
+
+def test_admin_gft_editorial_list_route_order_does_not_treat_editorial_as_cn(
+    client, db_session, monkeypatch
+):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111")
+
+    response = client.get("/admin/gft/medicamentos/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["cn"] == "111111"

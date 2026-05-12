@@ -22,6 +22,35 @@ Los campos clínicos/editoriales que se prevé mantener mediante el flujo intern
 - No modifica el contenido procedente de CIMA o BIFIMED.
 - No modifica las reglas de publicación de la GFT pública.
 
+## Endpoint admin de listado editorial
+
+La API interna permite listar filas editoriales de medicamentos GFT para localizar qué `CN` editar desde un futuro panel de administración mediante:
+
+```http
+GET /admin/gft/medicamentos/editorial
+X-Admin-API-Key: <ADMIN_API_KEY>
+```
+
+El endpoint requiere el header `X-Admin-API-Key` y utiliza la protección admin común. Está pensado para alimentar el futuro panel admin de edición clínica/editorial.
+
+Comportamiento y alcance:
+
+- Lee directamente de `gft_estado_presentacion`.
+- No usa la vista pública `v_gft_publicada`.
+- Incluye medicamentos publicados y no publicados, como borradores, pendientes o excluidos.
+- No crea medicamentos nuevos ni filas nuevas.
+- No incluye datos CIMA/BIFIMED ni construye la ficha pública completa.
+
+Parámetros de consulta disponibles:
+
+- `estado_gft`: filtra por el estado GFT exacto tras normalizar espacios.
+- `estado_editorial`: filtra por el estado editorial exacto tras normalizar espacios.
+- `q`: busca parcialmente por `CN`, `nemonico` y textos clínicos/editoriales básicos (`restricciones_hospitalarias`, `ajuste_insuficiencia_renal`, `ajuste_insuficiencia_hepatica`, `precauciones_embarazo` y `precauciones_lactancia`).
+- `limit`: tamaño de página, entre 1 y 200. Por defecto, 50.
+- `offset`: desplazamiento de página, mayor o igual a 0. Por defecto, 0.
+
+La respuesta devuelve `total`, `limit`, `offset` e `items` ordenados por `CN` ascendente. Cada elemento incluye estados, nemónico, campos clínicos/editoriales básicos y metadatos de revisión/importación disponibles.
+
 ## Endpoint admin de consulta editorial
 
 La API interna permite consultar los campos clínicos/editoriales actuales de un medicamento GFT existente mediante:
