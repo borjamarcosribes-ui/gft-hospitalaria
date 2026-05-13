@@ -49,6 +49,38 @@ Esto implica que:
 - No se puede publicar un medicamento excluido o pendiente de revisión.
 - No se puede excluir un medicamento que queda publicado; primero debe despublicarse en la misma operación o en una operación previa.
 
+## Endpoint admin de cambio de estado
+
+La API interna expone este flujo mediante un endpoint admin protegido:
+
+```http
+PATCH /admin/gft/medicamentos/{cn}/estado
+X-Admin-API-Key: <ADMIN_API_KEY>
+```
+
+El endpoint requiere el header `X-Admin-API-Key` y usa la protección admin común. Actualiza únicamente estados y metadatos de revisión sobre una fila existente de `gft_estado_presentacion`.
+
+Cuerpo permitido:
+
+- `estado_gft`: nuevo estado GFT, opcional.
+- `estado_editorial`: nuevo estado editorial, opcional.
+- `comentario_revision`: comentario de revisión, opcional.
+- `revisado_por`: persona o equipo revisor, opcional.
+
+Restricciones:
+
+- No edita campos clínicos ni editoriales descriptivos.
+- No crea medicamentos nuevos ni filas nuevas.
+- Rechaza campos no permitidos en el cuerpo de la petición.
+- Rechaza estados fuera de los enums internos.
+- Rechaza dejar `estado_editorial = publicado` si `estado_gft` no es `incluido`.
+- Rechaza peticiones que solo envían metadatos de revisión sin `estado_gft` ni `estado_editorial`.
+
+La visibilidad pública en `/gft` sigue dependiendo exclusivamente de que se cumplan simultáneamente:
+
+- `estado_gft = incluido`
+- `estado_editorial = publicado`
+
 ## Ejemplos de transiciones válidas
 
 - `pendiente_revision` / `borrador` → `incluido` / `validado`
@@ -58,5 +90,4 @@ Esto implica que:
 
 ## Pendiente
 
-- Exponer este flujo mediante un endpoint admin protegido.
-- Integrarlo en un futuro panel admin.
+- Integrar este flujo en un futuro panel admin.

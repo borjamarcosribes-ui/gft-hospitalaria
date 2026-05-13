@@ -129,7 +129,7 @@ Permite actualizar los siguientes campos:
 
 Restricciones del endpoint:
 
-- No permite cambiar `estado_gft` ni `estado_editorial`.
+- No permite cambiar `estado_gft` ni `estado_editorial`; los cambios de estado se realizan mediante `PATCH /admin/gft/medicamentos/{cn}/estado`.
 - No permite cambiar `cn` desde el cuerpo de la petición.
 - No crea medicamentos nuevos: si el `CN` no existe en `gft_estado_presentacion`, responde 404.
 - Los cambios son visibles en `/gft` si el medicamento está incluido y publicado.
