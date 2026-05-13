@@ -4,17 +4,60 @@ import {
   getGftEditorialMedicamento,
   getGftEditorialSummary,
   listGftEditorialMedicamentos,
+  updateGftMedicationEditorial,
 } from '../services/adminApi';
 import type {
   GFTEditorialAdminListResponse,
   GFTEditorialAdminResponse,
   GFTEditorialAdminSummaryResponse,
+  GFTEditorialUpdatePayload,
 } from '../types/admin';
 
 const ADMIN_SESSION_KEY = 'gft-admin-api-key';
 const DEFAULT_LIMIT = 50;
 const ESTADO_GFT_OPTIONS = ['incluido', 'excluido', 'pendiente_revision'];
 const ESTADO_EDITORIAL_OPTIONS = ['borrador', 'validado', 'publicado', 'retirado'];
+
+type EditableClinicalField = keyof GFTEditorialUpdatePayload;
+type EditorialFormState = Record<EditableClinicalField, string>;
+
+const EDITABLE_CLINICAL_FIELDS: Array<{ key: EditableClinicalField; label: string; control: 'textarea' | 'input' }> = [
+  { key: 'restricciones_hospitalarias', label: 'Restricciones hospitalarias', control: 'textarea' },
+  { key: 'ajuste_insuficiencia_renal', label: 'Ajuste insuficiencia renal', control: 'textarea' },
+  { key: 'ajuste_insuficiencia_hepatica', label: 'Ajuste insuficiencia hepática', control: 'textarea' },
+  { key: 'precauciones_embarazo', label: 'Precauciones embarazo', control: 'textarea' },
+  { key: 'precauciones_lactancia', label: 'Precauciones lactancia', control: 'textarea' },
+  { key: 'observaciones_internas', label: 'Observaciones internas', control: 'textarea' },
+  { key: 'comentario_revision', label: 'Comentario de revisión', control: 'textarea' },
+  { key: 'revisado_por', label: 'Revisado por', control: 'input' },
+];
+
+function buildEditorialFormState(detail: GFTEditorialAdminResponse): EditorialFormState {
+  return EDITABLE_CLINICAL_FIELDS.reduce((formState, field) => ({
+    ...formState,
+    [field.key]: detail[field.key] ?? '',
+  }), {} as EditorialFormState);
+}
+
+function normalizeEditorialValue(value: string): string | null {
+  const cleanValue = value.trim();
+  return cleanValue ? cleanValue : null;
+}
+
+function buildEditorialPayload(detail: GFTEditorialAdminResponse, formState: EditorialFormState): GFTEditorialUpdatePayload {
+  return EDITABLE_CLINICAL_FIELDS.reduce((payload, field) => {
+    const normalizedValue = normalizeEditorialValue(formState[field.key]);
+
+    if (normalizedValue !== detail[field.key]) {
+      return {
+        ...payload,
+        [field.key]: normalizedValue,
+      };
+    }
+
+    return payload;
+  }, {} as GFTEditorialUpdatePayload);
+}
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -76,6 +119,11 @@ export function AdminGftPage() {
   const [detail, setDetail] = useState<GFTEditorialAdminResponse | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [isEditingClinicalInfo, setIsEditingClinicalInfo] = useState(false);
+  const [editorialForm, setEditorialForm] = useState<EditorialFormState | null>(null);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
   const checkAccess = useCallback(async (candidateKey: string, persist: boolean) => {
     const cleanKey = candidateKey.trim();
@@ -186,6 +234,11 @@ export function AdminGftPage() {
     setDetail(null);
     setDetailLoading(true);
     setDetailError(null);
+    setIsEditingClinicalInfo(false);
+    setEditorialForm(null);
+    setSaveError(null);
+    setSaveSuccess(null);
+    setSaveLoading(false);
 
     try {
       setDetail(await getGftEditorialMedicamento(apiKey, cn));
@@ -205,6 +258,62 @@ export function AdminGftPage() {
     setListData(null);
     setDetail(null);
     setSelectedCn(null);
+    setIsEditingClinicalInfo(false);
+    setEditorialForm(null);
+    setSaveError(null);
+    setSaveSuccess(null);
+    setSaveLoading(false);
+  };
+
+  const handleStartEditingClinicalInfo = () => {
+    if (!detail) {
+      return;
+    }
+
+    setEditorialForm(buildEditorialFormState(detail));
+    setIsEditingClinicalInfo(true);
+    setSaveError(null);
+    setSaveSuccess(null);
+  };
+
+  const handleCancelEditingClinicalInfo = () => {
+    setEditorialForm(detail ? buildEditorialFormState(detail) : null);
+    setIsEditingClinicalInfo(false);
+    setSaveError(null);
+  };
+
+  const handleEditorialFormChange = (field: EditableClinicalField, value: string) => {
+    setEditorialForm((currentForm) => (currentForm ? { ...currentForm, [field]: value } : currentForm));
+  };
+
+  const handleSaveClinicalInfo = async () => {
+    if (!apiKey || !detail || !editorialForm) {
+      return;
+    }
+
+    setSaveLoading(true);
+    setSaveError(null);
+    setSaveSuccess(null);
+
+    try {
+      const payload = buildEditorialPayload(detail, editorialForm);
+      const updatedDetail = await updateGftMedicationEditorial(apiKey, detail.cn, payload);
+
+      setDetail(updatedDetail);
+      setEditorialForm(buildEditorialFormState(updatedDetail));
+      setListData((currentList) => (currentList
+        ? {
+            ...currentList,
+            items: currentList.items.map((item) => (item.cn === updatedDetail.cn ? { ...item, ...updatedDetail } : item)),
+          }
+        : currentList));
+      setIsEditingClinicalInfo(false);
+      setSaveSuccess('Información clínica actualizada correctamente.');
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'No se pudieron guardar los cambios clínicos/editoriales.');
+    } finally {
+      setSaveLoading(false);
+    }
   };
 
   const summaryCards = useMemo(
@@ -445,16 +554,65 @@ export function AdminGftPage() {
                         <dt>Estado editorial</dt><dd><StatusBadge value={detail.estado_editorial} tone={detail.estado_editorial === 'publicado' ? 'blue' : 'amber'} /></dd>
                       </dl>
                     </section>
-                    <section>
-                      <h3>Campos clínicos/editoriales</h3>
-                      <dl>
-                        <dt>Restricciones hospitalarias</dt><dd><EmptyValue value={detail.restricciones_hospitalarias} /></dd>
-                        <dt>Ajuste insuficiencia renal</dt><dd><EmptyValue value={detail.ajuste_insuficiencia_renal} /></dd>
-                        <dt>Ajuste insuficiencia hepática</dt><dd><EmptyValue value={detail.ajuste_insuficiencia_hepatica} /></dd>
-                        <dt>Precauciones embarazo</dt><dd><EmptyValue value={detail.precauciones_embarazo} /></dd>
-                        <dt>Precauciones lactancia</dt><dd><EmptyValue value={detail.precauciones_lactancia} /></dd>
-                        <dt>Observaciones internas</dt><dd><EmptyValue value={detail.observaciones_internas} /></dd>
-                      </dl>
+                    <section className="admin-clinical-editor">
+                      <div className="admin-clinical-editor__header">
+                        <div>
+                          <h3>Campos clínicos/editoriales</h3>
+                          <p>Edición controlada de información clínica. Los datos identificativos y estados no son editables desde este panel.</p>
+                        </div>
+                        {!isEditingClinicalInfo ? (
+                          <button className="admin-button admin-button--secondary" type="button" onClick={handleStartEditingClinicalInfo}>
+                            Editar información clínica
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {saveSuccess ? <p className="admin-alert admin-alert--success">{saveSuccess}</p> : null}
+                      {saveError ? <p className="admin-alert admin-alert--error">{saveError}</p> : null}
+
+                      {isEditingClinicalInfo && editorialForm ? (
+                        <div className="admin-clinical-form" aria-busy={saveLoading}>
+                          {EDITABLE_CLINICAL_FIELDS.map((field) => (
+                            <label className="admin-clinical-form__field" key={field.key}>
+                              {field.label}
+                              {field.control === 'textarea' ? (
+                                <textarea
+                                  value={editorialForm[field.key]}
+                                  onChange={(event) => handleEditorialFormChange(field.key, event.target.value)}
+                                  disabled={saveLoading}
+                                  rows={4}
+                                />
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={editorialForm[field.key]}
+                                  onChange={(event) => handleEditorialFormChange(field.key, event.target.value)}
+                                  disabled={saveLoading}
+                                />
+                              )}
+                            </label>
+                          ))}
+                          <div className="admin-clinical-form__actions">
+                            <button className="admin-button admin-button--primary" type="button" onClick={() => void handleSaveClinicalInfo()} disabled={saveLoading}>
+                              {saveLoading ? 'Guardando…' : 'Guardar cambios'}
+                            </button>
+                            <button className="admin-button admin-button--secondary" type="button" onClick={handleCancelEditingClinicalInfo} disabled={saveLoading}>
+                              Cancelar
+                            </button>
+                            {saveLoading ? <span className="admin-save-status">Guardando información clínica…</span> : null}
+                          </div>
+                        </div>
+                      ) : (
+                        <dl>
+                          <dt>Restricciones hospitalarias</dt><dd><EmptyValue value={detail.restricciones_hospitalarias} /></dd>
+                          <dt>Ajuste insuficiencia renal</dt><dd><EmptyValue value={detail.ajuste_insuficiencia_renal} /></dd>
+                          <dt>Ajuste insuficiencia hepática</dt><dd><EmptyValue value={detail.ajuste_insuficiencia_hepatica} /></dd>
+                          <dt>Precauciones embarazo</dt><dd><EmptyValue value={detail.precauciones_embarazo} /></dd>
+                          <dt>Precauciones lactancia</dt><dd><EmptyValue value={detail.precauciones_lactancia} /></dd>
+                          <dt>Observaciones internas</dt><dd><EmptyValue value={detail.observaciones_internas} /></dd>
+                          <dt>Comentario de revisión</dt><dd><EmptyValue value={detail.comentario_revision} /></dd>
+                        </dl>
+                      )}
                     </section>
                     <section>
                       <h3>Metadatos de revisión</h3>
@@ -466,12 +624,6 @@ export function AdminGftPage() {
                         <dt>Importado</dt><dd>{formatDateTime(detail.last_imported_at)}</dd>
                       </dl>
                     </section>
-                    {detail.comentario_revision ? (
-                      <section className="admin-comment">
-                        <h3>Comentario de revisión</h3>
-                        <p>{detail.comentario_revision}</p>
-                      </section>
-                    ) : null}
                   </div>
                 ) : null}
               </aside>
