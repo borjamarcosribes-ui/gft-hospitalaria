@@ -14,8 +14,33 @@ from app.services.gft_editorial_service import (
     GFTEditorialValidationError,
     update_gft_editorial_fields,
 )
+from app.services.gft_state_service import (
+    GFTStateValidationError,
+    update_gft_publication_state,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+class GFTPublicationStateUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    estado_gft: str | None = None
+    estado_editorial: str | None = None
+    comentario_revision: str | None = None
+    revisado_por: str | None = None
+
+
+class GFTPublicationStateUpdateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    cn: str
+    estado_gft: str
+    estado_editorial: str
+    comentario_revision: str | None = None
+    revisado_por: str | None = None
+    fecha_revision: date | None = None
+    updated_at: datetime | None = None
 
 
 class GFTEditorialUpdateRequest(BaseModel):
@@ -240,6 +265,36 @@ def get_gft_medicamento_editorial(
         raise HTTPException(status_code=404, detail="Medicamento GFT no encontrado")
 
     return row
+
+
+@router.patch(
+    "/gft/medicamentos/{cn}/estado",
+    response_model=GFTPublicationStateUpdateResponse,
+)
+def update_gft_medicamento_publication_state(
+    cn: str,
+    body: GFTPublicationStateUpdateRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_api_key),
+):
+    payload = body.model_dump(exclude_unset=True)
+
+    try:
+        result = update_gft_publication_state(
+            db=db,
+            cn=cn,
+            estado_gft=payload.get("estado_gft"),
+            estado_editorial=payload.get("estado_editorial"),
+            comentario_revision=payload.get("comentario_revision"),
+            revisado_por=payload.get("revisado_por"),
+        )
+    except GFTStateValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Medicamento GFT no encontrado")
+
+    return result
 
 
 @router.patch(

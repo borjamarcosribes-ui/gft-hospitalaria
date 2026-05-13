@@ -25,6 +25,7 @@ Actualmente usan este guard los endpoints:
 - `GET /admin/gft/medicamentos/editorial/summary`
 - `GET /admin/gft/medicamentos/{cn}/editorial`
 - `PATCH /admin/gft/medicamentos/{cn}/editorial`
+- `PATCH /admin/gft/medicamentos/{cn}/estado`
 
 ## Alcance y limitaciones
 
