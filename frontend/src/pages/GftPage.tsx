@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GftActiveFilters } from '../components/gft/GftActiveFilters';
 import { GftAtcFilter } from '../components/gft/GftAtcFilter';
+import { GftAtcIndex } from '../components/gft/GftAtcIndex';
 import { GftAZFilter } from '../components/gft/GftAZFilter';
 import { GftInstitutionalHeader } from '../components/gft/GftInstitutionalHeader';
 import { GftMedicationList } from '../components/gft/GftMedicationList';
@@ -222,6 +223,7 @@ export function GftPage() {
               onChange={handleAtcChange}
             />
           </div>
+          <GftAtcIndex medications={data?.items ?? []} selectedAtc={atc} onSelectAtc={handleAtcChange} />
         </section>
 
         <GftActiveFilters

@@ -56,6 +56,8 @@ La estrategia técnica y de flujo para la futura ficha técnica segmentada de CI
 
 El contrato actual de la API pública `/gft` y el origen de sus campos están documentados en [docs/gft_public_api_contract.md](docs/gft_public_api_contract.md).
 
+La GFT pública incluye navegación visual por índice ATC para filtrar por grupos terapéuticos.
+
 ## Seguridad admin
 
 - [docs/admin_security.md](docs/admin_security.md) — protección mínima de endpoints admin.
