@@ -63,3 +63,7 @@ El contrato actual de la API pública `/gft` y el origen de sus campos están do
 ## Edición clínica/editorial GFT
 
 El flujo previsto para edición clínica/editorial hospitalaria está documentado en [docs/gft_editorial_workflow.md](docs/gft_editorial_workflow.md).
+
+## Cambio de estado GFT/editorial
+
+- [docs/gft_publication_state_workflow.md](docs/gft_publication_state_workflow.md) — reglas para cambio de estado GFT/editorial.
