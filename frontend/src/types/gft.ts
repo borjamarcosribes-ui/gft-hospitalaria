@@ -20,7 +20,12 @@ export interface GFTMedicamentoListItem {
   atc: GFTAtcRef[];
   principios_activos: GFTPrincipioActivoRef[];
   nemonico: string | null;
+  indicaciones_ficha_tecnica: string | null;
   restricciones_hospitalarias: string | null;
+  ajuste_insuficiencia_renal: string | null;
+  ajuste_insuficiencia_hepatica: string | null;
+  precauciones_embarazo: string | null;
+  precauciones_lactancia: string | null;
   situacion_financiacion: string | null;
   url_ficha_tecnica: string | null;
   url_prospecto: string | null;

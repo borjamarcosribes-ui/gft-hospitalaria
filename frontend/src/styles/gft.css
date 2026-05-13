@@ -666,6 +666,38 @@
   overflow-wrap: anywhere;
 }
 
+.gft-detail__section--clinical {
+  background: #f8fbfd;
+}
+
+.gft-detail__clinical-grid {
+  margin-top: 0.85rem;
+}
+
+.gft-detail__text-block {
+  border: 1px solid #d9e2ec;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 0.9rem 1rem;
+}
+
+.gft-detail__text-block h4 {
+  margin: 0;
+  color: #52616f;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.gft-detail__text-block p {
+  margin: 0.45rem 0 0;
+  color: #17324d;
+  line-height: 1.58;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .gft-detail-documents {
   display: grid;
   gap: 0.6rem;
