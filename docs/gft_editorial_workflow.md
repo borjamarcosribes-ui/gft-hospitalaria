@@ -13,6 +13,7 @@ Los campos clínicos/editoriales que se prevé mantener mediante el flujo intern
 - `precauciones_lactancia`
 - `observaciones_internas`
 - `comentario_revision`
+- `revisado_por`
 
 ## Reglas del flujo interno
 
@@ -31,7 +32,7 @@ GET /admin/gft/medicamentos/editorial
 X-Admin-API-Key: <ADMIN_API_KEY>
 ```
 
-El endpoint requiere el header `X-Admin-API-Key` y utiliza la protección admin común. Está pensado para alimentar el futuro panel admin de edición clínica/editorial.
+El endpoint requiere el header `X-Admin-API-Key` y utiliza la protección admin común. Alimenta el panel admin `/admin/gft`, donde se selecciona el medicamento que se va a revisar o editar.
 
 Comportamiento y alcance:
 
@@ -53,14 +54,14 @@ La respuesta devuelve `total`, `limit`, `offset` e `items` ordenados por `CN` as
 
 ## Endpoint admin de resumen editorial
 
-La API interna permite obtener un resumen de estados GFT/editoriales para la cabecera o cuadro de mando del futuro panel de administración mediante:
+La API interna permite obtener un resumen de estados GFT/editoriales para la cabecera o cuadro de mando del panel de administración mediante:
 
 ```http
 GET /admin/gft/medicamentos/editorial/summary
 X-Admin-API-Key: <ADMIN_API_KEY>
 ```
 
-El endpoint requiere el header `X-Admin-API-Key` y utiliza la protección admin común. Está pensado para mostrar métricas agregadas sin cargar el listado completo.
+El endpoint requiere el header `X-Admin-API-Key` y utiliza la protección admin común. Está pensado para mostrar métricas agregadas sin cargar el listado completo en `/admin/gft`.
 
 Comportamiento y alcance:
 
@@ -91,7 +92,7 @@ GET /admin/gft/medicamentos/{cn}/editorial
 X-Admin-API-Key: <ADMIN_API_KEY>
 ```
 
-El endpoint requiere el header `X-Admin-API-Key` y utiliza la protección admin común. Sirve para cargar el formulario de edición antes de enviar cambios con `PATCH /admin/gft/medicamentos/{cn}/editorial`.
+El endpoint requiere el header `X-Admin-API-Key` y utiliza la protección admin común. Sirve para cargar el detalle y el formulario de edición clínica/editorial del panel `/admin/gft` antes de enviar cambios con `PATCH /admin/gft/medicamentos/{cn}/editorial`.
 
 Comportamiento y alcance:
 
@@ -124,18 +125,21 @@ Permite actualizar los siguientes campos:
 - `precauciones_lactancia`
 - `observaciones_internas`
 - `comentario_revision`
+- `revisado_por`
 
-`revisado_por` puede enviarse como metadato de revisión, pero no es un campo clínico. Cuando se informa, se normaliza y actualiza junto con la fecha de revisión.
+`revisado_por` se mantiene como metadato de revisión. Cuando se informa, se normaliza y actualiza junto con la fecha de revisión.
 
 Restricciones del endpoint:
 
-- No permite cambiar `estado_gft` ni `estado_editorial`; los cambios de estado se realizan mediante `PATCH /admin/gft/medicamentos/{cn}/estado`.
+- No permite cambiar `estado_gft` ni `estado_editorial`; los cambios de estado se realizan en un flujo separado mediante `PATCH /admin/gft/medicamentos/{cn}/estado`. El panel `/admin/gft` no edita estados en el formulario clínico/editorial.
 - No permite cambiar `cn` desde el cuerpo de la petición.
 - No crea medicamentos nuevos: si el `CN` no existe en `gft_estado_presentacion`, responde 404.
 - Los cambios son visibles en `/gft` si el medicamento está incluido y publicado.
 
 Los campos omitidos se conservan sin cambios. Un campo permitido enviado explícitamente como `null` se limpia.
 
-## Pendiente
+## Panel admin `/admin/gft`
 
-- Crear un panel de administración para la edición clínica/editorial hospitalaria.
+El panel admin `/admin/gft` ya permite seleccionar un medicamento existente, consultar sus datos identificativos y editar de forma controlada los campos clínicos/editoriales anteriores mediante `PATCH /admin/gft/medicamentos/{cn}/editorial`.
+
+El panel mantiene como solo lectura los campos identificativos (`CN`, nombre comercial, principio activo, forma farmacéutica, vía de administración y código ATC) y los estados (`estado_gft` y `estado_editorial`). Los estados GFT/editorial continúan en un flujo separado mediante `PATCH /admin/gft/medicamentos/{cn}/estado`.

@@ -3,6 +3,8 @@ import type {
   GFTEditorialAdminListResponse,
   GFTEditorialAdminResponse,
   GFTEditorialAdminSummaryResponse,
+  GFTEditorialUpdatePayload,
+  GFTEditorialUpdateResponse,
   ListGftEditorialMedicamentosParams,
 } from '../types/admin';
 
@@ -25,6 +27,13 @@ function buildAdminHeaders(apiKey: string): HeadersInit {
   };
 }
 
+function buildAdminJsonHeaders(apiKey: string): HeadersInit {
+  return {
+    ...buildAdminHeaders(apiKey),
+    'Content-Type': 'application/json',
+  };
+}
+
 async function readErrorDetail(response: Response): Promise<string | null> {
   try {
     const body = (await response.json()) as { detail?: unknown };
@@ -34,11 +43,7 @@ async function readErrorDetail(response: Response): Promise<string | null> {
   }
 }
 
-async function fetchAdminJson<T>(pathOrUrl: string | URL, apiKey: string): Promise<T> {
-  const response = await fetch(pathOrUrl instanceof URL ? pathOrUrl.toString() : buildUrl(pathOrUrl).toString(), {
-    headers: buildAdminHeaders(apiKey),
-  });
-
+async function handleAdminResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const detail = await readErrorDetail(response);
 
@@ -54,6 +59,24 @@ async function fetchAdminJson<T>(pathOrUrl: string | URL, apiKey: string): Promi
   }
 
   return response.json() as Promise<T>;
+}
+
+async function fetchAdminJson<T>(pathOrUrl: string | URL, apiKey: string): Promise<T> {
+  const response = await fetch(pathOrUrl instanceof URL ? pathOrUrl.toString() : buildUrl(pathOrUrl).toString(), {
+    headers: buildAdminHeaders(apiKey),
+  });
+
+  return handleAdminResponse<T>(response);
+}
+
+async function patchAdminJson<T>(path: string, apiKey: string, body: unknown): Promise<T> {
+  const response = await fetch(buildUrl(path).toString(), {
+    method: 'PATCH',
+    headers: buildAdminJsonHeaders(apiKey),
+    body: JSON.stringify(body),
+  });
+
+  return handleAdminResponse<T>(response);
 }
 
 function setQueryParam(url: URL, key: string, value?: string) {
@@ -88,4 +111,16 @@ export function listGftEditorialMedicamentos(
 
 export function getGftEditorialMedicamento(apiKey: string, cn: string): Promise<GFTEditorialAdminResponse> {
   return fetchAdminJson<GFTEditorialAdminResponse>(`/admin/gft/medicamentos/${encodeURIComponent(cn)}/editorial`, apiKey);
+}
+
+export function updateGftMedicationEditorial(
+  apiKey: string,
+  cn: string,
+  payload: GFTEditorialUpdatePayload,
+): Promise<GFTEditorialUpdateResponse> {
+  return patchAdminJson<GFTEditorialUpdateResponse>(
+    `/admin/gft/medicamentos/${encodeURIComponent(cn)}/editorial`,
+    apiKey,
+    payload,
+  );
 }

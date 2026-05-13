@@ -47,6 +47,31 @@ export interface GFTEditorialAdminResponse extends GFTEditorialAdminListItem {
   comentario_revision: string | null;
 }
 
+export interface GFTEditorialUpdatePayload {
+  restricciones_hospitalarias?: string | null;
+  ajuste_insuficiencia_renal?: string | null;
+  ajuste_insuficiencia_hepatica?: string | null;
+  precauciones_embarazo?: string | null;
+  precauciones_lactancia?: string | null;
+  observaciones_internas?: string | null;
+  comentario_revision?: string | null;
+  revisado_por?: string | null;
+}
+
+export interface GFTEditorialUpdateResponse {
+  cn: string;
+  restricciones_hospitalarias: string | null;
+  ajuste_insuficiencia_renal: string | null;
+  ajuste_insuficiencia_hepatica: string | null;
+  precauciones_embarazo: string | null;
+  precauciones_lactancia: string | null;
+  observaciones_internas: string | null;
+  comentario_revision: string | null;
+  revisado_por: string | null;
+  fecha_revision: string | null;
+  updated_at: string | null;
+}
+
 export interface ListGftEditorialMedicamentosParams {
   q?: string;
   estado_gft?: string;
