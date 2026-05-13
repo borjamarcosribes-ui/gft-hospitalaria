@@ -45,18 +45,37 @@ function normalizeEditorialValue(value: string): string | null {
 }
 
 function buildEditorialPayload(detail: GFTEditorialAdminResponse, formState: EditorialFormState): GFTEditorialUpdatePayload {
-  return EDITABLE_CLINICAL_FIELDS.reduce((payload, field) => {
+  const payload = EDITABLE_CLINICAL_FIELDS.reduce((currentPayload, field) => {
+    if (field.key === 'revisado_por') {
+      return currentPayload;
+    }
+
     const normalizedValue = normalizeEditorialValue(formState[field.key]);
 
     if (normalizedValue !== detail[field.key]) {
       return {
-        ...payload,
+        ...currentPayload,
         [field.key]: normalizedValue,
       };
     }
 
-    return payload;
+    return currentPayload;
   }, {} as GFTEditorialUpdatePayload);
+
+  if (Object.keys(payload).length === 0) {
+    return payload;
+  }
+
+  const normalizedReviewer = normalizeEditorialValue(formState.revisado_por);
+
+  if (normalizedReviewer !== detail.revisado_por) {
+    return {
+      ...payload,
+      revisado_por: normalizedReviewer,
+    };
+  }
+
+  return payload;
 }
 
 function formatDate(value: string | null): string {
@@ -297,16 +316,20 @@ export function AdminGftPage() {
 
     try {
       const payload = buildEditorialPayload(detail, editorialForm);
-      const updatedDetail = await updateGftMedicationEditorial(apiKey, detail.cn, payload);
 
-      setDetail(updatedDetail);
-      setEditorialForm(buildEditorialFormState(updatedDetail));
-      setListData((currentList) => (currentList
-        ? {
-            ...currentList,
-            items: currentList.items.map((item) => (item.cn === updatedDetail.cn ? { ...item, ...updatedDetail } : item)),
-          }
-        : currentList));
+      if (Object.keys(payload).length === 0) {
+        setEditorialForm(buildEditorialFormState(detail));
+        setIsEditingClinicalInfo(false);
+        setSaveSuccess('No hay cambios clínicos/editoriales para guardar.');
+        return;
+      }
+
+      await updateGftMedicationEditorial(apiKey, detail.cn, payload);
+      const fullDetail = await getGftEditorialMedicamento(apiKey, detail.cn);
+
+      setDetail(fullDetail);
+      setEditorialForm(buildEditorialFormState(fullDetail));
+      await loadList(apiKey);
       setIsEditingClinicalInfo(false);
       setSaveSuccess('Información clínica actualizada correctamente.');
     } catch (error) {
