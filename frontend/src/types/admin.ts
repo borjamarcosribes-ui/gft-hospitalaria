@@ -18,6 +18,11 @@ export interface GFTEditorialAdminListItem {
   estado_gft: string;
   estado_editorial: string;
   nemonico: string | null;
+  nombre_comercial: string | null;
+  principio_activo: string | null;
+  forma_farmaceutica: string | null;
+  via_administracion: string | null;
+  codigo_atc: string | null;
   restricciones_hospitalarias: string | null;
   ajuste_insuficiencia_renal: string | null;
   ajuste_insuficiencia_hepatica: string | null;

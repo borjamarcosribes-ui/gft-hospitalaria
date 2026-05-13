@@ -1,6 +1,7 @@
 from sqlalchemy import text
 
 from app.core import config
+from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 
 
@@ -28,6 +29,28 @@ def _insert_gft_estado(
 def _get_gft_estado(db_session, cn: str) -> GFTEstadoPresentacion | None:
     db_session.expire_all()
     return db_session.get(GFTEstadoPresentacion, cn)
+
+
+def _insert_cima_medicamento(
+    db_session,
+    cn: str = "111111",
+    nombre: str | None = "Medicamento Test",
+    forma_farmaceutica: str | None = "Comprimido",
+    vias_administracion_json=None,
+    atc_json=None,
+    principios_activos_json=None,
+):
+    row = CimaMedicamentoCache(
+        cn=cn,
+        nombre=nombre,
+        forma_farmaceutica=forma_farmaceutica,
+        vias_administracion_json=vias_administracion_json,
+        atc_json=atc_json,
+        principios_activos_json=principios_activos_json,
+    )
+    db_session.add(row)
+    db_session.commit()
+    return row
 
 
 def _create_public_gft_view(db_session):
@@ -682,3 +705,157 @@ def test_admin_gft_editorial_list_route_order_does_not_treat_editorial_as_cn(
     body = response.json()
     assert body["total"] == 1
     assert body["items"][0]["cn"] == "111111"
+
+
+def test_admin_gft_editorial_list_returns_identifying_fields_when_internal_data_exists(
+    client, db_session, monkeypatch
+):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(
+        db_session,
+        cn="111111",
+        estado_gft="pendiente_revision",
+        estado_editorial="borrador",
+    )
+    _insert_cima_medicamento(
+        db_session,
+        cn="111111",
+        nombre="Dolocatil 1 g comprimidos",
+        principios_activos_json=[{"nombre": "Paracetamol"}],
+    )
+
+    response = client.get("/admin/gft/medicamentos/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["cn"] == "111111"
+    assert body["items"][0]["estado_gft"] == "pendiente_revision"
+    assert body["items"][0]["estado_editorial"] == "borrador"
+    assert body["items"][0]["nombre_comercial"] == "Dolocatil 1 g comprimidos"
+    assert body["items"][0]["principio_activo"] == "Paracetamol"
+
+
+def test_admin_gft_editorial_list_missing_internal_data_returns_nulls(
+    client, db_session, monkeypatch
+):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111")
+
+    response = client.get("/admin/gft/medicamentos/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["nombre_comercial"] is None
+    assert item["principio_activo"] is None
+    assert item["forma_farmaceutica"] is None
+    assert item["via_administracion"] is None
+    assert item["codigo_atc"] is None
+
+
+def test_admin_gft_editorial_list_filters_by_q_nombre_comercial(
+    client, db_session, monkeypatch
+):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111")
+    _insert_gft_estado(db_session, cn="222222")
+    _insert_cima_medicamento(db_session, cn="111111", nombre="Adiro comprimidos")
+    _insert_cima_medicamento(db_session, cn="222222", nombre="Otro medicamento")
+
+    response = client.get(
+        "/admin/gft/medicamentos/editorial?q=adiro", headers=ADMIN_HEADERS
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert [item["cn"] for item in body["items"]] == ["111111"]
+
+
+def test_admin_gft_editorial_list_filters_by_q_principio_activo(
+    client, db_session, monkeypatch
+):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111")
+    _insert_gft_estado(db_session, cn="222222")
+    _insert_cima_medicamento(
+        db_session,
+        cn="111111",
+        nombre="Medicamento uno",
+        principios_activos_json=[{"nombre": "Metformina"}],
+    )
+    _insert_cima_medicamento(
+        db_session,
+        cn="222222",
+        nombre="Medicamento dos",
+        principios_activos_json=[{"nombre": "Ibuprofeno"}],
+    )
+
+    response = client.get(
+        "/admin/gft/medicamentos/editorial?q=metformina", headers=ADMIN_HEADERS
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert [item["cn"] for item in body["items"]] == ["111111"]
+
+
+def test_admin_gft_editorial_get_returns_identifying_fields(
+    client, db_session, monkeypatch
+):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(
+        db_session,
+        cn="111111",
+        estado_gft="excluido",
+        estado_editorial="retirado",
+    )
+    _insert_cima_medicamento(
+        db_session,
+        cn="111111",
+        nombre="Ventolin inhalador",
+        forma_farmaceutica="Suspensión para inhalación",
+        vias_administracion_json=[{"nombre": "Vía inhalatoria"}],
+        atc_json=[{"codigo": "R03AC02", "nombre": "Salbutamol", "nivel": "L5"}],
+        principios_activos_json=[{"nombre": "Salbutamol"}],
+    )
+
+    response = client.get(
+        "/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cn"] == "111111"
+    assert body["estado_gft"] == "excluido"
+    assert body["nombre_comercial"] == "Ventolin inhalador"
+    assert body["principio_activo"] == "Salbutamol"
+    assert body["forma_farmaceutica"] == "Suspensión para inhalación"
+    assert body["via_administracion"] == "Vía inhalatoria"
+    assert body["codigo_atc"] == "R03AC02"
+
+
+def test_admin_gft_editorial_get_missing_internal_data_returns_nulls(
+    client, db_session, monkeypatch
+):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(
+        db_session,
+        cn="111111",
+        estado_gft="pendiente_revision",
+        estado_editorial="borrador",
+    )
+
+    response = client.get(
+        "/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["estado_gft"] == "pendiente_revision"
+    assert body["nombre_comercial"] is None
+    assert body["principio_activo"] is None
+    assert body["forma_farmaceutica"] is None
+    assert body["via_administracion"] is None
+    assert body["codigo_atc"] is None

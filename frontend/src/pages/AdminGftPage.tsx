@@ -379,8 +379,8 @@ export function AdminGftPage() {
                         onClick={() => void handleSelect(item.cn)}
                       >
                         <td><button type="button" onClick={(event) => { event.stopPropagation(); void handleSelect(item.cn); }}>{item.cn}</button></td>
-                        <td><span className="admin-muted">No disponible en endpoint admin</span></td>
-                        <td><span className="admin-muted">No disponible en endpoint admin</span></td>
+                        <td><EmptyValue value={item.nombre_comercial} /></td>
+                        <td><EmptyValue value={item.principio_activo} /></td>
                         <td><EmptyValue value={item.nemonico} /></td>
                         <td><StatusBadge value={item.estado_gft} tone={item.estado_gft === 'incluido' ? 'green' : 'neutral'} /></td>
                         <td><StatusBadge value={item.estado_editorial} tone={item.estado_editorial === 'publicado' ? 'blue' : 'amber'} /></td>
@@ -430,6 +430,11 @@ export function AdminGftPage() {
                       <h3>Datos identificativos</h3>
                       <dl>
                         <dt>CN</dt><dd>{detail.cn}</dd>
+                        <dt>Nombre comercial</dt><dd><EmptyValue value={detail.nombre_comercial} /></dd>
+                        <dt>Principio activo</dt><dd><EmptyValue value={detail.principio_activo} /></dd>
+                        <dt>Forma farmacéutica</dt><dd><EmptyValue value={detail.forma_farmaceutica} /></dd>
+                        <dt>Vía administración</dt><dd><EmptyValue value={detail.via_administracion} /></dd>
+                        <dt>Código ATC</dt><dd><EmptyValue value={detail.codigo_atc} /></dd>
                         <dt>Nemónico</dt><dd><EmptyValue value={detail.nemonico} /></dd>
                       </dl>
                     </section>

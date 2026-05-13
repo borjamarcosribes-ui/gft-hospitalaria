@@ -3,13 +3,17 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, or_
+from sqlalchemy import String, cast, exists, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.admin_security import require_admin_api_key
 from app.core.database import get_db
 from app.core.enums import ESTADO_EDITORIAL_VALUES, ESTADO_GFT_VALUES
+from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
+from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
+from app.models.principio_activo import PrincipioActivo
+from app.services.gft_query_service import _parse_atc, _parse_json_value, _parse_vias
 from app.services.gft_editorial_service import (
     GFTEditorialValidationError,
     update_gft_editorial_fields,
@@ -79,6 +83,11 @@ class GFTEditorialAdminResponse(BaseModel):
     estado_gft: str
     estado_editorial: str
     nemonico: str | None = None
+    nombre_comercial: str | None = None
+    principio_activo: str | None = None
+    forma_farmaceutica: str | None = None
+    via_administracion: str | None = None
+    codigo_atc: str | None = None
     restricciones_hospitalarias: str | None = None
     ajuste_insuficiencia_renal: str | None = None
     ajuste_insuficiencia_hepatica: str | None = None
@@ -100,6 +109,11 @@ class GFTEditorialAdminListItem(BaseModel):
     estado_gft: str
     estado_editorial: str
     nemonico: str | None = None
+    nombre_comercial: str | None = None
+    principio_activo: str | None = None
+    forma_farmaceutica: str | None = None
+    via_administracion: str | None = None
+    codigo_atc: str | None = None
     restricciones_hospitalarias: str | None = None
     ajuste_insuficiencia_renal: str | None = None
     ajuste_insuficiencia_hepatica: str | None = None
@@ -128,6 +142,149 @@ class GFTEditorialAdminSummaryResponse(BaseModel):
     incluidos_no_publicados: int
     pendientes_revision: int
     excluidos: int
+
+
+def _first_non_empty(values) -> str | None:
+    for value in values:
+        if value is None:
+            continue
+        normalized = str(value).strip()
+        if normalized:
+            return normalized
+    return None
+
+
+def _join_non_empty(values) -> str | None:
+    normalized_values = []
+    for value in values:
+        if value is None:
+            continue
+        normalized = str(value).strip()
+        if normalized and normalized not in normalized_values:
+            normalized_values.append(normalized)
+    if not normalized_values:
+        return None
+    return ", ".join(normalized_values)
+
+
+def _parse_principios_activos_json(principios_json) -> list[str]:
+    parsed = _parse_json_value(principios_json)
+    if not isinstance(parsed, list):
+        return []
+
+    names: list[str] = []
+    for item in parsed:
+        if isinstance(item, str):
+            name = item.strip()
+        elif isinstance(item, dict):
+            name = str(item.get("nombre") or item.get("name") or "").strip()
+        else:
+            name = ""
+        if name:
+            names.append(name)
+    return names
+
+
+def _get_principio_activo_names_by_cn(
+    db: Session, cns: list[str]
+) -> dict[str, list[str]]:
+    if not cns:
+        return {}
+
+    rows = (
+        db.query(
+            MedicamentoPrincipioActivo.cn,
+            PrincipioActivo.nombre_display,
+            PrincipioActivo.nombre_normalizado,
+        )
+        .join(
+            PrincipioActivo,
+            PrincipioActivo.id == MedicamentoPrincipioActivo.principio_activo_id,
+        )
+        .filter(MedicamentoPrincipioActivo.cn.in_(cns))
+        .order_by(
+            MedicamentoPrincipioActivo.cn,
+            MedicamentoPrincipioActivo.orden,
+            PrincipioActivo.nombre_display,
+        )
+        .all()
+    )
+
+    result: dict[str, list[str]] = {}
+    for row in rows:
+        name = _first_non_empty([row.nombre_display, row.nombre_normalizado])
+        if name is not None:
+            result.setdefault(row.cn, []).append(name)
+    return result
+
+
+def _via_administracion_from_cima(cima: CimaMedicamentoCache | None) -> str | None:
+    if cima is None:
+        return None
+    return _join_non_empty(_parse_vias(cima.vias_administracion_json))
+
+
+def _codigo_atc_from_cima(cima: CimaMedicamentoCache | None) -> str | None:
+    if cima is None:
+        return None
+    return _join_non_empty(
+        atc_item.get("codigo") for atc_item in _parse_atc(cima.atc_json)
+    )
+
+
+def _principio_activo_from_sources(
+    cima: CimaMedicamentoCache | None,
+    principio_names: list[str],
+) -> str | None:
+    from_relation = _join_non_empty(principio_names)
+    if from_relation is not None:
+        return from_relation
+    if cima is None:
+        return None
+    return _join_non_empty(
+        _parse_principios_activos_json(cima.principios_activos_json)
+    )
+
+
+def _build_admin_editorial_payload(
+    gft: GFTEstadoPresentacion,
+    cima: CimaMedicamentoCache | None,
+    principio_names: list[str],
+) -> dict:
+    return {
+        "cn": gft.cn,
+        "estado_gft": gft.estado_gft,
+        "estado_editorial": gft.estado_editorial,
+        "nemonico": gft.nemonico,
+        "nombre_comercial": cima.nombre if cima is not None else None,
+        "principio_activo": _principio_activo_from_sources(cima, principio_names),
+        "forma_farmaceutica": cima.forma_farmaceutica if cima is not None else None,
+        "via_administracion": _via_administracion_from_cima(cima),
+        "codigo_atc": _codigo_atc_from_cima(cima),
+        "restricciones_hospitalarias": gft.restricciones_hospitalarias,
+        "ajuste_insuficiencia_renal": gft.ajuste_insuficiencia_renal,
+        "ajuste_insuficiencia_hepatica": gft.ajuste_insuficiencia_hepatica,
+        "precauciones_embarazo": gft.precauciones_embarazo,
+        "precauciones_lactancia": gft.precauciones_lactancia,
+        "observaciones_internas": gft.observaciones_internas,
+        "comentario_revision": gft.comentario_revision,
+        "revisado_por": gft.revisado_por,
+        "fecha_revision": gft.fecha_revision,
+        "updated_at": gft.updated_at,
+        "last_import_batch_id": gft.last_import_batch_id,
+        "last_imported_at": gft.last_imported_at,
+    }
+
+
+def _principio_activo_matches(pattern: str):
+    return exists().where(
+        MedicamentoPrincipioActivo.cn == GFTEstadoPresentacion.cn,
+        MedicamentoPrincipioActivo.principio_activo_id == PrincipioActivo.id,
+        or_(
+            PrincipioActivo.nombre_display.ilike(pattern),
+            PrincipioActivo.nombre_normalizado.ilike(pattern),
+        ),
+    )
 
 
 @router.get("/health")
@@ -206,7 +363,9 @@ def list_gft_medicamentos_editorial(
     if offset < 0:
         raise HTTPException(status_code=400, detail="offset debe ser mayor o igual a 0")
 
-    query = db.query(GFTEstadoPresentacion)
+    query = db.query(GFTEstadoPresentacion, CimaMedicamentoCache).outerjoin(
+        CimaMedicamentoCache, CimaMedicamentoCache.cn == GFTEstadoPresentacion.cn
+    )
 
     if estado_gft is not None:
         normalized_estado_gft = estado_gft.strip()
@@ -235,13 +394,27 @@ def list_gft_medicamentos_editorial(
                     GFTEstadoPresentacion.ajuste_insuficiencia_hepatica.ilike(pattern),
                     GFTEstadoPresentacion.precauciones_embarazo.ilike(pattern),
                     GFTEstadoPresentacion.precauciones_lactancia.ilike(pattern),
+                    CimaMedicamentoCache.nombre.ilike(pattern),
+                    CimaMedicamentoCache.forma_farmaceutica.ilike(pattern),
+                    CimaMedicamentoCache.presentacion.ilike(pattern),
+                    cast(CimaMedicamentoCache.principios_activos_json, String).ilike(
+                        pattern
+                    ),
+                    _principio_activo_matches(pattern),
                 )
             )
 
     total = query.count()
-    items = (
+    rows = (
         query.order_by(GFTEstadoPresentacion.cn.asc()).offset(offset).limit(limit).all()
     )
+
+    cns = [gft.cn for gft, _ in rows]
+    principios_by_cn = _get_principio_activo_names_by_cn(db, cns)
+    items = [
+        _build_admin_editorial_payload(gft, cima, principios_by_cn.get(gft.cn, []))
+        for gft, cima in rows
+    ]
 
     return GFTEditorialAdminListResponse(
         total=total, limit=limit, offset=offset, items=items
@@ -260,11 +433,22 @@ def get_gft_medicamento_editorial(
     if not normalized_cn:
         raise HTTPException(status_code=400, detail="CN obligatorio")
 
-    row = db.get(GFTEstadoPresentacion, normalized_cn)
+    row = (
+        db.query(GFTEstadoPresentacion, CimaMedicamentoCache)
+        .outerjoin(
+            CimaMedicamentoCache, CimaMedicamentoCache.cn == GFTEstadoPresentacion.cn
+        )
+        .filter(GFTEstadoPresentacion.cn == normalized_cn)
+        .first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Medicamento GFT no encontrado")
 
-    return row
+    gft, cima = row
+    principios_by_cn = _get_principio_activo_names_by_cn(db, [normalized_cn])
+    return _build_admin_editorial_payload(
+        gft, cima, principios_by_cn.get(normalized_cn, [])
+    )
 
 
 @router.patch(
