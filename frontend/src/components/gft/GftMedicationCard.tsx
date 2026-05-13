@@ -35,6 +35,7 @@ function joinVias(vias: string[]): string {
 export function GftMedicationCard({ medicamento, selected = false, onViewDetail }: GftMedicationCardProps) {
   const title = medicamento.nombre ?? 'Medicamento sin nombre informado';
   const forma = medicamento.forma_farmaceutica_simplificada ?? medicamento.forma_farmaceutica ?? 'No informada';
+  const hasRenalAdjustment = Boolean(medicamento.ajuste_insuficiencia_renal?.trim());
 
   return (
     <article
@@ -70,11 +71,18 @@ export function GftMedicationCard({ medicamento, selected = false, onViewDetail 
         </div>
       </dl>
 
-      {(medicamento.restricciones_hospitalarias || medicamento.situacion_financiacion) ? (
+      {(medicamento.restricciones_hospitalarias ||
+        hasRenalAdjustment ||
+        medicamento.situacion_financiacion) ? (
         <div className="gft-card__notice">
           {medicamento.restricciones_hospitalarias ? (
             <p>
               <strong>Restricciones:</strong> {medicamento.restricciones_hospitalarias}
+            </p>
+          ) : null}
+          {hasRenalAdjustment ? (
+            <p>
+              <strong>Ajuste renal:</strong> disponible
             </p>
           ) : null}
           {medicamento.situacion_financiacion ? (

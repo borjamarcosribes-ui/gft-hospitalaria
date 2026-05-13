@@ -16,11 +16,13 @@ interface GftMedicationDetailPanelProps {
 }
 
 function formatValue(value: string | number | null | undefined): string {
-  if (value === null || value === undefined || value === '') {
+  if (value === null || value === undefined) {
     return 'No informado';
   }
 
-  return String(value);
+  const formattedValue = String(value).trim();
+
+  return formattedValue || 'No informado';
 }
 
 function formatDate(date: string | null): string | null {
@@ -59,6 +61,31 @@ function DetailRow({ label, value }: { label: string; value: string | number | n
       <dt>{label}</dt>
       <dd>{formatValue(value)}</dd>
     </div>
+  );
+}
+
+function ClinicalTextBlock({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div className="gft-detail__text-block">
+      <h4>{label}</h4>
+      <p>{formatValue(value)}</p>
+    </div>
+  );
+}
+
+function GftClinicalUseInfo({ detail }: { detail: GFTMedicamentoDetail }) {
+  return (
+    <section className="gft-detail__section gft-detail__section--clinical">
+      <h3>Información clínica de uso en guía</h3>
+      <ClinicalTextBlock label="Indicaciones en ficha técnica" value={detail.indicaciones_ficha_tecnica} />
+      <dl className="gft-detail__grid gft-detail__clinical-grid">
+        <DetailRow label="Restricciones hospitalarias" value={detail.restricciones_hospitalarias} />
+        <DetailRow label="Ajuste insuficiencia renal" value={detail.ajuste_insuficiencia_renal} />
+        <DetailRow label="Ajuste insuficiencia hepática" value={detail.ajuste_insuficiencia_hepatica} />
+        <DetailRow label="Precauciones embarazo" value={detail.precauciones_embarazo} />
+        <DetailRow label="Precauciones lactancia" value={detail.precauciones_lactancia} />
+      </dl>
+    </section>
   );
 }
 
@@ -158,10 +185,11 @@ export function GftMedicationDetailPanel({ cn, detail, loading, error, onClose }
               <DetailRow label="Vías de administración" value={joinVias(detail.vias_administracion)} />
               <DetailRow label="ATC" value={joinAtc(detail.atc)} />
               <DetailRow label="Nemónico" value={detail.nemonico} />
-              <DetailRow label="Restricciones hospitalarias" value={detail.restricciones_hospitalarias} />
               <DetailRow label="Situación financiación" value={detail.situacion_financiacion} />
             </dl>
           </section>
+
+          <GftClinicalUseInfo detail={detail} />
 
           {detail.financiacion_detalle ? <GftFinanciacionDetail financiacion={detail.financiacion_detalle} /> : null}
 
