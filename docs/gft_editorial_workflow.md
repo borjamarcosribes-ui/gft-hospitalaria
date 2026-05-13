@@ -12,13 +12,11 @@ Los campos clínicos/editoriales que se prevé mantener mediante el flujo intern
 - `precauciones_embarazo`
 - `precauciones_lactancia`
 - `observaciones_internas`
-- `comentario_revision`
-- `revisado_por`
 
 ## Reglas del flujo interno
 
 - La edición se realiza sobre `gft_estado_presentacion` por `CN`.
-- No cambia `estado_gft` ni `estado_editorial`.
+- No cambia `estado_gft` ni `estado_editorial`; los estados se gestionan desde un bloque independiente del panel admin mediante `PATCH /admin/gft/medicamentos/{cn}/estado`.
 - No crea medicamentos nuevos ni filas nuevas en `gft_estado_presentacion`.
 - No modifica el contenido procedente de CIMA o BIFIMED.
 - No modifica las reglas de publicación de la GFT pública.
@@ -124,14 +122,10 @@ Permite actualizar los siguientes campos:
 - `precauciones_embarazo`
 - `precauciones_lactancia`
 - `observaciones_internas`
-- `comentario_revision`
-- `revisado_por`
-
-`revisado_por` se mantiene como metadato de revisión. Cuando se informa, se normaliza y actualiza junto con la fecha de revisión.
 
 Restricciones del endpoint:
 
-- No permite cambiar `estado_gft` ni `estado_editorial`; los cambios de estado se realizan en un flujo separado mediante `PATCH /admin/gft/medicamentos/{cn}/estado`. El panel `/admin/gft` no edita estados en el formulario clínico/editorial.
+- No permite cambiar `estado_gft` ni `estado_editorial`; los cambios de estado se realizan en un flujo separado mediante `PATCH /admin/gft/medicamentos/{cn}/estado`. El panel `/admin/gft` también mueve `comentario_revision` y `revisado_por` a ese bloque de estado para no mezclarlos con el formulario clínico/editorial.
 - No permite cambiar `cn` desde el cuerpo de la petición.
 - No crea medicamentos nuevos: si el `CN` no existe en `gft_estado_presentacion`, responde 404.
 - Los cambios son visibles en `/gft` si el medicamento está incluido y publicado.
@@ -142,4 +136,4 @@ Los campos omitidos se conservan sin cambios. Un campo permitido enviado explíc
 
 El panel admin `/admin/gft` ya permite seleccionar un medicamento existente, consultar sus datos identificativos y editar de forma controlada los campos clínicos/editoriales anteriores mediante `PATCH /admin/gft/medicamentos/{cn}/editorial`.
 
-El panel mantiene como solo lectura los campos identificativos (`CN`, nombre comercial, principio activo, forma farmacéutica, vía de administración y código ATC) y los estados (`estado_gft` y `estado_editorial`). Los estados GFT/editorial continúan en un flujo separado mediante `PATCH /admin/gft/medicamentos/{cn}/estado`.
+El panel mantiene como solo lectura los campos identificativos (`CN`, nombre comercial, principio activo, forma farmacéutica, vía de administración y código ATC`). Los estados GFT/editorial, `comentario_revision` y `revisado_por` se editan en un bloque independiente de "Estado de publicación" mediante `PATCH /admin/gft/medicamentos/{cn}/estado`, de modo que la edición clínica/editorial continúa separada del flujo de publicación.

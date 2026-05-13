@@ -5,6 +5,8 @@ import type {
   GFTEditorialAdminSummaryResponse,
   GFTEditorialUpdatePayload,
   GFTEditorialUpdateResponse,
+  GFTPublicationStateUpdatePayload,
+  GFTPublicationStateUpdateResponse,
   ListGftEditorialMedicamentosParams,
 } from '../types/admin';
 
@@ -120,6 +122,18 @@ export function updateGftMedicationEditorial(
 ): Promise<GFTEditorialUpdateResponse> {
   return patchAdminJson<GFTEditorialUpdateResponse>(
     `/admin/gft/medicamentos/${encodeURIComponent(cn)}/editorial`,
+    apiKey,
+    payload,
+  );
+}
+
+export function updateGftMedicationState(
+  apiKey: string,
+  cn: string,
+  payload: GFTPublicationStateUpdatePayload,
+): Promise<GFTPublicationStateUpdateResponse> {
+  return patchAdminJson<GFTPublicationStateUpdateResponse>(
+    `/admin/gft/medicamentos/${encodeURIComponent(cn)}/estado`,
     apiKey,
     payload,
   );

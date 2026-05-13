@@ -2,6 +2,9 @@ export interface AdminHealthResponse {
   status: string;
 }
 
+export type GFTPublicationGftState = 'incluido' | 'excluido' | 'pendiente_revision';
+export type GFTPublicationEditorialState = 'borrador' | 'validado' | 'publicado' | 'retirado';
+
 export interface GFTEditorialAdminSummaryResponse {
   total: number;
   by_estado_gft: Record<string, number>;
@@ -66,6 +69,23 @@ export interface GFTEditorialUpdateResponse {
   precauciones_embarazo: string | null;
   precauciones_lactancia: string | null;
   observaciones_internas: string | null;
+  comentario_revision: string | null;
+  revisado_por: string | null;
+  fecha_revision: string | null;
+  updated_at: string | null;
+}
+
+export interface GFTPublicationStateUpdatePayload {
+  estado_gft?: GFTPublicationGftState;
+  estado_editorial?: GFTPublicationEditorialState;
+  comentario_revision?: string | null;
+  revisado_por?: string | null;
+}
+
+export interface GFTPublicationStateUpdateResponse {
+  cn: string;
+  estado_gft: GFTPublicationGftState;
+  estado_editorial: GFTPublicationEditorialState;
   comentario_revision: string | null;
   revisado_por: string | null;
   fecha_revision: string | null;
