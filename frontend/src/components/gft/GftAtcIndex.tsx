@@ -1,17 +1,17 @@
 import { useMemo } from 'react';
-import type { GFTAtcRef, GFTMedicamentoListItem } from '../../types/gft';
+import type { GFTAtcIndexItem } from '../../types/gft';
 
 interface GftAtcIndexProps {
-  medications: GFTMedicamentoListItem[];
+  items: GFTAtcIndexItem[];
   selectedAtc: string;
   onSelectAtc: (value: string) => void;
 }
 
-interface AtcGroup {
+interface NormalizedAtcItem {
   code: string;
   name: string | null;
-  medicationCns: Set<string>;
-  children: Map<string, AtcGroup>;
+  level: string;
+  count: number;
 }
 
 interface AtcSection {
@@ -31,90 +31,135 @@ function normalizeCode(code: string): string {
   return code.trim().toUpperCase();
 }
 
-function isLevel(ref: GFTAtcRef, level: number): boolean {
-  const normalizedLevel = ref.nivel?.trim().toUpperCase();
+function normalizeLevel(level: string): string {
+  return level.trim().toUpperCase();
+}
+
+function isLevel(item: NormalizedAtcItem, level: number): boolean {
+  const normalizedLevel = normalizeLevel(item.level);
   return normalizedLevel === String(level) || normalizedLevel === `L${level}` || normalizedLevel === `ATC${level}`;
 }
 
-function createGroup(code: string, name: string | null = null): AtcGroup {
-  return {
-    code,
-    name,
-    medicationCns: new Set<string>(),
-    children: new Map<string, AtcGroup>(),
-  };
+function getSectionCode(item: NormalizedAtcItem, hasExplicitLevel1: boolean): string {
+  if (hasExplicitLevel1 && isLevel(item, 1)) {
+    return item.code;
+  }
+
+  return item.code.slice(0, 1);
 }
 
-function resolveName(currentName: string | null, nextName: string | null): string | null {
+function getSubgroupCode(item: NormalizedAtcItem, hasExplicitLevel2: boolean): string {
+  if (hasExplicitLevel2 && isLevel(item, 2)) {
+    return item.code;
+  }
+
+  return item.code.slice(0, 3);
+}
+
+function mergeName(currentName: string | null, nextName: string | null): string | null {
   return currentName ?? nextName;
 }
 
-function getReferenceName(refs: GFTAtcRef[], code: string): string | null {
-  return refs.find((ref) => normalizeCode(ref.codigo) === code)?.nombre ?? null;
+function mergeCount(currentCount: number, nextCount: number): number {
+  return Math.max(currentCount, nextCount);
 }
 
-function deriveSections(medications: GFTMedicamentoListItem[]): AtcSection[] {
-  const groups = new Map<string, AtcGroup>();
+function toNormalizedItems(items: GFTAtcIndexItem[]): NormalizedAtcItem[] {
+  return items
+    .map((item) => ({
+      code: normalizeCode(item.codigo),
+      name: item.nombre,
+      level: item.nivel,
+      count: item.count,
+    }))
+    .filter((item) => item.code);
+}
 
-  medications.forEach((medication) => {
-    const refs = medication.atc.filter((ref) => ref.codigo.trim());
-    const level1Refs = refs.filter((ref) => isLevel(ref, 1));
-    const level2Refs = refs.filter((ref) => isLevel(ref, 2));
+function deriveSections(items: GFTAtcIndexItem[]): AtcSection[] {
+  const normalizedItems = toNormalizedItems(items);
+  const itemByCode = new Map(normalizedItems.map((item) => [item.code, item]));
+  const hasExplicitLevel1 = normalizedItems.some((item) => isLevel(item, 1));
+  const hasExplicitLevel2 = normalizedItems.some((item) => isLevel(item, 2));
+  const sections = new Map<string, AtcSection>();
 
-    refs.forEach((ref) => {
-      const code = normalizeCode(ref.codigo);
-      const explicitLevel1 = level1Refs.find((item) => code.startsWith(normalizeCode(item.codigo)));
-      const l1Code = explicitLevel1 ? normalizeCode(explicitLevel1.codigo) : code.slice(0, 1);
+  normalizedItems.forEach((item) => {
+    const sectionCode = getSectionCode(item, hasExplicitLevel1);
 
-      if (!l1Code) {
-        return;
-      }
+    if (!sectionCode) {
+      return;
+    }
 
-      const explicitLevel2 = level2Refs.find((item) => {
-        const level2Code = normalizeCode(item.codigo);
-        return code.startsWith(level2Code) && level2Code.startsWith(l1Code);
-      });
-      const l2Code = explicitLevel2 ? normalizeCode(explicitLevel2.codigo) : code.slice(0, 3);
-      const l1Name = explicitLevel1?.nombre ?? getReferenceName(refs, l1Code);
-      const l2Name = explicitLevel2?.nombre ?? getReferenceName(refs, l2Code);
+    const exactSectionItem = itemByCode.get(sectionCode);
+    const section = sections.get(sectionCode) ?? {
+      code: sectionCode,
+      name: exactSectionItem?.name ?? null,
+      count: exactSectionItem?.count ?? 0,
+      children: [],
+    };
 
-      const l1Group = groups.get(l1Code) ?? createGroup(l1Code, l1Name);
-      l1Group.name = resolveName(l1Group.name, l1Name);
-      l1Group.medicationCns.add(medication.cn);
-      groups.set(l1Code, l1Group);
+    section.name = mergeName(section.name, exactSectionItem?.name ?? null);
+    section.count = exactSectionItem ? mergeCount(section.count, exactSectionItem.count) : section.count;
 
-      if (l2Code && l2Code !== l1Code) {
-        const l2Group = l1Group.children.get(l2Code) ?? createGroup(l2Code, l2Name);
-        l2Group.name = resolveName(l2Group.name, l2Name);
-        l2Group.medicationCns.add(medication.cn);
-        l1Group.children.set(l2Code, l2Group);
-      }
-    });
+    if (item.code !== sectionCode) {
+      section.count = mergeCount(section.count, item.count);
+    }
+
+    sections.set(sectionCode, section);
   });
 
-  return Array.from(groups.values())
-    .sort((first, second) => first.code.localeCompare(second.code, 'es'))
-    .map((group) => ({
-      code: group.code,
-      name: group.name,
-      count: group.medicationCns.size,
-      children: Array.from(group.children.values())
-        .sort((first, second) => first.code.localeCompare(second.code, 'es'))
-        .map((child) => ({
-          code: child.code,
-          name: child.name,
-          count: child.medicationCns.size,
-        })),
-    }));
+  sections.forEach((section) => {
+    const subgroups = new Map<string, AtcSubgroup>();
+
+    normalizedItems
+      .filter((item) => item.code.startsWith(section.code) && item.code !== section.code)
+      .forEach((item) => {
+        const subgroupCode = getSubgroupCode(item, hasExplicitLevel2);
+
+        if (!subgroupCode || subgroupCode === section.code) {
+          return;
+        }
+
+        const exactSubgroupItem = itemByCode.get(subgroupCode);
+        const subgroup = subgroups.get(subgroupCode) ?? {
+          code: subgroupCode,
+          name: exactSubgroupItem?.name ?? null,
+          count: exactSubgroupItem?.count ?? 0,
+        };
+
+        subgroup.name = mergeName(subgroup.name, exactSubgroupItem?.name ?? null);
+        subgroup.count = exactSubgroupItem ? mergeCount(subgroup.count, exactSubgroupItem.count) : subgroup.count;
+
+        if (item.code !== subgroupCode) {
+          subgroup.count = mergeCount(subgroup.count, item.count);
+        }
+
+        subgroups.set(subgroupCode, subgroup);
+      });
+
+    section.children = Array.from(subgroups.values()).sort((first, second) => first.code.localeCompare(second.code, 'es'));
+  });
+
+  return Array.from(sections.values()).sort((first, second) => first.code.localeCompare(second.code, 'es'));
+}
+
+function getTotalCount(items: GFTAtcIndexItem[]): number {
+  const normalizedItems = toNormalizedItems(items);
+  const level1Total = normalizedItems.filter((item) => isLevel(item, 1)).reduce((total, item) => total + item.count, 0);
+
+  if (level1Total > 0) {
+    return level1Total;
+  }
+
+  return deriveSections(items).reduce((total, section) => total + section.count, 0);
 }
 
 function formatLabel(code: string, name: string | null): string {
   return name ? `${code} — ${name}` : code;
 }
 
-export function GftAtcIndex({ medications, selectedAtc, onSelectAtc }: GftAtcIndexProps) {
-  const sections = useMemo(() => deriveSections(medications), [medications]);
-  const totalMedicationCount = useMemo(() => new Set(medications.map((medication) => medication.cn)).size, [medications]);
+export function GftAtcIndex({ items, selectedAtc, onSelectAtc }: GftAtcIndexProps) {
+  const sections = useMemo(() => deriveSections(items), [items]);
+  const totalMedicationCount = useMemo(() => getTotalCount(items), [items]);
 
   return (
     <section className="gft-atc-index" aria-labelledby="gft-atc-index-title">
@@ -125,7 +170,7 @@ export function GftAtcIndex({ medications, selectedAtc, onSelectAtc }: GftAtcInd
           </h2>
           <p className="gft-atc-index__subtitle">Navegación por grupos terapéuticos</p>
         </div>
-        <span className="gft-atc-index__count" aria-label={`${totalMedicationCount} medicamentos cargados`}>
+        <span className="gft-atc-index__count" aria-label={`${totalMedicationCount} medicamentos en el índice ATC`}>
           {totalMedicationCount}
         </span>
       </div>
@@ -185,7 +230,7 @@ export function GftAtcIndex({ medications, selectedAtc, onSelectAtc }: GftAtcInd
           })}
         </div>
       ) : (
-        <p className="gft-atc-index__empty">No hay grupos ATC en los medicamentos cargados.</p>
+        <p className="gft-atc-index__empty">No hay grupos ATC disponibles en el índice global.</p>
       )}
     </section>
   );

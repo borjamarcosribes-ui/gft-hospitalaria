@@ -223,7 +223,7 @@ export function GftPage() {
               onChange={handleAtcChange}
             />
           </div>
-          <GftAtcIndex medications={data?.items ?? []} selectedAtc={atc} onSelectAtc={handleAtcChange} />
+          <GftAtcIndex items={atcData?.items ?? []} selectedAtc={atc} onSelectAtc={handleAtcChange} />
         </section>
 
         <GftActiveFilters
