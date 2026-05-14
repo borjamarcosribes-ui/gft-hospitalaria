@@ -130,7 +130,7 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
                     },
                     {
                         "CN": PENDING_CN,
-                        "Observaciones revisión": "guía",
+                        "Observaciones revisión": "SI?",
                         "Estado editorial": "pendiente",
                         "Nemónico": f"NEM-{PENDING_CN}",
                     },
