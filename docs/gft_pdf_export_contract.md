@@ -117,7 +117,19 @@ El diseño visual debe ser:
 - Estructurado con separadores, encabezados y espaciado suficiente para evitar bloques excesivamente largos sin separación.
 - Completo en contenido: no debe esconder información relevante para ganar compacidad visual.
 
-## 8. Estrategia técnica futura
+## 8. Capa intermedia HTML imprimible
+
+Ya existe una capa intermedia interna de renderizado HTML imprimible que consume exclusivamente la estructura devuelta por `build_gft_pdf_export_data(db)`. Esta capa genera un documento HTML completo y autónomo con portada, índice ATC y cuerpo de medicamentos, y actúa como plantilla base del futuro PDF.
+
+Esta capa no expone endpoint propio, no genera binarios PDF y no modifica el contrato público de `/gft`. Todo contenido dinámico debe escaparse antes de insertarse en el HTML, incluyendo URLs, para evitar que datos persistidos puedan inyectar marcado o scripts en la plantilla imprimible.
+
+La secuencia técnica prevista queda así:
+
+1. `build_gft_pdf_export_data(db)` prepara datos públicos estructurados desde la misma frontera de publicación que `/gft`.
+2. `render_gft_pdf_html(export_data)` transforma esos datos públicos en HTML imprimible determinista.
+3. Un futuro motor PDF convertirá ese HTML en `application/pdf` cuando se implemente el endpoint.
+
+## 9. Estrategia técnica futura
 
 Cuando se implemente la exportación, se propone crear el endpoint público:
 
@@ -128,7 +140,8 @@ GET /gft/export/pdf
 Requisitos técnicos esperados:
 
 - Antes de generar el PDF existe un servicio interno de preparación de datos estructurados para PDF, sin generación de fichero ni endpoint propio.
-- Ese servicio interno es la fuente intermedia que deberá consumir el futuro endpoint `GET /gft/export/pdf`, manteniendo la misma frontera pública que `/gft`.
+- Antes de generar el PDF existe también un servicio interno de renderizado HTML imprimible, sin endpoint propio ni generación binaria.
+- El futuro endpoint `GET /gft/export/pdf` deberá consumir esa secuencia interna de datos estructurados y HTML imprimible, manteniendo la misma frontera pública que `/gft`.
 - El endpoint debe consultar `v_gft_publicada` o el mismo servicio público que alimenta `/gft` a través de esa capa intermedia.
 - La generación síncrona será aceptable inicialmente si el volumen de medicamentos permite tiempos de respuesta razonables.
 - Si el volumen crece o el coste de generación es elevado, deberá valorarse una generación asíncrona, cacheada o precomputada por versión de publicación.
@@ -137,7 +150,7 @@ Requisitos técnicos esperados:
 
 Esta estrategia no implica implementación en este documento. No se añaden dependencias, endpoints ni cambios de modelo como parte de este contrato.
 
-## 9. Criterios de aceptación futuros
+## 10. Criterios de aceptación futuros
 
 Cuando se implemente la generación PDF, deberán cumplirse al menos estos criterios:
 
@@ -150,12 +163,12 @@ Cuando se implemente la generación PDF, deberán cumplirse al menos estos crite
 - Los campos vacíos deben aparecer como **“No informado”**.
 - La fecha/hora de generación debe quedar visible en el documento.
 
-## 10. Pendientes
+## 11. Pendientes
 
 Quedan pendientes para una implementación futura:
 
 - Elegir la librería de generación PDF.
-- Definir si el PDF se genera desde HTML/CSS o mediante un motor PDF directo.
+- Elegir el motor que convertirá el HTML imprimible interno en PDF.
 - Crear el endpoint `GET /gft/export/pdf`.
 - Añadir tests de equivalencia entre `/gft` y el PDF.
 - Validar manualmente la legibilidad con datos reales.
