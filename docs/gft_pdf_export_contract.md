@@ -127,7 +127,9 @@ GET /gft/export/pdf
 
 Requisitos técnicos esperados:
 
-- El endpoint debe consultar `v_gft_publicada` o el mismo servicio público que alimenta `/gft`.
+- Antes de generar el PDF existe un servicio interno de preparación de datos estructurados para PDF, sin generación de fichero ni endpoint propio.
+- Ese servicio interno es la fuente intermedia que deberá consumir el futuro endpoint `GET /gft/export/pdf`, manteniendo la misma frontera pública que `/gft`.
+- El endpoint debe consultar `v_gft_publicada` o el mismo servicio público que alimenta `/gft` a través de esa capa intermedia.
 - La generación síncrona será aceptable inicialmente si el volumen de medicamentos permite tiempos de respuesta razonables.
 - Si el volumen crece o el coste de generación es elevado, deberá valorarse una generación asíncrona, cacheada o precomputada por versión de publicación.
 - La respuesta HTTP debe usar `Content-Type: application/pdf`.
