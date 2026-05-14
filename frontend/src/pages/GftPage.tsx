@@ -8,7 +8,7 @@ import { GftMedicationList } from '../components/gft/GftMedicationList';
 import { GftPagination } from '../components/gft/GftPagination';
 import { GftPrincipioActivoFilter } from '../components/gft/GftPrincipioActivoFilter';
 import { GftSearchBar } from '../components/gft/GftSearchBar';
-import { getMedicamentoByCn, listAtcIndex, listMedicamentos, listPrincipiosActivos } from '../services/gftApi';
+import { getGftPdfExportUrl, getMedicamentoByCn, listAtcIndex, listMedicamentos, listPrincipiosActivos } from '../services/gftApi';
 import type {
   GFTAtcIndexResponse,
   GFTListResponse,
@@ -37,6 +37,7 @@ export function GftPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const detailRequestId = useRef(0);
+  const pdfExportUrl = getGftPdfExportUrl();
 
   useEffect(() => {
     let ignore = false;
@@ -195,8 +196,16 @@ export function GftPage() {
       <GftInstitutionalHeader />
 
       <main className="gft-main">
-        <section className="gft-panel" aria-label="Búsqueda de medicamentos">
-          <GftSearchBar value={q} loading={loading} onSearch={handleSearch} onClear={handleClearQ} />
+        <section className="gft-panel gft-search-panel" aria-label="Búsqueda y exportación de medicamentos">
+          <div className="gft-search-panel__content">
+            <GftSearchBar value={q} loading={loading} onSearch={handleSearch} onClear={handleClearQ} />
+            <aside className="gft-export" aria-label="Exportación de la GFT publicada">
+              <a className="gft-button gft-button--export" href={pdfExportUrl}>
+                Exportar PDF
+              </a>
+              <p>Descarga la guía completa publicada.</p>
+            </aside>
+          </div>
         </section>
 
         <section className="gft-panel gft-filters-panel" aria-label="Filtros de medicamentos">
