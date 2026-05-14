@@ -112,19 +112,42 @@ function buildPublicationStatePayload(
   return payload;
 }
 
+function isPubliclyVisible(estadoGft: string, estadoEditorial: string): boolean {
+  return estadoGft === 'incluido' && estadoEditorial === 'publicado';
+}
+
+function getMedicationDisplayName(detail: GFTEditorialAdminResponse): string {
+  const commercialName = detail.nombre_comercial?.trim();
+
+  return commercialName ? `${commercialName} (CN ${detail.cn})` : `CN ${detail.cn}`;
+}
+
 function getStateChangeConfirmationMessage(detail: GFTEditorialAdminResponse, formState: PublicationStateFormState): string {
-  const wasPublic = detail.estado_gft === 'incluido' && detail.estado_editorial === 'publicado';
-  const willBePublic = formState.estado_gft === 'incluido' && formState.estado_editorial === 'publicado';
+  const wasPublic = isPubliclyVisible(detail.estado_gft, detail.estado_editorial);
+  const willBePublic = isPubliclyVisible(formState.estado_gft, formState.estado_editorial);
+  const medicationName = getMedicationDisplayName(detail);
 
   if (willBePublic && !wasPublic) {
-    return 'Vas a publicar este medicamento en la GFT pública si está incluido en guía. ¿Confirmas el cambio?';
+    return `Vas a publicar ${medicationName} en la GFT pública. ¿Confirmas el cambio?`;
   }
 
   if (!willBePublic && wasPublic) {
-    return 'Vas a retirar este medicamento de la GFT pública si estaba publicado. ¿Confirmas el cambio?';
+    return `Vas a retirar ${medicationName} de la GFT pública. ¿Confirmas el cambio?`;
   }
 
-  return 'Vas a modificar el estado administrativo de este medicamento. ¿Confirmas el cambio?';
+  return `Vas a modificar el estado administrativo de ${medicationName}. ¿Confirmas el cambio?`;
+}
+
+function getStateSaveSuccessMessage(wasPublic: boolean, willBePublic: boolean): string {
+  if (willBePublic && !wasPublic) {
+    return 'Estado actualizado. El medicamento queda visible en la GFT pública.';
+  }
+
+  if (!willBePublic && wasPublic) {
+    return 'Estado actualizado. El medicamento no queda visible en la GFT pública.';
+  }
+
+  return 'Estado administrativo actualizado correctamente.';
 }
 
 function formatDate(value: string | null): string {
@@ -420,7 +443,7 @@ export function AdminGftPage() {
       setEditorialForm(buildEditorialFormState(fullDetail));
       await loadList(apiKey);
       setIsEditingClinicalInfo(false);
-      setSaveSuccess('Información clínica actualizada correctamente.');
+      setSaveSuccess('Información clínica/editorial guardada correctamente.');
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'No se pudieron guardar los cambios clínicos/editoriales.');
     } finally {
@@ -450,6 +473,9 @@ export function AdminGftPage() {
         return;
       }
 
+      const wasPublic = isPubliclyVisible(detail.estado_gft, detail.estado_editorial);
+      const willBePublic = isPubliclyVisible(publicationStateForm.estado_gft, publicationStateForm.estado_editorial);
+
       if (!window.confirm(getStateChangeConfirmationMessage(detail, publicationStateForm))) {
         return;
       }
@@ -462,7 +488,7 @@ export function AdminGftPage() {
       await loadSummary(apiKey);
       await loadList(apiKey);
       setIsEditingPublicationState(false);
-      setStateSaveSuccess('Estado de publicación actualizado correctamente.');
+      setStateSaveSuccess(getStateSaveSuccessMessage(wasPublic, willBePublic));
     } catch (error) {
       setStateSaveError(error instanceof Error ? error.message : 'No se pudo guardar el estado de publicación.');
     } finally {
@@ -487,20 +513,29 @@ export function AdminGftPage() {
   const total = listData?.total ?? 0;
   const canGoBack = offset > 0;
   const canGoForward = listData ? offset + listData.limit < listData.total : false;
+  const detailIsPubliclyVisible = detail ? isPubliclyVisible(detail.estado_gft, detail.estado_editorial) : false;
 
   return (
     <div className="admin-page">
       <header className="admin-header">
-        <div>
+        <div className="admin-header__content">
           <p className="admin-header__eyebrow">Panel interno</p>
-          <h1>Administración GFT</h1>
-          <p>Panel interno de revisión editorial y publicación</p>
+          <div className="admin-header__title-row">
+            <h1>Panel admin GFT</h1>
+            <span className="admin-mode-badge">Modo administración</span>
+          </div>
+          <p>Los cambios pueden afectar a la publicación de la guía.</p>
         </div>
-        {apiKey ? (
-          <button className="admin-button admin-button--secondary" type="button" onClick={handleLogout}>
-            Olvidar clave
-          </button>
-        ) : null}
+        <div className="admin-header__actions">
+          <a className="admin-button admin-button--public-link" href="/">
+            Ver GFT pública
+          </a>
+          {apiKey ? (
+            <button className="admin-button admin-button--secondary" type="button" onClick={handleLogout}>
+              Olvidar clave
+            </button>
+          ) : null}
+        </div>
       </header>
 
       {!apiKey ? (
@@ -689,8 +724,13 @@ export function AdminGftPage() {
                 {detailError ? <p className="admin-alert admin-alert--error">{detailError}</p> : null}
                 {detail ? (
                   <div className="admin-detail-content">
-                    <section>
-                      <h3>Datos identificativos</h3>
+                    <div className={`admin-public-visibility admin-public-visibility--${detailIsPubliclyVisible ? 'visible' : 'hidden'}`}>
+                      {detailIsPubliclyVisible
+                        ? 'Este medicamento es visible en la GFT pública.'
+                        : 'Este medicamento no es visible actualmente en la GFT pública.'}
+                    </div>
+                    <section className="admin-detail-block admin-detail-block--identification">
+                      <h3>Identificación</h3>
                       <dl>
                         <dt>CN</dt><dd>{detail.cn}</dd>
                         <dt>Nombre comercial</dt><dd><EmptyValue value={detail.nombre_comercial} /></dd>
@@ -701,7 +741,7 @@ export function AdminGftPage() {
                         <dt>Nemónico</dt><dd><EmptyValue value={detail.nemonico} /></dd>
                       </dl>
                     </section>
-                    <section className="admin-publication-state">
+                    <section className="admin-detail-block admin-publication-state">
                       <div className="admin-publication-state__header">
                         <div>
                           <h3>Estado de publicación</h3>
@@ -783,7 +823,7 @@ export function AdminGftPage() {
                         </dl>
                       )}
                     </section>
-                    <section className="admin-clinical-editor">
+                    <section className="admin-detail-block admin-clinical-editor">
                       <div className="admin-clinical-editor__header">
                         <div>
                           <h3>Campos clínicos/editoriales</h3>
@@ -842,8 +882,8 @@ export function AdminGftPage() {
                         </dl>
                       )}
                     </section>
-                    <section>
-                      <h3>Metadatos de revisión</h3>
+                    <section className="admin-detail-block admin-detail-block--metadata">
+                      <h3>Metadatos</h3>
                       <dl>
                         <dt>Actualizado</dt><dd>{formatDateTime(detail.updated_at)}</dd>
                         <dt>Lote importación</dt><dd><EmptyValue value={detail.last_import_batch_id} /></dd>

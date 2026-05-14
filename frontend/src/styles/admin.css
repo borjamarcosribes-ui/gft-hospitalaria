@@ -630,3 +630,101 @@
     grid-template-columns: 1fr;
   }
 }
+
+.admin-header__content {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.admin-header__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.admin-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #b8dfcf;
+  border-radius: 999px;
+  background: #edf8f3;
+  color: #2f7d6b;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.admin-button--public-link {
+  border-color: #2f7d6b;
+  background: #ffffff;
+  color: #2f7d6b;
+  text-decoration: none;
+}
+
+.admin-button--public-link:hover {
+  background: #edf8f3;
+}
+
+.admin-public-visibility {
+  border: 1px solid;
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  font-weight: 800;
+}
+
+.admin-public-visibility--visible {
+  border-color: #b8dfcf;
+  background: #f0fbf7;
+  color: #2f7d6b;
+}
+
+.admin-public-visibility--hidden {
+  border-color: #d9e2ec;
+  background: #f4f8fb;
+  color: #52616f;
+}
+
+.admin-detail-block {
+  border: 1px solid #e1eaf1;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 1rem;
+}
+
+.admin-detail-content .admin-detail-block {
+  border-top: 1px solid #e1eaf1;
+}
+
+.admin-detail-block--identification {
+  border-left: 4px solid #1f5f8b;
+}
+
+.admin-detail-block--metadata {
+  border-left: 4px solid #7b8b9a;
+  background: #fbfdff;
+}
+
+.admin-publication-state {
+  border-left: 4px solid #2f7d6b;
+}
+
+.admin-clinical-editor {
+  border-left: 4px solid #5b8fb9;
+}
+
+@media (max-width: 980px) {
+  .admin-header__actions {
+    justify-content: flex-start;
+  }
+}

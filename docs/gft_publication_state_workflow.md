@@ -90,6 +90,6 @@ La visibilidad pública en `/gft` sigue dependiendo exclusivamente de que se cum
 
 ## Integración en el panel admin
 
-El panel admin `/admin/gft` permite cambiar `estado_gft`, `estado_editorial`, `comentario_revision` y `revisado_por` desde un bloque separado de la edición clínica/editorial. La UI limita los selectores a los estados permitidos, bloquea antes de llamar al backend la combinación `estado_editorial = publicado` con `estado_gft != incluido` y pide confirmación nativa antes de guardar cambios que publican, retiran o modifican el estado administrativo.
+El panel admin `/admin/gft` permite cambiar `estado_gft`, `estado_editorial`, `comentario_revision` y `revisado_por` desde un bloque separado de la edición clínica/editorial. La UI limita los selectores a los estados permitidos, bloquea antes de llamar al backend la combinación `estado_editorial = publicado` con `estado_gft != incluido` y pide confirmación nativa antes de guardar cambios que publican, retiran o modifican el estado administrativo. Además, el detalle muestra de forma persistente si el medicamento es visible o no en la GFT pública, y el panel identifica explícitamente el modo administración para reducir errores al publicar o retirar presentaciones.
 
 Tras guardar correctamente, el panel recarga el detalle completo, el resumen y el listado actual para reflejar el efecto natural de los estados sobre la publicación pública. La ficha pública de `/gft` no se modifica por otra vía: sigue dependiendo de `estado_gft = incluido` y `estado_editorial = publicado`.
