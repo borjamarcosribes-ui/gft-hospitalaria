@@ -5,21 +5,32 @@ import {
   getGftEditorialSummary,
   listGftEditorialMedicamentos,
   updateGftMedicationEditorial,
+  updateGftMedicationState,
 } from '../services/adminApi';
 import type {
   GFTEditorialAdminListResponse,
   GFTEditorialAdminResponse,
   GFTEditorialAdminSummaryResponse,
   GFTEditorialUpdatePayload,
+  GFTPublicationEditorialState,
+  GFTPublicationGftState,
+  GFTPublicationStateUpdatePayload,
 } from '../types/admin';
 
 const ADMIN_SESSION_KEY = 'gft-admin-api-key';
 const DEFAULT_LIMIT = 50;
-const ESTADO_GFT_OPTIONS = ['incluido', 'excluido', 'pendiente_revision'];
-const ESTADO_EDITORIAL_OPTIONS = ['borrador', 'validado', 'publicado', 'retirado'];
+const ESTADO_GFT_OPTIONS = ['incluido', 'excluido', 'pendiente_revision'] as const;
+const ESTADO_EDITORIAL_OPTIONS = ['borrador', 'validado', 'publicado', 'retirado'] as const;
 
-type EditableClinicalField = keyof GFTEditorialUpdatePayload;
+type EditableClinicalField = Exclude<keyof GFTEditorialUpdatePayload, 'comentario_revision' | 'revisado_por'>;
 type EditorialFormState = Record<EditableClinicalField, string>;
+
+interface PublicationStateFormState {
+  estado_gft: GFTPublicationGftState;
+  estado_editorial: GFTPublicationEditorialState;
+  comentario_revision: string;
+  revisado_por: string;
+}
 
 const EDITABLE_CLINICAL_FIELDS: Array<{ key: EditableClinicalField; label: string; control: 'textarea' | 'input' }> = [
   { key: 'restricciones_hospitalarias', label: 'Restricciones hospitalarias', control: 'textarea' },
@@ -28,9 +39,16 @@ const EDITABLE_CLINICAL_FIELDS: Array<{ key: EditableClinicalField; label: strin
   { key: 'precauciones_embarazo', label: 'Precauciones embarazo', control: 'textarea' },
   { key: 'precauciones_lactancia', label: 'Precauciones lactancia', control: 'textarea' },
   { key: 'observaciones_internas', label: 'Observaciones internas', control: 'textarea' },
-  { key: 'comentario_revision', label: 'Comentario de revisión', control: 'textarea' },
-  { key: 'revisado_por', label: 'Revisado por', control: 'input' },
 ];
+
+function buildPublicationStateFormState(detail: GFTEditorialAdminResponse): PublicationStateFormState {
+  return {
+    estado_gft: detail.estado_gft as GFTPublicationGftState,
+    estado_editorial: detail.estado_editorial as GFTPublicationEditorialState,
+    comentario_revision: detail.comentario_revision ?? '',
+    revisado_por: detail.revisado_por ?? '',
+  };
+}
 
 function buildEditorialFormState(detail: GFTEditorialAdminResponse): EditorialFormState {
   return EDITABLE_CLINICAL_FIELDS.reduce((formState, field) => ({
@@ -46,10 +64,6 @@ function normalizeEditorialValue(value: string): string | null {
 
 function buildEditorialPayload(detail: GFTEditorialAdminResponse, formState: EditorialFormState): GFTEditorialUpdatePayload {
   const payload = EDITABLE_CLINICAL_FIELDS.reduce((currentPayload, field) => {
-    if (field.key === 'revisado_por') {
-      return currentPayload;
-    }
-
     const normalizedValue = normalizeEditorialValue(formState[field.key]);
 
     if (normalizedValue !== detail[field.key]) {
@@ -62,20 +76,55 @@ function buildEditorialPayload(detail: GFTEditorialAdminResponse, formState: Edi
     return currentPayload;
   }, {} as GFTEditorialUpdatePayload);
 
-  if (Object.keys(payload).length === 0) {
-    return payload;
-  }
 
+  return payload;
+}
+
+function buildPublicationStatePayload(
+  detail: GFTEditorialAdminResponse,
+  formState: PublicationStateFormState,
+): GFTPublicationStateUpdatePayload {
+  const payload: GFTPublicationStateUpdatePayload = {};
+  const normalizedComment = normalizeEditorialValue(formState.comentario_revision);
   const normalizedReviewer = normalizeEditorialValue(formState.revisado_por);
 
-  if (normalizedReviewer !== detail.revisado_por) {
-    return {
-      ...payload,
-      revisado_por: normalizedReviewer,
-    };
+  if (formState.estado_gft !== detail.estado_gft) {
+    payload.estado_gft = formState.estado_gft;
+  }
+
+  if (formState.estado_editorial !== detail.estado_editorial) {
+    payload.estado_editorial = formState.estado_editorial;
+  }
+
+  if (normalizedComment !== detail.comentario_revision) {
+    payload.comentario_revision = normalizedComment;
+  }
+
+  if (normalizedReviewer && normalizedReviewer !== detail.revisado_por) {
+    payload.revisado_por = normalizedReviewer;
+  }
+
+  if ((payload.comentario_revision !== undefined || payload.revisado_por !== undefined) && payload.estado_gft === undefined && payload.estado_editorial === undefined) {
+    payload.estado_gft = formState.estado_gft;
+    payload.estado_editorial = formState.estado_editorial;
   }
 
   return payload;
+}
+
+function getStateChangeConfirmationMessage(detail: GFTEditorialAdminResponse, formState: PublicationStateFormState): string {
+  const wasPublic = detail.estado_gft === 'incluido' && detail.estado_editorial === 'publicado';
+  const willBePublic = formState.estado_gft === 'incluido' && formState.estado_editorial === 'publicado';
+
+  if (willBePublic && !wasPublic) {
+    return 'Vas a publicar este medicamento en la GFT pública si está incluido en guía. ¿Confirmas el cambio?';
+  }
+
+  if (!willBePublic && wasPublic) {
+    return 'Vas a retirar este medicamento de la GFT pública si estaba publicado. ¿Confirmas el cambio?';
+  }
+
+  return 'Vas a modificar el estado administrativo de este medicamento. ¿Confirmas el cambio?';
 }
 
 function formatDate(value: string | null): string {
@@ -85,7 +134,6 @@ function formatDate(value: string | null): string {
 
   return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' }).format(new Date(value));
 }
-
 function formatDateTime(value: string | null): string {
   if (!value) {
     return '—';
@@ -140,9 +188,14 @@ export function AdminGftPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [isEditingClinicalInfo, setIsEditingClinicalInfo] = useState(false);
   const [editorialForm, setEditorialForm] = useState<EditorialFormState | null>(null);
+  const [isEditingPublicationState, setIsEditingPublicationState] = useState(false);
+  const [publicationStateForm, setPublicationStateForm] = useState<PublicationStateFormState | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
+  const [stateSaveLoading, setStateSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [stateSaveError, setStateSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [stateSaveSuccess, setStateSaveSuccess] = useState<string | null>(null);
 
   const checkAccess = useCallback(async (candidateKey: string, persist: boolean) => {
     const cleanKey = candidateKey.trim();
@@ -255,9 +308,14 @@ export function AdminGftPage() {
     setDetailError(null);
     setIsEditingClinicalInfo(false);
     setEditorialForm(null);
+    setIsEditingPublicationState(false);
+    setPublicationStateForm(null);
     setSaveError(null);
+    setStateSaveError(null);
     setSaveSuccess(null);
+    setStateSaveSuccess(null);
     setSaveLoading(false);
+    setStateSaveLoading(false);
 
     try {
       setDetail(await getGftEditorialMedicamento(apiKey, cn));
@@ -279,9 +337,14 @@ export function AdminGftPage() {
     setSelectedCn(null);
     setIsEditingClinicalInfo(false);
     setEditorialForm(null);
+    setIsEditingPublicationState(false);
+    setPublicationStateForm(null);
     setSaveError(null);
+    setStateSaveError(null);
     setSaveSuccess(null);
+    setStateSaveSuccess(null);
     setSaveLoading(false);
+    setStateSaveLoading(false);
   };
 
   const handleStartEditingClinicalInfo = () => {
@@ -293,12 +356,38 @@ export function AdminGftPage() {
     setIsEditingClinicalInfo(true);
     setSaveError(null);
     setSaveSuccess(null);
+    setStateSaveSuccess(null);
   };
 
   const handleCancelEditingClinicalInfo = () => {
     setEditorialForm(detail ? buildEditorialFormState(detail) : null);
     setIsEditingClinicalInfo(false);
     setSaveError(null);
+  };
+
+  const handleStartEditingPublicationState = () => {
+    if (!detail) {
+      return;
+    }
+
+    setPublicationStateForm(buildPublicationStateFormState(detail));
+    setIsEditingPublicationState(true);
+    setStateSaveError(null);
+    setStateSaveSuccess(null);
+    setSaveSuccess(null);
+  };
+
+  const handleCancelEditingPublicationState = () => {
+    setPublicationStateForm(detail ? buildPublicationStateFormState(detail) : null);
+    setIsEditingPublicationState(false);
+    setStateSaveError(null);
+  };
+
+  const handlePublicationStateFormChange = <Field extends keyof PublicationStateFormState>(
+    field: Field,
+    value: PublicationStateFormState[Field],
+  ) => {
+    setPublicationStateForm((currentForm) => (currentForm ? { ...currentForm, [field]: value } : currentForm));
   };
 
   const handleEditorialFormChange = (field: EditableClinicalField, value: string) => {
@@ -336,6 +425,48 @@ export function AdminGftPage() {
       setSaveError(error instanceof Error ? error.message : 'No se pudieron guardar los cambios clínicos/editoriales.');
     } finally {
       setSaveLoading(false);
+    }
+  };
+
+  const handleSavePublicationState = async () => {
+    if (!apiKey || !detail || !publicationStateForm) {
+      return;
+    }
+
+    setStateSaveLoading(true);
+    setStateSaveError(null);
+    setStateSaveSuccess(null);
+
+    try {
+      if (publicationStateForm.estado_editorial === 'publicado' && publicationStateForm.estado_gft !== 'incluido') {
+        setStateSaveError('Solo se puede publicar un medicamento incluido en guía.');
+        return;
+      }
+
+      const payload = buildPublicationStatePayload(detail, publicationStateForm);
+
+      if (Object.keys(payload).length === 0) {
+        setStateSaveError('No hay cambios de estado para guardar.');
+        return;
+      }
+
+      if (!window.confirm(getStateChangeConfirmationMessage(detail, publicationStateForm))) {
+        return;
+      }
+
+      await updateGftMedicationState(apiKey, detail.cn, payload);
+      const fullDetail = await getGftEditorialMedicamento(apiKey, detail.cn);
+
+      setDetail(fullDetail);
+      setPublicationStateForm(buildPublicationStateFormState(fullDetail));
+      await loadSummary(apiKey);
+      await loadList(apiKey);
+      setIsEditingPublicationState(false);
+      setStateSaveSuccess('Estado de publicación actualizado correctamente.');
+    } catch (error) {
+      setStateSaveError(error instanceof Error ? error.message : 'No se pudo guardar el estado de publicación.');
+    } finally {
+      setStateSaveLoading(false);
     }
   };
 
@@ -570,18 +701,93 @@ export function AdminGftPage() {
                         <dt>Nemónico</dt><dd><EmptyValue value={detail.nemonico} /></dd>
                       </dl>
                     </section>
-                    <section>
-                      <h3>Estados</h3>
-                      <dl>
-                        <dt>Estado GFT</dt><dd><StatusBadge value={detail.estado_gft} tone={detail.estado_gft === 'incluido' ? 'green' : 'neutral'} /></dd>
-                        <dt>Estado editorial</dt><dd><StatusBadge value={detail.estado_editorial} tone={detail.estado_editorial === 'publicado' ? 'blue' : 'amber'} /></dd>
-                      </dl>
+                    <section className="admin-publication-state">
+                      <div className="admin-publication-state__header">
+                        <div>
+                          <h3>Estado de publicación</h3>
+                          <p>Gestión separada de estados GFT/editoriales mediante el endpoint de estado.</p>
+                        </div>
+                        {!isEditingPublicationState ? (
+                          <button className="admin-button admin-button--secondary" type="button" onClick={handleStartEditingPublicationState}>
+                            Cambiar estado
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {stateSaveSuccess ? <p className="admin-alert admin-alert--success">{stateSaveSuccess}</p> : null}
+                      {stateSaveError ? <p className="admin-alert admin-alert--error">{stateSaveError}</p> : null}
+                      {publicationStateForm?.estado_editorial === 'publicado' ? (
+                        <p className="admin-alert admin-alert--warning">Publicar hace visible el medicamento en la GFT pública solo si el estado GFT es incluido.</p>
+                      ) : null}
+                      {publicationStateForm?.estado_editorial === 'retirado' ? (
+                        <p className="admin-alert admin-alert--warning">Retirar deja el medicamento fuera de la publicación pública aunque esté incluido en guía.</p>
+                      ) : null}
+
+                      {isEditingPublicationState && publicationStateForm ? (
+                        <div className="admin-publication-state-form" aria-busy={stateSaveLoading}>
+                          <label className="admin-publication-state-form__field">
+                            Estado GFT
+                            <select
+                              value={publicationStateForm.estado_gft}
+                              onChange={(event) => handlePublicationStateFormChange('estado_gft', event.target.value as GFTPublicationGftState)}
+                              disabled={stateSaveLoading}
+                            >
+                              {ESTADO_GFT_OPTIONS.map((estado) => <option key={estado} value={estado}>{formatLabel(estado)}</option>)}
+                            </select>
+                          </label>
+                          <label className="admin-publication-state-form__field">
+                            Estado editorial
+                            <select
+                              value={publicationStateForm.estado_editorial}
+                              onChange={(event) => handlePublicationStateFormChange('estado_editorial', event.target.value as GFTPublicationEditorialState)}
+                              disabled={stateSaveLoading}
+                            >
+                              {ESTADO_EDITORIAL_OPTIONS.map((estado) => <option key={estado} value={estado}>{formatLabel(estado)}</option>)}
+                            </select>
+                          </label>
+                          <label className="admin-publication-state-form__field admin-publication-state-form__field--wide">
+                            Comentario de revisión
+                            <textarea
+                              value={publicationStateForm.comentario_revision}
+                              onChange={(event) => handlePublicationStateFormChange('comentario_revision', event.target.value)}
+                              disabled={stateSaveLoading}
+                              rows={4}
+                            />
+                          </label>
+                          <label className="admin-publication-state-form__field admin-publication-state-form__field--wide">
+                            Revisado por
+                            <input
+                              type="text"
+                              value={publicationStateForm.revisado_por}
+                              onChange={(event) => handlePublicationStateFormChange('revisado_por', event.target.value)}
+                              disabled={stateSaveLoading}
+                            />
+                          </label>
+                          <div className="admin-publication-state-form__actions">
+                            <button className="admin-button admin-button--primary" type="button" onClick={() => void handleSavePublicationState()} disabled={stateSaveLoading}>
+                              {stateSaveLoading ? 'Guardando…' : 'Guardar estado'}
+                            </button>
+                            <button className="admin-button admin-button--secondary" type="button" onClick={handleCancelEditingPublicationState} disabled={stateSaveLoading}>
+                              Cancelar
+                            </button>
+                            {stateSaveLoading ? <span className="admin-save-status">Guardando estado de publicación…</span> : null}
+                          </div>
+                        </div>
+                      ) : (
+                        <dl>
+                          <dt>Estado GFT</dt><dd><StatusBadge value={detail.estado_gft} tone={detail.estado_gft === 'incluido' ? 'green' : 'neutral'} /></dd>
+                          <dt>Estado editorial</dt><dd><StatusBadge value={detail.estado_editorial} tone={detail.estado_editorial === 'publicado' ? 'blue' : 'amber'} /></dd>
+                          <dt>Comentario de revisión</dt><dd><EmptyValue value={detail.comentario_revision} /></dd>
+                          <dt>Revisado por</dt><dd><EmptyValue value={detail.revisado_por} /></dd>
+                          <dt>Fecha revisión</dt><dd>{formatDate(detail.fecha_revision)}</dd>
+                        </dl>
+                      )}
                     </section>
                     <section className="admin-clinical-editor">
                       <div className="admin-clinical-editor__header">
                         <div>
                           <h3>Campos clínicos/editoriales</h3>
-                          <p>Edición controlada de información clínica. Los datos identificativos y estados no son editables desde este panel.</p>
+                          <p>Edición controlada de información clínica. Los datos identificativos y los estados se mantienen fuera de este formulario.</p>
                         </div>
                         {!isEditingClinicalInfo ? (
                           <button className="admin-button admin-button--secondary" type="button" onClick={handleStartEditingClinicalInfo}>
@@ -633,15 +839,12 @@ export function AdminGftPage() {
                           <dt>Precauciones embarazo</dt><dd><EmptyValue value={detail.precauciones_embarazo} /></dd>
                           <dt>Precauciones lactancia</dt><dd><EmptyValue value={detail.precauciones_lactancia} /></dd>
                           <dt>Observaciones internas</dt><dd><EmptyValue value={detail.observaciones_internas} /></dd>
-                          <dt>Comentario de revisión</dt><dd><EmptyValue value={detail.comentario_revision} /></dd>
                         </dl>
                       )}
                     </section>
                     <section>
                       <h3>Metadatos de revisión</h3>
                       <dl>
-                        <dt>Revisado por</dt><dd><EmptyValue value={detail.revisado_por} /></dd>
-                        <dt>Fecha revisión</dt><dd>{formatDate(detail.fecha_revision)}</dd>
                         <dt>Actualizado</dt><dd>{formatDateTime(detail.updated_at)}</dd>
                         <dt>Lote importación</dt><dd><EmptyValue value={detail.last_import_batch_id} /></dd>
                         <dt>Importado</dt><dd>{formatDateTime(detail.last_imported_at)}</dd>
