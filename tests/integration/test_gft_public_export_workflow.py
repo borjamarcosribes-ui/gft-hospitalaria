@@ -131,7 +131,7 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
                     {
                         "CN": PENDING_CN,
                         "Observaciones revisión": "SI?",
-                        "Estado editorial": "pendiente",
+                        "Estado editorial": "borrador",
                         "Nemónico": f"NEM-{PENDING_CN}",
                     },
                 ]
@@ -180,6 +180,7 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
     assert sync_response.json()["ok"] == 1
     assert sync_response.json()["skipped_excluded"] == 1
     assert sync_response.json()["skipped_pending"] == 1
+    assert sync_response.json()["skipped_errors"] == 0
 
     def fake_segmented_get_section_content(self, nregistro, tipo_documento=1, seccion="4.1"):
         if nregistro != f"NR{PUBLIC_CN}":
@@ -212,6 +213,7 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
     assert segmented_sync_response.json()["ok"] == 1
     assert segmented_sync_response.json()["skipped_excluded"] == 1
     assert segmented_sync_response.json()["skipped_pending"] == 1
+    assert segmented_sync_response.json()["skipped_errors"] == 0
 
     def fake_bifimed_get_by_cn(self, cn):
         if cn != PUBLIC_CN:
@@ -242,12 +244,14 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
     assert bifimed_sync_response.json()["ok"] == 1
     assert bifimed_sync_response.json()["skipped_excluded"] == 1
     assert bifimed_sync_response.json()["skipped_pending"] == 1
+    assert bifimed_sync_response.json()["skipped_errors"] == 0
 
     apply_response = client.post(f"/imports/{batch_id}/apply")
 
     assert apply_response.status_code == 200
     assert apply_response.json()["applied_rows"] == 2
     assert apply_response.json()["skipped_pending"] == 1
+    assert apply_response.json()["skipped_errors"] == 0
 
     public_state = db_session.get(GFTEstadoPresentacion, PUBLIC_CN)
     assert public_state is not None
