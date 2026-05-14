@@ -18,6 +18,13 @@ function buildUrl(path: string): URL {
   return new URL(path, window.location.origin);
 }
 
+export function getGftPdfExportUrl(): string {
+  const exportPath = '/gft/export/pdf';
+  const baseUrl = API_BASE_URL.trim();
+
+  return baseUrl ? buildUrl(exportPath).toString() : exportPath;
+}
+
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(buildUrl(path).toString(), {
     headers: {
