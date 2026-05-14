@@ -58,7 +58,7 @@ El contrato actual de la API pública `/gft` y el origen de sus campos están do
 
 La GFT pública incluye navegación visual por índice ATC para filtrar por grupos terapéuticos.
 
-El contrato funcional y técnico de la futura exportación PDF de la GFT pública está documentado en [docs/gft_pdf_export_contract.md](docs/gft_pdf_export_contract.md).
+El contrato funcional y técnico de la exportación imprimible de la GFT pública está documentado en [docs/gft_pdf_export_contract.md](docs/gft_pdf_export_contract.md). La previsualización HTML imprimible está disponible en `GET /gft/export/html`; el PDF final queda pendiente.
 
 ## Seguridad admin
 
