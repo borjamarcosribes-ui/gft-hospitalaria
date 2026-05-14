@@ -119,15 +119,28 @@ El diseño visual debe ser:
 
 ## 8. Capa intermedia HTML imprimible
 
-Ya existe una capa intermedia interna de renderizado HTML imprimible que consume exclusivamente la estructura devuelta por `build_gft_pdf_export_data(db)`. Esta capa genera un documento HTML completo y autónomo con portada, índice ATC y cuerpo de medicamentos, y actúa como plantilla base del futuro PDF.
+Ya existe una capa intermedia de renderizado HTML imprimible que consume exclusivamente la estructura devuelta por `build_gft_pdf_export_data(db)`. Esta capa genera un documento HTML completo y autónomo con portada, índice ATC y cuerpo de medicamentos, y actúa como plantilla base del futuro PDF.
 
-Esta capa no expone endpoint propio, no genera binarios PDF y no modifica el contrato público de `/gft`. Todo contenido dinámico debe escaparse antes de insertarse en el HTML, incluyendo URLs, para evitar que datos persistidos puedan inyectar marcado o scripts en la plantilla imprimible.
+La previsualización pública imprimible está disponible en:
 
-La secuencia técnica prevista queda así:
+```http
+GET /gft/export/html
+```
+
+Este endpoint devuelve `text/html; charset=utf-8`, no requiere autenticación admin porque solo expone la GFT ya publicada, y no genera todavía el PDF final ni ningún binario. Debe considerarse una previsualización HTML imprimible y una herramienta de validación de la plantilla que utilizará la exportación PDF futura.
+
+El endpoint HTML delega obligatoriamente en la cadena interna existente y no duplica lógica de consulta ni de renderizado:
 
 1. `build_gft_pdf_export_data(db)` prepara datos públicos estructurados desde la misma frontera de publicación que `/gft`.
 2. `render_gft_pdf_html(export_data)` transforma esos datos públicos en HTML imprimible determinista.
-3. Un futuro motor PDF convertirá ese HTML en `application/pdf` cuando se implemente el endpoint.
+
+Todo contenido dinámico debe escaparse antes de insertarse en el HTML, incluyendo URLs, para evitar que datos persistidos puedan inyectar marcado o scripts en la plantilla imprimible.
+
+La secuencia técnica prevista para el futuro PDF queda así:
+
+1. `build_gft_pdf_export_data(db)` prepara datos públicos estructurados desde la misma frontera de publicación que `/gft`.
+2. `render_gft_pdf_html(export_data)` transforma esos datos públicos en HTML imprimible determinista.
+3. Un futuro motor PDF convertirá ese HTML en `application/pdf` cuando se implemente el endpoint `GET /gft/export/pdf`.
 
 ## 9. Estrategia técnica futura
 
@@ -141,14 +154,14 @@ Requisitos técnicos esperados:
 
 - Antes de generar el PDF existe un servicio interno de preparación de datos estructurados para PDF, sin generación de fichero ni endpoint propio.
 - Antes de generar el PDF existe también un servicio interno de renderizado HTML imprimible, sin endpoint propio ni generación binaria.
-- El futuro endpoint `GET /gft/export/pdf` deberá consumir esa secuencia interna de datos estructurados y HTML imprimible, manteniendo la misma frontera pública que `/gft`.
+- El futuro endpoint `GET /gft/export/pdf` deberá consumir la misma cadena `build_gft_pdf_export_data(db)` → `render_gft_pdf_html(export_data)` → motor PDF, manteniendo la misma frontera pública que `/gft`.
 - El endpoint debe consultar `v_gft_publicada` o el mismo servicio público que alimenta `/gft` a través de esa capa intermedia.
 - La generación síncrona será aceptable inicialmente si el volumen de medicamentos permite tiempos de respuesta razonables.
 - Si el volumen crece o el coste de generación es elevado, deberá valorarse una generación asíncrona, cacheada o precomputada por versión de publicación.
 - La respuesta HTTP debe usar `Content-Type: application/pdf`.
 - El nombre de archivo sugerido es `gft_hospitalaria_YYYYMMDD.pdf`.
 
-Esta estrategia no implica implementación en este documento. No se añaden dependencias, endpoints ni cambios de modelo como parte de este contrato.
+Esta estrategia no implica todavía la implementación de `GET /gft/export/pdf`. La previsualización HTML `GET /gft/export/html` ya existe, pero no añade dependencias, modelos ni migraciones.
 
 ## 10. Criterios de aceptación futuros
 
@@ -169,7 +182,7 @@ Quedan pendientes para una implementación futura:
 
 - Elegir la librería de generación PDF.
 - Elegir el motor que convertirá el HTML imprimible interno en PDF.
-- Crear el endpoint `GET /gft/export/pdf`.
+- Crear el endpoint `GET /gft/export/pdf` reutilizando la cadena `build_gft_pdf_export_data(db)` → `render_gft_pdf_html(export_data)` → motor PDF.
 - Añadir tests de equivalencia entre `/gft` y el PDF.
 - Validar manualmente la legibilidad con datos reales.
 - Decidir si se añade índice clicable o marcadores internos.
