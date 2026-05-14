@@ -129,11 +129,12 @@ def _insert_medicamento(
             )
         )
     if principio_activo:
+        principio_activo_nombre = f"{principio_activo} {cn}"
         principio = PrincipioActivo(
             id=uuid.uuid4(),
-            nombre_normalizado=principio_activo.lower(),
-            nombre_display=principio_activo,
-            slug=principio_activo.lower().replace(" ", "-"),
+            nombre_normalizado=principio_activo_nombre.lower(),
+            nombre_display=principio_activo_nombre,
+            slug=f"{principio_activo.lower().replace(' ', '-')}-{cn}",
         )
         db_session.add(principio)
         db_session.flush()
