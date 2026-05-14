@@ -8,6 +8,7 @@ from app.schemas.gft import (
     GFTMedicamentoDetail,
     GFTPrincipioActivoIndexResponse,
 )
+from app.services.gft_pdf_binary_service import render_gft_pdf_bytes
 from app.services.gft_pdf_export_service import build_gft_pdf_export_data
 from app.services.gft_pdf_html_render_service import render_gft_pdf_html
 from app.services.gft_query_service import (
@@ -25,6 +26,18 @@ def gft_export_html(db: Session = Depends(get_db)):
     export_data = build_gft_pdf_export_data(db)
     html = render_gft_pdf_html(export_data)
     return Response(content=html, media_type="text/html; charset=utf-8")
+
+
+@router.get("/export/pdf")
+def gft_export_pdf(db: Session = Depends(get_db)):
+    export_data = build_gft_pdf_export_data(db)
+    html = render_gft_pdf_html(export_data)
+    pdf_bytes = render_gft_pdf_bytes(html)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="gft-hospitalaria.pdf"'},
+    )
 
 
 @router.get("/medicamentos", response_model=GFTListResponse)
