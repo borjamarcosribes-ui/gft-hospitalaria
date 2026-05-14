@@ -62,6 +62,11 @@ La GFT pública permite exportar desde su cabecera la guía completa publicada e
 
 El contrato funcional y técnico de la exportación imprimible de la GFT pública está documentado en [docs/gft_pdf_export_contract.md](docs/gft_pdf_export_contract.md). La previsualización HTML imprimible está disponible en `GET /gft/export/html`; la descarga PDF pública está disponible en `GET /gft/export/pdf`. La guía breve de verificación manual está disponible en [docs/gft_pdf_export_manual_check.md](docs/gft_pdf_export_manual_check.md).
 
+
+## Runbook operativo GFT
+
+- [docs/gft_operational_runbook.md](docs/gft_operational_runbook.md) — guía integral para operar el flujo funcional completo de la GFT hospitalaria digital: Excel maestro, importación/apply, sincronizaciones CIMA/BIFIMED, revisión admin, publicación y exportación HTML/PDF.
+
 ## Seguridad admin
 
 - [docs/admin_security.md](docs/admin_security.md) — protección mínima de endpoints admin.
