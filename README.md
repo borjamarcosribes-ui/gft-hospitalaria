@@ -60,7 +60,7 @@ La GFT pública incluye navegación visual por índice ATC para filtrar por grup
 
 La GFT pública permite exportar desde su cabecera la guía completa publicada en PDF mediante `GET /gft/export/pdf`, independientemente de los filtros activos en pantalla.
 
-El contrato funcional y técnico de la exportación imprimible de la GFT pública está documentado en [docs/gft_pdf_export_contract.md](docs/gft_pdf_export_contract.md). La previsualización HTML imprimible está disponible en `GET /gft/export/html`; la descarga PDF pública está disponible en `GET /gft/export/pdf`.
+El contrato funcional y técnico de la exportación imprimible de la GFT pública está documentado en [docs/gft_pdf_export_contract.md](docs/gft_pdf_export_contract.md). La previsualización HTML imprimible está disponible en `GET /gft/export/html`; la descarga PDF pública está disponible en `GET /gft/export/pdf`. La guía breve de verificación manual está disponible en [docs/gft_pdf_export_manual_check.md](docs/gft_pdf_export_manual_check.md).
 
 ## Seguridad admin
 
