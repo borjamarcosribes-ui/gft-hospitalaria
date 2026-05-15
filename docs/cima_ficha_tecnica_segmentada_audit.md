@@ -20,14 +20,14 @@
 ## Decisión de identidad
 
 - La GFT pública se organiza por CN, pero la ficha técnica segmentada se consulta por `nregistro`.
-- La identidad lógica futura de una sección debe ser: `nregistro + tipo_documento + seccion`.
+- La identidad lógica de una sección es: `nregistro + tipo_documento + seccion`.
 - El CN no debe formar parte de la identidad de la sección.
 - El CN podrá conservarse como referencia de origen/trazabilidad si se desea.
 - Justificación: varias presentaciones pueden compartir un mismo `nregistro`.
 
-## Flujo futuro
+## Flujo implementado
 
-El flujo E2E futuro deberá incorporar la ficha técnica segmentada después de disponer de `nregistro` desde CIMA medicamento:
+El flujo E2E incorpora la ficha técnica segmentada después de disponer de `nregistro` desde CIMA medicamento:
 
 ```text
 Excel
@@ -42,7 +42,7 @@ Excel
 
 La sincronización de CIMA ficha técnica segmentada depende de que CIMA medicamento haya proporcionado antes `nregistro`. Por tanto, no debe ejecutarse antes del sync CIMA de medicamento.
 
-El batch futuro deberá operar sobre `nregistro` únicos derivados de los CN incluidos válidos con caché CIMA correcta. La deduplicación por `nregistro` evitará llamadas y escrituras redundantes cuando varias presentaciones compartan la misma ficha técnica.
+El sync por batch opera sobre `nregistro` únicos derivados de los CN incluidos válidos con caché CIMA correcta. La deduplicación por `nregistro` evita llamadas y escrituras redundantes cuando varias presentaciones comparten la misma ficha técnica.
 
 ## Alcance v1
 
@@ -75,7 +75,7 @@ El modelo `app/models/cima_ficha_tecnica_cache.py` ya existe y define la tabla `
 
 La identidad lógica queda alineada con la decisión de auditoría mediante una restricción única sobre `(nregistro, tipo_documento, seccion)`. El CN no forma parte de esta identidad y varias presentaciones pueden seguir referenciando el mismo `nregistro`.
 
-La futura exposición pública deberá unir:
+La exposición pública une:
 
 ```text
 gft_estado_presentacion.cn
@@ -123,7 +123,7 @@ Se añaden fixtures sintéticas mínimas basadas en la forma real observada del 
 - contenido `text/plain` de la sección 4.1;
 - objeto de error para sección no disponible.
 
-## Próximo paso técnico
+## Estado técnico implementado
 
 - Ya existe sync individual de sección segmentada mediante `sync_cima_segmented_section`, persistiendo contra `cima_ficha_tecnica_cache` con identidad `nregistro + tipo_documento + seccion`.
 - Ya existen endpoints individuales por `nregistro` para sincronizar (`POST /cima/segmented/sync/{nregistro}`) y consultar caché (`GET /cima/segmented/cache/{nregistro}`) sin exponer `raw_data`.

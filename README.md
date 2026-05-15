@@ -39,9 +39,35 @@ Columnas opcionales:
 - estado_editorial: borrador | validado | publicado | retirado
 - import_batch.status: uploaded | processing | validated | with_errors | ready_to_publish | published | rejected | failed
 
-## Publicación futura
+## Estado actual GFT
 
-La web y el PDF futuros deberán leer desde la vista SQL `v_gft_publicada`.
+### Implementado
+
+- Modelo de datos GFT, migraciones y vista SQL `v_gft_publicada` como frontera de publicación.
+- Importación desde Excel a staging, validación/dry-run, resumen de batch y `apply` a `gft_estado_presentacion`.
+- Sincronización CIMA de medicamento por CN y por batch, incluyendo `nregistro`, documentos, ATC y principios activos.
+- CIMA ficha técnica segmentada por `nregistro`, con sync individual y por batch, caché persistida y publicación de la sección `4.1` como `indicaciones_ficha_tecnica` cuando está en `sync_status = ok`.
+- BIFIMED: parser, cliente, sincronización individual, sincronización por batch y caché de financiación.
+- API pública `/gft` con listado, detalle por CN, índice ATC, índice de principios activos y exportación pública HTML/PDF.
+- Frontend público con búsqueda, filtros, navegación por índice ATC y botón de exportación PDF.
+- Panel admin `/admin/gft` con resumen, listado, detalle, edición clínica/editorial y cambio de estado GFT/editorial.
+- Cadena única de exportación: `build_gft_pdf_export_data(db)` → `render_gft_pdf_html(export_data)` → `render_gft_pdf_bytes(html)`.
+- Runbook operativo y guía manual de verificación PDF.
+
+### Parcial
+
+- La protección admin actual se basa en `X-Admin-API-Key`; es suficiente para entornos controlados o demo interna, pero no equivale a autenticación corporativa con usuarios, roles y auditoría.
+- Los campos clínicos/editoriales hospitalarios son editables manualmente y se publican según contrato, pero requieren validación funcional con datos reales y revisión clínica.
+- La exportación PDF está implementada, pero su estabilidad operativa depende de tener WeasyPrint/pydyf y las librerías de sistema correctamente instaladas en el despliegue.
+
+### Pendiente para producción
+
+- Autenticación robusta, roles, auditoría de cambios y gestión formal de sesiones.
+- Protección explícita de endpoints internos de importación/sincronización si se exponen fuera de una red o entorno controlado.
+- Validación con datos reales y checklist funcional antes de considerar una v1 productiva.
+- Hardening de despliegue: variables de entorno, secretos, PostgreSQL, CORS/proxy, observabilidad y dependencias de renderizado PDF.
+- Política de versionado/caché del PDF si el volumen o la trazabilidad documental lo requieren.
+- Separación futura de observaciones internas no publicables si aparecen contenidos que no deban exponerse públicamente.
 
 ## BIFIMED
 
@@ -50,7 +76,7 @@ BIFIMED ya está implementado para parser, cliente, sincronización individual y
 
 ## CIMA ficha técnica segmentada
 
-La estrategia técnica y de flujo para la futura ficha técnica segmentada de CIMA está documentada en [docs/cima_ficha_tecnica_segmentada_audit.md](docs/cima_ficha_tecnica_segmentada_audit.md). La implementación queda pendiente: este módulo todavía no incorpora cliente, parser, sincronización, migraciones ni fixtures contractuales.
+La estrategia técnica y el estado de implementación de CIMA ficha técnica segmentada están documentados en [docs/cima_ficha_tecnica_segmentada_audit.md](docs/cima_ficha_tecnica_segmentada_audit.md). El módulo ya incorpora cliente/parser, modelo, migración, fixtures contractuales, sync individual por `nregistro`, sync por batch y publicación de la sección `4.1` como `indicaciones_ficha_tecnica` cuando existe caché válida.
 
 ## API pública GFT
 

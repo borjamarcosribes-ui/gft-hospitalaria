@@ -2,13 +2,13 @@
 
 ## 1. Finalidad
 
-La exportación PDF de la Guía Farmacoterapéutica (GFT) debe generar una versión imprimible y archivable de la GFT pública hospitalaria.
+La exportación PDF de la Guía Farmacoterapéutica (GFT) genera una versión imprimible y archivable de la GFT pública hospitalaria.
 
-El PDF no será una fuente alternativa ni un canal de publicación independiente: debe representar exactamente el mismo universo publicado que consulta la web pública a través de `/gft`. Su finalidad es facilitar la impresión, archivo, revisión documental y distribución controlada de una fotografía de la GFT digital publicada en un momento concreto.
+El PDF no es una fuente alternativa ni un canal de publicación independiente: debe representar exactamente el mismo universo publicado que consulta la web pública a través de `/gft`. Su finalidad es facilitar la impresión, archivo, revisión documental y distribución controlada de una fotografía de la GFT digital publicada en un momento concreto.
 
 ## 2. Fuente de datos
 
-La fuente funcional del PDF será la vista SQL `v_gft_publicada` o, alternativamente, el mismo servicio público que alimenta `/gft`, siempre que dicho servicio aplique las mismas reglas contractuales de publicación.
+La fuente funcional del PDF es la vista SQL `v_gft_publicada` o, alternativamente, el mismo servicio público que alimenta `/gft`, siempre que dicho servicio aplique las mismas reglas contractuales de publicación.
 
 El PDF debe generarse desde la misma base de datos publicada que alimenta la GFT digital. No debe existir una fuente paralela, una consulta directa a staging, una exportación desde ficheros importados ni una composición manual que pueda divergir de `/gft`.
 
@@ -24,9 +24,9 @@ Reglas obligatorias de inclusión:
 
 ## 3. Alcance inicial del PDF
 
-El primer alcance del PDF será una exportación completa de la guía publicada.
+El alcance implementado del PDF es una exportación completa de la guía publicada.
 
-No se implementarán inicialmente exportaciones parciales filtradas por grupo ATC, letra, principio activo, texto libre u otros criterios. Estos filtros podrán valorarse como evolución futura, siempre manteniendo la misma frontera de publicación que `/gft`.
+No están implementadas exportaciones parciales filtradas por grupo ATC, letra, principio activo, texto libre u otros criterios. Estos filtros podrán valorarse como evolución futura, siempre manteniendo la misma frontera de publicación que `/gft`.
 
 ## 4. Estructura propuesta del PDF
 
@@ -133,16 +133,16 @@ Todo contenido dinámico debe escaparse antes de insertarse en el HTML, incluyen
 
 ### `GET /gft/export/html`
 
-`GET /gft/export/html` devuelve `text/html; charset=utf-8`, no requiere autenticación admin porque solo expone la GFT ya publicada y queda como previsualización/debug visual de la plantilla imprimible que consume el PDF.
+`GET /gft/export/html` devuelve `text/html; charset=utf-8`, no requiere autenticación admin porque solo expone la GFT ya publicada y actúa como previsualización imprimible/debug visual de la plantilla que consume el PDF.
 
-Debe considerarse una herramienta de validación visual y técnica del HTML base, no una fuente independiente. Usa la misma cadena hasta el paso HTML:
+Este endpoint no es la descarga final para usuarios ni una fuente independiente. Debe considerarse una herramienta de validación visual y técnica del HTML base. Usa la misma cadena hasta el paso HTML:
 
 1. `build_gft_pdf_export_data(db)`.
 2. `render_gft_pdf_html(export_data)`.
 
 ### `GET /gft/export/pdf`
 
-`GET /gft/export/pdf` devuelve la GFT publicada como fichero PDF descargable, sin autenticación admin, porque solo exporta datos publicados.
+`GET /gft/export/pdf` devuelve la GFT publicada como fichero PDF descargable, sin autenticación admin, porque solo exporta datos publicados. Es la descarga pública final de la guía publicada y consume el HTML generado por la cadena común.
 
 La respuesta HTTP debe usar:
 
@@ -173,7 +173,8 @@ La implementación actual usa WeasyPrint como motor HTML→PDF. Si en el futuro 
 
 Quedan pendientes para evolución futura:
 
-- Añadir tests de equivalencia más exhaustivos entre `/gft`, `/gft/export/html` y `/gft/export/pdf`.
+- Mantener y ampliar, si procede, tests de equivalencia entre `/gft`, `/gft/export/html` y `/gft/export/pdf` para nuevos campos o reglas.
 - Validar manualmente la legibilidad con datos reales.
 - Decidir si se añade índice clicable o marcadores internos.
-- Definir política de cacheado o versionado si el volumen de generación lo requiere.
+- Definir política de cacheado o versionado si el volumen de generación o la trazabilidad documental lo requiere.
+- Documentar y validar dependencias de sistema de WeasyPrint en el entorno de despliegue.
