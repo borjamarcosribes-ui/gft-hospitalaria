@@ -280,14 +280,14 @@ def test_sync_import_batch_propagates_force(db_session, monkeypatch):
     assert calls == [("123456", True)]
 
 
-def test_sync_import_batch_endpoint_missing_batch_returns_404(client):
-    response = client.post(f"/cima/sync/import-batch/{uuid.uuid4()}")
+def test_sync_import_batch_endpoint_missing_batch_returns_404(client, admin_headers):
+    response = client.post(f"/cima/sync/import-batch/{uuid.uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Import batch not found"
 
 
-def test_sync_import_batch_endpoint_returns_summary(client, db_session, monkeypatch):
+def test_sync_import_batch_endpoint_returns_summary(client, db_session, monkeypatch, admin_headers):
     batch = ImportBatch(filename="x.xlsx", status="validated")
     db_session.add(batch)
     db_session.flush()
@@ -309,7 +309,7 @@ def test_sync_import_batch_endpoint_returns_summary(client, db_session, monkeypa
         lambda self, cn: FakeOk(),
     )
 
-    response = client.post(f"/cima/sync/import-batch/{batch.id}?force=true")
+    response = client.post(f"/cima/sync/import-batch/{batch.id}?force=true", headers=admin_headers)
 
     assert response.status_code == 200
     assert response.json() == {

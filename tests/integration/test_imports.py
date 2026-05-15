@@ -104,7 +104,7 @@ def test_apply_import_batch_missing_batch_returns_none(db_session):
     assert apply_import_batch(db_session, uuid.uuid4()) is None
 
 
-def test_imports_excel_route_does_not_apply_to_gft_estado_presentacion(client, db_session):
+def test_imports_excel_route_does_not_apply_to_gft_estado_presentacion(client, db_session, admin_headers):
     response = client.post(
         "/imports/excel",
         files={
@@ -112,6 +112,7 @@ def test_imports_excel_route_does_not_apply_to_gft_estado_presentacion(client, d
                 {"CN": "123456", "Observaciones revisión": "SI", "Estado editorial": "publicado"}
             ])
         },
+        headers=admin_headers,
     )
 
     assert response.status_code == 200
@@ -122,7 +123,7 @@ def test_imports_excel_route_does_not_apply_to_gft_estado_presentacion(client, d
     assert db_session.query(GFTEstadoPresentacion).count() == 0
 
 
-def test_imports_apply_route_applies_valid_rows_and_skips_pending(client, db_session):
+def test_imports_apply_route_applies_valid_rows_and_skips_pending(client, db_session, admin_headers):
     upload_response = client.post(
         "/imports/excel",
         files={
@@ -132,11 +133,12 @@ def test_imports_apply_route_applies_valid_rows_and_skips_pending(client, db_ses
                 {"CN": "333333", "Observaciones revisión": "guía", "Estado editorial": "publicado"},
             ])
         },
+        headers=admin_headers,
     )
     assert upload_response.status_code == 200
     batch_id = upload_response.json()["batch_id"]
 
-    apply_response = client.post(f"/imports/{batch_id}/apply")
+    apply_response = client.post(f"/imports/{batch_id}/apply", headers=admin_headers)
 
     assert apply_response.status_code == 200
     payload = apply_response.json()
@@ -153,7 +155,7 @@ def test_imports_apply_route_applies_valid_rows_and_skips_pending(client, db_ses
     assert db_session.get(GFTEstadoPresentacion, "333333") is None
 
 
-def test_imports_apply_route_missing_batch_returns_404(client):
-    response = client.post(f"/imports/{uuid.uuid4()}/apply")
+def test_imports_apply_route_missing_batch_returns_404(client, admin_headers):
+    response = client.post(f"/imports/{uuid.uuid4()}/apply", headers=admin_headers)
     assert response.status_code == 404
     assert response.json()["detail"] == "Batch no encontrado"

@@ -76,7 +76,7 @@ def _excel_file(rows):
     )
 
 
-def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, monkeypatch):
+def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, monkeypatch, admin_headers):
     upload_response = client.post(
         "/imports/excel",
         files={
@@ -105,6 +105,7 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
                 ]
             )
         },
+        headers=admin_headers,
     )
 
     assert upload_response.status_code == 200
@@ -116,7 +117,7 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
 
     assert db_session.query(GFTEstadoPresentacion).count() == 0
 
-    summary_response = client.get(f"/imports/{batch_id}/summary")
+    summary_response = client.get(f"/imports/{batch_id}/summary", headers=admin_headers)
 
     assert summary_response.status_code == 200
     summary_payload = summary_response.json()
@@ -159,7 +160,7 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
 
     monkeypatch.setattr("app.services.cima_sync_service.CimaClient.get_by_cn", fake_get_by_cn)
 
-    sync_response = client.post(f"/cima/sync/import-batch/{batch_id}?force=true")
+    sync_response = client.post(f"/cima/sync/import-batch/{batch_id}?force=true", headers=admin_headers)
 
     assert sync_response.status_code == 200
     sync_payload = sync_response.json()
@@ -206,7 +207,8 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
     )
 
     segmented_sync_response = client.post(
-        f"/cima/segmented/sync/import-batch/{batch_id}?force=true"
+        f"/cima/segmented/sync/import-batch/{batch_id}?force=true",
+        headers=admin_headers,
     )
 
     assert segmented_sync_response.status_code == 200
@@ -269,7 +271,7 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
         "app.services.bifimed_sync_service.BifimedClient.get_by_cn", fake_bifimed_get_by_cn
     )
 
-    bifimed_sync_response = client.post(f"/bifimed/sync/import-batch/{batch_id}?force=true")
+    bifimed_sync_response = client.post(f"/bifimed/sync/import-batch/{batch_id}?force=true", headers=admin_headers)
 
     assert bifimed_sync_response.status_code == 200
     bifimed_sync_payload = bifimed_sync_response.json()
@@ -288,7 +290,7 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
     assert bifimed_cache.sync_status == "ok"
     assert bifimed_cache.situacion_financiacion == "Si"
 
-    apply_response = client.post(f"/imports/{batch_id}/apply")
+    apply_response = client.post(f"/imports/{batch_id}/apply", headers=admin_headers)
 
     assert apply_response.status_code == 200
     apply_payload = apply_response.json()

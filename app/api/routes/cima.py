@@ -1,6 +1,7 @@
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from app.core.admin_security import require_admin_api_key
 from app.core.database import get_db
 from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
@@ -28,7 +29,9 @@ def _serialize_segmented_cache_row(row: CimaFichaTecnicaCache) -> dict:
     }
 
 
-router = APIRouter(prefix="/cima", tags=["cima"])
+router = APIRouter(
+    prefix="/cima", tags=["cima"], dependencies=[Depends(require_admin_api_key)]
+)
 
 
 @router.post("/sync/{cn}")

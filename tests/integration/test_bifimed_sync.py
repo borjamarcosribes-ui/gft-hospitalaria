@@ -126,7 +126,7 @@ def test_sync_bifimed_cn_force_refreshes_existing_row(db_session, monkeypatch):
     assert row.raw_data == {"html": "B"}
 
 
-def test_bifimed_sync_endpoint(client, monkeypatch):
+def test_bifimed_sync_endpoint(client, monkeypatch, admin_headers):
     def fake_get_by_cn(self, cn):
         return BifimedFetchResult(
             status="ok",
@@ -138,7 +138,7 @@ def test_bifimed_sync_endpoint(client, monkeypatch):
         "app.services.bifimed_sync_service.BifimedClient.get_by_cn", fake_get_by_cn
     )
 
-    response = client.post("/bifimed/sync/661406")
+    response = client.post("/bifimed/sync/661406", headers=admin_headers)
 
     assert response.status_code == 200
     assert response.json() == {
@@ -149,14 +149,14 @@ def test_bifimed_sync_endpoint(client, monkeypatch):
     }
 
 
-def test_bifimed_sync_endpoint_invalid_cn(client):
-    response = client.post("/bifimed/sync/abc")
+def test_bifimed_sync_endpoint_invalid_cn(client, admin_headers):
+    response = client.post("/bifimed/sync/abc", headers=admin_headers)
 
     assert response.status_code == 400
     assert response.json()["detail"] == "CN inválido"
 
 
-def test_bifimed_cache_endpoint(client, db_session):
+def test_bifimed_cache_endpoint(client, db_session, admin_headers):
     db_session.add(
         BifimedCache(
             cn="661406",
@@ -167,7 +167,7 @@ def test_bifimed_cache_endpoint(client, db_session):
     )
     db_session.commit()
 
-    response = client.get("/bifimed/cache/661406")
+    response = client.get("/bifimed/cache/661406", headers=admin_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -177,15 +177,15 @@ def test_bifimed_cache_endpoint(client, db_session):
     assert body["sync_status"] == "ok"
 
 
-def test_bifimed_cache_endpoint_404(client):
-    response = client.get("/bifimed/cache/999999")
+def test_bifimed_cache_endpoint_404(client, admin_headers):
+    response = client.get("/bifimed/cache/999999", headers=admin_headers)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "BIFIMED cache not found"
 
 
-def test_bifimed_cache_endpoint_invalid_cn(client):
-    response = client.get("/bifimed/cache/abc")
+def test_bifimed_cache_endpoint_invalid_cn(client, admin_headers):
+    response = client.get("/bifimed/cache/abc", headers=admin_headers)
 
     assert response.status_code == 400
     assert response.json()["detail"] == "CN inválido"
@@ -296,14 +296,14 @@ def test_sync_bifimed_import_batch_does_not_call_when_no_eligible_cn(
     assert calls == []
 
 
-def test_bifimed_import_batch_endpoint_404(client):
-    response = client.post(f"/bifimed/sync/import-batch/{uuid4()}")
+def test_bifimed_import_batch_endpoint_404(client, admin_headers):
+    response = client.post(f"/bifimed/sync/import-batch/{uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Import batch not found"
 
 
-def test_bifimed_import_batch_endpoint_returns_summary(client, db_session, monkeypatch):
+def test_bifimed_import_batch_endpoint_returns_summary(client, db_session, monkeypatch, admin_headers):
     batch = _create_import_batch(db_session)
     expected = {
         "batch_id": str(batch.id),
@@ -330,7 +330,7 @@ def test_bifimed_import_batch_endpoint_returns_summary(client, db_session, monke
         "app.api.routes.bifimed.sync_import_batch", fake_sync_import_batch
     )
 
-    response = client.post(f"/bifimed/sync/import-batch/{batch.id}")
+    response = client.post(f"/bifimed/sync/import-batch/{batch.id}", headers=admin_headers)
 
     assert response.status_code == 200
     assert response.json() == expected

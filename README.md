@@ -56,14 +56,13 @@ Columnas opcionales:
 
 ### Parcial
 
-- La protección admin actual se basa en `X-Admin-API-Key`; es suficiente para entornos controlados o demo interna, pero no equivale a autenticación corporativa con usuarios, roles y auditoría.
+- La protección admin e interna actual se basa en `X-Admin-API-Key`; cubre `/admin`, `/imports`, `/cima` y `/bifimed`, y es suficiente para entornos controlados o demo interna, pero no equivale a autenticación corporativa con usuarios, roles y auditoría.
 - Los campos clínicos/editoriales hospitalarios son editables manualmente y se publican según contrato, pero requieren validación funcional con datos reales y revisión clínica.
 - La exportación PDF está implementada, pero su estabilidad operativa depende de tener WeasyPrint/pydyf y las librerías de sistema correctamente instaladas en el despliegue.
 
 ### Pendiente para producción
 
 - Autenticación robusta, roles, auditoría de cambios y gestión formal de sesiones.
-- Protección explícita de endpoints internos de importación/sincronización si se exponen fuera de una red o entorno controlado.
 - Validación con datos reales y checklist funcional antes de considerar una v1 productiva.
 - Hardening de despliegue: variables de entorno, secretos, PostgreSQL, CORS/proxy, observabilidad y dependencias de renderizado PDF.
 - Política de versionado/caché del PDF si el volumen o la trazabilidad documental lo requieren.
@@ -95,7 +94,7 @@ El contrato funcional y técnico de la exportación imprimible de la GFT públic
 
 ## Seguridad admin
 
-- [docs/admin_security.md](docs/admin_security.md) — protección mínima de endpoints admin.
+- [docs/admin_security.md](docs/admin_security.md) — protección mínima de endpoints admin e internos (`/admin`, `/imports`, `/cima`, `/bifimed`).
 
 ## Edición clínica/editorial GFT
 

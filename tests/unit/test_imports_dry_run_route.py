@@ -12,14 +12,15 @@ def make_excel(rows: list[dict]) -> bytes:
     return bio.getvalue()
 
 
-def post_dry_run(client, content: bytes):
+def post_dry_run(client, content: bytes, admin_headers):
     return client.post(
         "/imports/excel/dry-run",
         files={"file": ("gft.xlsx", content, EXCEL_MEDIA_TYPE)},
+        headers=admin_headers,
     )
 
 
-def test_imports_excel_dry_run_returns_structured_result(client):
+def test_imports_excel_dry_run_returns_structured_result(client, admin_headers):
     response = post_dry_run(
         client,
         make_excel(
@@ -29,6 +30,7 @@ def test_imports_excel_dry_run_returns_structured_result(client):
                 {"CN": "333333", "Observaciones revisión": "guía"},
             ]
         ),
+        admin_headers,
     )
 
     assert response.status_code == 200
@@ -40,10 +42,11 @@ def test_imports_excel_dry_run_returns_structured_result(client):
     assert payload["pending_count"] == 1
 
 
-def test_imports_excel_dry_run_keeps_guia_as_pending(client):
+def test_imports_excel_dry_run_keeps_guia_as_pending(client, admin_headers):
     response = post_dry_run(
         client,
         make_excel([{"CN": "333333", "Observaciones revisión": "guía"}]),
+        admin_headers,
     )
 
     assert response.status_code == 200
@@ -55,10 +58,11 @@ def test_imports_excel_dry_run_keeps_guia_as_pending(client):
     assert payload["rows"][0]["estado_gft"] == "pendiente_revision"
 
 
-def test_imports_excel_dry_run_route_is_not_captured_by_batch_id(client):
+def test_imports_excel_dry_run_route_is_not_captured_by_batch_id(client, admin_headers):
     response = post_dry_run(
         client,
         make_excel([{"CN": "111111", "Observaciones revisión": "SI"}]),
+        admin_headers,
     )
 
     assert response.status_code == 200

@@ -3,13 +3,16 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.admin_security import require_admin_api_key
 from app.core.database import get_db
 from app.models.bifimed_cache import BifimedCache
 from app.models.import_batch import ImportBatch
 from app.services.bifimed_sync_service import sync_bifimed_cn, sync_import_batch
 from app.services.normalization_service import NormalizationError, normalize_cn
 
-router = APIRouter(prefix="/bifimed", tags=["bifimed"])
+router = APIRouter(
+    prefix="/bifimed", tags=["bifimed"], dependencies=[Depends(require_admin_api_key)]
+)
 
 
 @router.post("/sync/import-batch/{batch_id}")

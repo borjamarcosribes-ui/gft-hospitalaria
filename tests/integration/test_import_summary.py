@@ -21,14 +21,14 @@ def excel_file(rows):
     )
 
 
-def test_imports_summary_route_missing_batch_returns_404(client):
-    response = client.get(f"/imports/{uuid.uuid4()}/summary")
+def test_imports_summary_route_missing_batch_returns_404(client, admin_headers):
+    response = client.get(f"/imports/{uuid.uuid4()}/summary", headers=admin_headers)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Batch no encontrado"
 
 
-def test_imports_summary_after_excel_upload_classifies_rows(client):
+def test_imports_summary_after_excel_upload_classifies_rows(client, admin_headers):
     upload_response = client.post(
         "/imports/excel",
         files={
@@ -40,11 +40,12 @@ def test_imports_summary_after_excel_upload_classifies_rows(client):
                 {"CN": "444444", "Observaciones revisión": "SI", "Estado editorial": "valor_invalido"},
             ])
         },
+        headers=admin_headers,
     )
     assert upload_response.status_code == 200
     batch_id = upload_response.json()["batch_id"]
 
-    response = client.get(f"/imports/{batch_id}/summary")
+    response = client.get(f"/imports/{batch_id}/summary", headers=admin_headers)
 
     assert response.status_code == 200
     payload = response.json()
@@ -64,7 +65,7 @@ def test_imports_summary_after_excel_upload_classifies_rows(client):
     assert any(item["cn"] == "444444" for item in payload["error_items"])
 
 
-def test_imports_summary_detects_duplicate_cn(client):
+def test_imports_summary_detects_duplicate_cn(client, admin_headers):
     upload_response = client.post(
         "/imports/excel",
         files={
@@ -73,11 +74,12 @@ def test_imports_summary_detects_duplicate_cn(client):
                 {"CN": "123456.0", "Observaciones revisión": "NO", "Estado editorial": "publicado"},
             ])
         },
+        headers=admin_headers,
     )
     assert upload_response.status_code == 200
     batch_id = upload_response.json()["batch_id"]
 
-    response = client.get(f"/imports/{batch_id}/summary")
+    response = client.get(f"/imports/{batch_id}/summary", headers=admin_headers)
 
     assert response.status_code == 200
     payload = response.json()
@@ -85,7 +87,7 @@ def test_imports_summary_detects_duplicate_cn(client):
     assert payload["duplicate_cn"] == [{"cn": "123456", "rows": [2, 3]}]
 
 
-def test_imports_summary_does_not_apply_changes(client, db_session):
+def test_imports_summary_does_not_apply_changes(client, db_session, admin_headers):
     upload_response = client.post(
         "/imports/excel",
         files={
@@ -93,11 +95,12 @@ def test_imports_summary_does_not_apply_changes(client, db_session):
                 {"CN": "123456", "Observaciones revisión": "SI", "Estado editorial": "publicado"},
             ])
         },
+        headers=admin_headers,
     )
     assert upload_response.status_code == 200
     batch_id = upload_response.json()["batch_id"]
 
-    response = client.get(f"/imports/{batch_id}/summary")
+    response = client.get(f"/imports/{batch_id}/summary", headers=admin_headers)
 
     assert response.status_code == 200
     assert response.json()["applicable_rows"] == 1

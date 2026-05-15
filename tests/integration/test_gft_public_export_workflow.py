@@ -106,7 +106,7 @@ def _assert_forbidden_internal_fields_are_absent(text_value: str):
         assert field not in text_value
 
 
-def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_session, monkeypatch):
+def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_session, monkeypatch, admin_headers):
     upload_response = client.post(
         "/imports/excel",
         files={
@@ -137,6 +137,7 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
                 ]
             )
         },
+        headers=admin_headers,
     )
 
     assert upload_response.status_code == 200
@@ -173,7 +174,7 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
 
     monkeypatch.setattr("app.services.cima_sync_service.CimaClient.get_by_cn", fake_get_by_cn)
 
-    sync_response = client.post(f"/cima/sync/import-batch/{batch_id}?force=true")
+    sync_response = client.post(f"/cima/sync/import-batch/{batch_id}?force=true", headers=admin_headers)
 
     assert sync_response.status_code == 200
     assert sync_response.json()["eligible_cn"] == 1
@@ -205,7 +206,8 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
     )
 
     segmented_sync_response = client.post(
-        f"/cima/segmented/sync/import-batch/{batch_id}?force=true"
+        f"/cima/segmented/sync/import-batch/{batch_id}?force=true",
+        headers=admin_headers,
     )
 
     assert segmented_sync_response.status_code == 200
@@ -237,7 +239,7 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
         "app.services.bifimed_sync_service.BifimedClient.get_by_cn", fake_bifimed_get_by_cn
     )
 
-    bifimed_sync_response = client.post(f"/bifimed/sync/import-batch/{batch_id}?force=true")
+    bifimed_sync_response = client.post(f"/bifimed/sync/import-batch/{batch_id}?force=true", headers=admin_headers)
 
     assert bifimed_sync_response.status_code == 200
     assert bifimed_sync_response.json()["eligible_cn"] == 1
@@ -246,7 +248,7 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
     assert bifimed_sync_response.json()["skipped_pending"] == 1
     assert bifimed_sync_response.json()["skipped_errors"] == 0
 
-    apply_response = client.post(f"/imports/{batch_id}/apply")
+    apply_response = client.post(f"/imports/{batch_id}/apply", headers=admin_headers)
 
     assert apply_response.status_code == 200
     assert apply_response.json()["applied_rows"] == 2
