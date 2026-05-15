@@ -26,6 +26,22 @@ Devuelve el detalle de un medicamento publicado en GFT por su Código Nacional (
 
 El parámetro `{cn}` identifica la presentación publicada que se desea consultar. Si el CN no corresponde a un medicamento incluido y publicado, no debe aparecer como recurso público de GFT.
 
+### `GET /gft/atc`
+
+Devuelve el índice ATC público disponible para navegación y filtrado de la GFT publicada.
+
+### `GET /gft/principios-activos`
+
+Devuelve el índice público de principios activos disponible para navegación y filtrado de la GFT publicada.
+
+### `GET /gft/export/html`
+
+Devuelve la previsualización HTML imprimible de la GFT publicada. Es una herramienta de validación visual/debug de la plantilla que alimenta el PDF y no una fuente de publicación alternativa.
+
+### `GET /gft/export/pdf`
+
+Devuelve la descarga pública final en PDF de la GFT publicada. El PDF se genera desde la misma cadena y fuente pública que el HTML imprimible.
+
 ## C. Reglas de publicación
 
 La fuente pública se basa en la vista SQL `v_gft_publicada`.
@@ -127,14 +143,32 @@ Vista SQL de composición pública. Une las fuentes internas necesarias y aplica
 6. Aplicar batch a GFT.
 7. Consultar `/gft`.
 
-## I. Pendiente de implementar
+## I. Estado actual y pendientes reales
 
-- Carga/edición desde panel de administración de ajuste renal, ajuste hepático, embarazo y lactancia, si procede.
-- Restricciones hospitalarias estructuradas/enriquecidas.
-- Panel de administración editorial.
-- Exportación PDF.
-- Frontend público completo.
-- Roles/seguridad/despliegue.
+### Implementado
+
+- API pública `/gft` con listado, detalle por CN, índice ATC e índice de principios activos.
+- CIMA ficha técnica segmentada para sección `4.1`, publicada como `indicaciones_ficha_tecnica` cuando existe caché válida.
+- Exportación pública `GET /gft/export/html` como HTML imprimible/debug visual.
+- Exportación pública `GET /gft/export/pdf` como descarga PDF final.
+- Frontend público con búsqueda, filtros, índice ATC y botón de exportación PDF.
+- Panel admin `/admin/gft` con resumen, listado, detalle, edición clínica/editorial y cambio de estado.
+
+### Parcial
+
+- Los campos clínicos/editoriales son editables y publicables, pero siguen requiriendo validación funcional con datos reales y criterio clínico.
+- La seguridad admin está protegida por `X-Admin-API-Key`; no equivale a autenticación corporativa con usuarios, roles y auditoría.
+- La exportación PDF está implementada, pero su operación estable depende del despliegue de WeasyPrint/pydyf y librerías de sistema.
+
+### Pendiente para producción
+
+- Autenticación robusta, roles y auditoría de cambios.
+- Protección explícita de endpoints internos de importación/sincronización si se exponen fuera de un entorno controlado.
+- Validación con datos reales y checklist funcional antes de una v1 productiva.
+- Hardening de despliegue, observabilidad, gestión de secretos y dependencias de sistema.
+- Política de cacheado/versionado del PDF si se requiere por volumen o trazabilidad documental.
+- Separación futura entre observaciones internas publicables y no publicables si aparecen contenidos que no deban exponerse.
+- Restricciones hospitalarias estructuradas/enriquecidas, si se decide evolucionar el campo de texto actual.
 
 ## J. Decisiones de diseño relevantes
 
