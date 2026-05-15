@@ -8,6 +8,9 @@ Está orientada a desarrolladores y validadores funcionales. No define cambios d
 
 ## 2. Flujo completo recomendado
 
+> **Seguridad operativa:** todas las operaciones de importación y sincronización descritas en este runbook (`/imports`, `/cima` y `/bifimed`) requieren enviar `X-Admin-API-Key: <ADMIN_API_KEY>`. La API pública `/gft` y `/health` siguen siendo públicas.
+
+
 ### 2.1 Preparar el Excel maestro
 
 1. Confirmar que cada fila tenga un `CN` válido y estable. El CN es la clave principal funcional para identificar la presentación GFT.
@@ -87,7 +90,7 @@ Está orientada a desarrolladores y validadores funcionales. No define cambios d
 ### 2.7 Revisar medicamentos en panel admin
 
 1. Abrir el panel frontend de administración en `/admin/gft`.
-2. Configurar/introducir la clave admin requerida por el backend. Los endpoints admin usan cabecera `X-Admin-API-Key`.
+2. Configurar/introducir la clave admin requerida por el backend. Los endpoints admin y las operaciones internas de importación/sync (`/imports`, `/cima`, `/bifimed`) usan cabecera `X-Admin-API-Key`.
 3. Comprobar conectividad:
    - `GET /admin/health`.
 4. Revisar resumen editorial:

@@ -17,13 +17,13 @@ def _fake_segmented_ok(self, nregistro: str, tipo_documento: int = 1, seccion: s
     )
 
 
-def test_cima_segmented_sync_endpoint_ok(client, monkeypatch):
+def test_cima_segmented_sync_endpoint_ok(client, monkeypatch, admin_headers):
     monkeypatch.setattr(
         "app.services.cima_segmented_client.CimaSegmentedClient.get_section_content",
         _fake_segmented_ok,
     )
 
-    response = client.post("/cima/segmented/sync/70030?force=true")
+    response = client.post("/cima/segmented/sync/70030?force=true", headers=admin_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -34,14 +34,14 @@ def test_cima_segmented_sync_endpoint_ok(client, monkeypatch):
     assert body["contenido_texto"] == "Texto limpio"
 
 
-def test_cima_segmented_sync_endpoint_invalid_nregistro(client):
-    response = client.post("/cima/segmented/sync/70030?seccion=")
+def test_cima_segmented_sync_endpoint_invalid_nregistro(client, admin_headers):
+    response = client.post("/cima/segmented/sync/70030?seccion=", headers=admin_headers)
 
     assert response.status_code == 400
     assert response.json()["detail"] == "seccion obligatoria"
 
 
-def test_cima_segmented_cache_endpoint_ok(client, db_session):
+def test_cima_segmented_cache_endpoint_ok(client, db_session, admin_headers):
     db_session.add(
         CimaFichaTecnicaCache(
             nregistro="70030",
@@ -57,7 +57,7 @@ def test_cima_segmented_cache_endpoint_ok(client, db_session):
     )
     db_session.commit()
 
-    response = client.get("/cima/segmented/cache/70030?seccion=4.1")
+    response = client.get("/cima/segmented/cache/70030?seccion=4.1", headers=admin_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -69,21 +69,21 @@ def test_cima_segmented_cache_endpoint_ok(client, db_session):
     assert body["contenido_texto"] == "Texto limpio"
 
 
-def test_cima_segmented_cache_endpoint_404(client):
-    response = client.get("/cima/segmented/cache/999999?seccion=4.1")
+def test_cima_segmented_cache_endpoint_404(client, admin_headers):
+    response = client.get("/cima/segmented/cache/999999?seccion=4.1", headers=admin_headers)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "CIMA segmented cache not found"
 
 
-def test_cima_segmented_endpoint_does_not_expose_raw_data(client, monkeypatch):
+def test_cima_segmented_endpoint_does_not_expose_raw_data(client, monkeypatch, admin_headers):
     monkeypatch.setattr(
         "app.services.cima_segmented_client.CimaSegmentedClient.get_section_content",
         _fake_segmented_ok,
     )
 
-    sync_response = client.post("/cima/segmented/sync/70030?force=true")
-    cache_response = client.get("/cima/segmented/cache/70030?seccion=4.1")
+    sync_response = client.post("/cima/segmented/sync/70030?force=true", headers=admin_headers)
+    cache_response = client.get("/cima/segmented/cache/70030?seccion=4.1", headers=admin_headers)
 
     assert sync_response.status_code == 200
     assert cache_response.status_code == 200

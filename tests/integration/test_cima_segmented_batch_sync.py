@@ -124,14 +124,14 @@ def test_cima_segmented_import_batch_skips_missing_cima_cache_and_bad_cache(db_s
     assert calls == []
 
 
-def test_cima_segmented_import_batch_endpoint_404(client):
-    response = client.post(f"/cima/segmented/sync/import-batch/{uuid.uuid4()}")
+def test_cima_segmented_import_batch_endpoint_404(client, admin_headers):
+    response = client.post(f"/cima/segmented/sync/import-batch/{uuid.uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Import batch not found"
 
 
-def test_cima_segmented_import_batch_endpoint_returns_summary(client, db_session, monkeypatch):
+def test_cima_segmented_import_batch_endpoint_returns_summary(client, db_session, monkeypatch, admin_headers):
     batch = _add_batch(db_session)
     db_session.add(_staging_row(batch.id, 1, "111111"))
     db_session.add(CimaMedicamentoCache(cn="111111", sync_status="ok", nregistro="70030"))
@@ -142,7 +142,7 @@ def test_cima_segmented_import_batch_endpoint_returns_summary(client, db_session
         lambda **kwargs: SimpleNamespace(sync_status="ok"),
     )
 
-    response = client.post(f"/cima/segmented/sync/import-batch/{batch.id}")
+    response = client.post(f"/cima/segmented/sync/import-batch/{batch.id}", headers=admin_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -156,7 +156,7 @@ def test_cima_segmented_import_batch_endpoint_returns_summary(client, db_session
     assert body["error"] == 0
 
 
-def test_cima_segmented_import_batch_propagates_force(client, db_session, monkeypatch):
+def test_cima_segmented_import_batch_propagates_force(client, db_session, monkeypatch, admin_headers):
     batch = _add_batch(db_session)
     db_session.add(_staging_row(batch.id, 1, "111111"))
     db_session.add(CimaMedicamentoCache(cn="111111", sync_status="ok", nregistro="70030"))
@@ -170,13 +170,13 @@ def test_cima_segmented_import_batch_propagates_force(client, db_session, monkey
 
     monkeypatch.setattr("app.services.cima_segmented_sync_service.sync_cima_segmented_section", fake_sync)
 
-    response = client.post(f"/cima/segmented/sync/import-batch/{batch.id}?force=true")
+    response = client.post(f"/cima/segmented/sync/import-batch/{batch.id}?force=true", headers=admin_headers)
 
     assert response.status_code == 200
     assert captured["force"] is True
 
 
-def test_cima_segmented_import_batch_route_does_not_fall_into_nregistro_endpoint(client, db_session, monkeypatch):
+def test_cima_segmented_import_batch_route_does_not_fall_into_nregistro_endpoint(client, db_session, monkeypatch, admin_headers):
     batch = _add_batch(db_session)
     db_session.add(_staging_row(batch.id, 1, "111111"))
     db_session.add(CimaMedicamentoCache(cn="111111", sync_status="ok", nregistro="70030"))
@@ -187,7 +187,7 @@ def test_cima_segmented_import_batch_route_does_not_fall_into_nregistro_endpoint
         lambda **kwargs: SimpleNamespace(sync_status="not_segmented"),
     )
 
-    response = client.post(f"/cima/segmented/sync/import-batch/{batch.id}")
+    response = client.post(f"/cima/segmented/sync/import-batch/{batch.id}", headers=admin_headers)
 
     assert response.status_code == 200
     body = response.json()
