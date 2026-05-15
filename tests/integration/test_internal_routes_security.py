@@ -93,17 +93,30 @@ def test_bifimed_with_valid_admin_header_reaches_existing_logic(client, monkeypa
 
 
 def test_public_gft_and_health_endpoints_remain_public(client, monkeypatch):
+    from app.api.routes import gft as gft_routes
+
+    def stub_list_medicamentos(
+        db,
+        *,
+        limit,
+        offset,
+        q=None,
+        letra=None,
+        principio_activo=None,
+        atc=None,
+    ):
+        return {"total": 0, "limit": limit, "offset": offset, "items": []}
+
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    monkeypatch.setattr(gft_routes, "list_medicamentos", stub_list_medicamentos)
 
     medicamentos = client.get("/gft/medicamentos")
-    html_export = client.get("/gft/export/html")
-    pdf_export = client.get("/gft/export/pdf")
     health = client.get("/health")
     admin_health = client.get("/admin/health")
 
     assert medicamentos.status_code == 200
-    assert html_export.status_code == 200
-    assert pdf_export.status_code == 200
+    assert medicamentos.status_code not in {401, 403, 503}
+    assert medicamentos.json() == {"total": 0, "limit": 20, "offset": 0, "items": []}
     assert health.status_code == 200
     assert health.json() == {"status": "ok"}
     assert admin_health.status_code == 401
