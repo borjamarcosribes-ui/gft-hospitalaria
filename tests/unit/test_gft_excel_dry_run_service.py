@@ -11,7 +11,12 @@ from app.services.gft_excel_dry_run_service import (
 from app.services.normalization_service import NormalizationError
 
 
-def make_excel(df: pd.DataFrame, sheet_name: str = "Hoja1") -> bytes:
+def make_excel(df: pd.DataFrame, sheet_name: str = "Hoja1", add_estado_editorial: bool = True) -> bytes:
+    safe_estado_aliases = {"Estado editorial", "Estado Editorial", "Estado", "Estado publicación", "Estado publicacion"}
+    if add_estado_editorial and safe_estado_aliases.isdisjoint(set(df.columns)):
+        df = df.copy()
+        df["Estado editorial"] = "publicado"
+
     bio = BytesIO()
     with pd.ExcelWriter(bio, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name=sheet_name)
@@ -65,7 +70,7 @@ def test_dry_run_detects_exact_required_columns():
     result = dry_run_gft_excel(make_excel(pd.DataFrame([{"CN": "123456", "Observaciones revisión": "SI"}])))
 
     assert result.error_count == 0
-    assert result.column_mapping == {"cn": "CN", "observaciones_revision": "Observaciones revisión"}
+    assert result.column_mapping == {"cn": "CN", "observaciones_revision": "Observaciones revisión", "estado_editorial": "Estado editorial"}
 
 
 def test_dry_run_detects_codigo_nacional_alias():
@@ -109,11 +114,13 @@ def test_dry_run_reports_column_diagnostics_when_required_columns_are_missing():
         "Codigo Nacional medicamento",
         "Observaciones revision comentario",
         "Otra columna",
+        "Estado editorial",
     ]
     assert result.normalized_columns == [
         "codigo nacional medicamento",
         "observaciones revision comentario",
         "otra columna",
+        "estado editorial",
     ]
     assert result.missing_required_columns == ["CN", "Observaciones revisión"]
     assert result.column_suggestions["CN"] == ["Codigo Nacional medicamento"]
@@ -135,7 +142,7 @@ def test_dry_run_detects_safe_cn_and_observaciones_aliases():
     )
 
     assert result.error_count == 0
-    assert result.column_mapping == {"cn": "C.N.", "observaciones_revision": "Observaciones GFT"}
+    assert result.column_mapping == {"cn": "C.N.", "observaciones_revision": "Observaciones GFT", "estado_editorial": "Estado editorial"}
     assert result.rows[0].cn == "123456"
     assert result.included_count == 1
 
@@ -156,12 +163,12 @@ def test_dry_run_returns_clear_error_when_observaciones_column_is_missing():
     assert result.errors[0].message == "Columna obligatoria ausente: Observaciones revisión"
 
 
-def test_dry_run_counts_rows_and_does_not_require_estado_editorial():
+def test_dry_run_counts_rows_and_requires_estado_editorial():
     result = dry_run_gft_excel(
         make_excel(
             pd.DataFrame(
                 [
-                    {"CN": "111111", "Observaciones revisión": "SI"},
+                    {"CN": "111111", "Observaciones revisión": "SI", "Estado editorial": "publicado"},
                     {"CN": "222222", "Observaciones revisión": "NO"},
                     {"CN": "333333", "Observaciones revisión": "SI?"},
                     {"CN": "444444", "Observaciones revisión": "guía"},
@@ -228,10 +235,10 @@ def test_dry_run_returns_unknown_observaciones_values():
 def test_dry_run_uses_requested_sheet_name():
     bio = BytesIO()
     with pd.ExcelWriter(bio, engine="openpyxl") as writer:
-        pd.DataFrame([{"CN": "111111", "Observaciones revisión": "NO"}]).to_excel(
+        pd.DataFrame([{"CN": "111111", "Observaciones revisión": "NO", "Estado editorial": "publicado"}]).to_excel(
             writer, index=False, sheet_name="Primera"
         )
-        pd.DataFrame([{"CN": "222222", "Observaciones revisión": "SI"}]).to_excel(
+        pd.DataFrame([{"CN": "222222", "Observaciones revisión": "SI", "Estado editorial": "publicado"}]).to_excel(
             writer, index=False, sheet_name="Segunda"
         )
 
@@ -247,10 +254,10 @@ def test_dry_run_uses_requested_sheet_name():
 def test_dry_run_without_sheet_name_keeps_first_sheet_behavior():
     bio = BytesIO()
     with pd.ExcelWriter(bio, engine="openpyxl") as writer:
-        pd.DataFrame([{"CN": "111111", "Observaciones revisión": "NO"}]).to_excel(
+        pd.DataFrame([{"CN": "111111", "Observaciones revisión": "NO", "Estado editorial": "publicado"}]).to_excel(
             writer, index=False, sheet_name="Primera"
         )
-        pd.DataFrame([{"CN": "222222", "Observaciones revisión": "SI"}]).to_excel(
+        pd.DataFrame([{"CN": "222222", "Observaciones revisión": "SI", "Estado editorial": "publicado"}]).to_excel(
             writer, index=False, sheet_name="Revision_GFT_ATC"
         )
 
@@ -261,7 +268,7 @@ def test_dry_run_without_sheet_name_keeps_first_sheet_behavior():
 
 
 def test_dry_run_returns_clear_error_for_missing_sheet_name():
-    content = make_excel(pd.DataFrame([{"CN": "111111", "Observaciones revisión": "SI"}]), sheet_name="HojaReal")
+    content = make_excel(pd.DataFrame([{"CN": "111111", "Observaciones revisión": "SI", "Estado editorial": "publicado"}]), sheet_name="HojaReal")
 
     with pytest.raises(ValueError, match="La hoja 'NoExiste' no existe. Hojas disponibles: HojaReal"):
         dry_run_gft_excel(content, sheet_name="NoExiste")
@@ -272,9 +279,9 @@ def test_dry_run_uses_requested_header_row():
     with pd.ExcelWriter(bio, engine="openpyxl") as writer:
         pd.DataFrame(
             [
-                ["Título", "no es encabezado"],
-                ["CN", "Observaciones revisión"],
-                ["555555", "SI"],
+                ["Título", "no es encabezado", "no es encabezado"],
+                ["CN", "Observaciones revisión", "Estado editorial"],
+                ["555555", "SI", "publicado"],
             ]
         ).to_excel(writer, index=False, header=False, sheet_name="Revision_GFT_ATC")
 
@@ -287,7 +294,33 @@ def test_dry_run_uses_requested_header_row():
 
 
 def test_dry_run_returns_clear_error_for_invalid_header_row():
-    content = make_excel(pd.DataFrame([{"CN": "111111", "Observaciones revisión": "SI"}]))
+    content = make_excel(pd.DataFrame([{"CN": "111111", "Observaciones revisión": "SI", "Estado editorial": "publicado"}]))
 
     with pytest.raises(ValueError, match="fila de encabezado debe ser un entero mayor o igual que 1"):
         dry_run_gft_excel(content, header_row=0)
+
+
+def test_dry_run_returns_clear_error_when_estado_editorial_column_is_missing():
+    result = dry_run_gft_excel(
+        make_excel(
+            pd.DataFrame([{"CN": "123456", "Observaciones revisión": "SI"}]),
+            add_estado_editorial=False,
+        )
+    )
+
+    assert result.error_count == 1
+    assert result.errors[0].code == "missing_required_column"
+    assert result.errors[0].message == "Columna obligatoria ausente: Estado editorial"
+    assert result.missing_required_columns == ["Estado editorial"]
+
+
+@pytest.mark.parametrize("estado_column", ["Estado editorial", "Estado Editorial", "Estado", "Estado publicación", "Estado publicacion"])
+def test_dry_run_detects_estado_editorial_aliases(estado_column):
+    result = dry_run_gft_excel(
+        make_excel(
+            pd.DataFrame([{"CN": "123456", "Observaciones revisión": "SI", estado_column: "publicado"}])
+        )
+    )
+
+    assert result.error_count == 0
+    assert result.column_mapping["estado_editorial"] == estado_column

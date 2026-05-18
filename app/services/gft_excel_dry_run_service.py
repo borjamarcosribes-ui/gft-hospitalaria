@@ -97,9 +97,22 @@ OBSERVACIONES_REVISION_ALIASES = {
     "obs revision",
 }
 
+ESTADO_EDITORIAL_ALIASES = {
+    "estado editorial",
+    "estado",
+    "estado publicacion",
+}
+
 REQUIRED_COLUMN_ALIASES = {
     "CN": CN_ALIASES,
     "Observaciones revisión": OBSERVACIONES_REVISION_ALIASES,
+    "Estado editorial": ESTADO_EDITORIAL_ALIASES,
+}
+
+REQUIRED_COLUMN_MAPPING_KEYS = {
+    "CN": "cn",
+    "Observaciones revisión": "observaciones_revision",
+    "Estado editorial": "estado_editorial",
 }
 
 INCLUDED_OBSERVACIONES = {"si"}
@@ -132,6 +145,29 @@ def _find_column(columns, aliases: set[str]) -> str | None:
         if _norm_column_name(column) in aliases:
             return column
     return None
+
+
+def build_gft_excel_column_mapping(columns) -> tuple[dict[str, str], list[str], list[DryRunIssue]]:
+    column_mapping: dict[str, str] = {}
+    missing_required_columns: list[str] = []
+    errors: list[DryRunIssue] = []
+
+    for required_column, aliases in REQUIRED_COLUMN_ALIASES.items():
+        matched_column = _find_column(columns, aliases)
+        if matched_column is not None:
+            column_mapping[REQUIRED_COLUMN_MAPPING_KEYS[required_column]] = matched_column
+            continue
+
+        missing_required_columns.append(required_column)
+        errors.append(
+            DryRunIssue(
+                row_number=None,
+                code="missing_required_column",
+                message=f"Columna obligatoria ausente: {required_column}",
+            )
+        )
+
+    return column_mapping, missing_required_columns, errors
 
 
 def _column_similarity(left: str, right: str) -> float:
@@ -294,35 +330,9 @@ def dry_run_gft_excel(
     except ValueError as exc:
         raise ValueError(f"Fila de encabezado inválida ({selected_header_row}): {exc}") from exc
 
-    cn_column = _find_column(df.columns, CN_ALIASES)
-    observaciones_column = _find_column(df.columns, OBSERVACIONES_REVISION_ALIASES)
-    column_mapping = {}
-    errors: list[DryRunIssue] = []
-    missing_required_columns: list[str] = []
-
-    if cn_column is not None:
-        column_mapping["cn"] = cn_column
-    else:
-        missing_required_columns.append("CN")
-        errors.append(
-            DryRunIssue(
-                row_number=None,
-                code="missing_required_column",
-                message="Columna obligatoria ausente: CN",
-            )
-        )
-
-    if observaciones_column is not None:
-        column_mapping["observaciones_revision"] = observaciones_column
-    else:
-        missing_required_columns.append("Observaciones revisión")
-        errors.append(
-            DryRunIssue(
-                row_number=None,
-                code="missing_required_column",
-                message="Columna obligatoria ausente: Observaciones revisión",
-            )
-        )
+    column_mapping, missing_required_columns, errors = build_gft_excel_column_mapping(df.columns)
+    cn_column = column_mapping.get("cn")
+    observaciones_column = column_mapping.get("observaciones_revision")
 
     original_columns, normalized_columns, column_suggestions = _build_column_diagnostics(
         df.columns,
