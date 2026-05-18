@@ -90,3 +90,65 @@ def test_imports_excel_dry_run_returns_column_diagnostics_and_does_not_create_ba
     assert payload["missing_required_columns"] == ["CN", "Observaciones revisión"]
     assert payload["column_suggestions"]["CN"] == ["Codigo Nacional medicamento"]
     assert db_session.query(ImportBatch).count() == 0
+
+
+def make_multisheet_excel() -> bytes:
+    bio = BytesIO()
+    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
+        pd.DataFrame([{"Título": "Resumen"}]).to_excel(writer, index=False, sheet_name="Resumen")
+        pd.DataFrame([{"CN": "222222", "Observaciones revisión": "SI"}]).to_excel(
+            writer, index=False, sheet_name="Revision_GFT_ATC"
+        )
+    return bio.getvalue()
+
+
+def test_imports_excel_dry_run_uses_form_sheet_name(client, admin_headers):
+    response = client.post(
+        "/imports/excel/dry-run",
+        files={"file": ("gft.xlsx", make_multisheet_excel(), EXCEL_MEDIA_TYPE)},
+        data={"sheet_name": "Revision_GFT_ATC"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sheet_name"] == "Revision_GFT_ATC"
+    assert payload["included_count"] == 1
+    assert payload["rows"][0]["cn"] == "222222"
+
+
+def test_imports_excel_dry_run_returns_clear_error_for_missing_sheet(client, admin_headers):
+    response = client.post(
+        "/imports/excel/dry-run",
+        files={"file": ("gft.xlsx", make_multisheet_excel(), EXCEL_MEDIA_TYPE)},
+        data={"sheet_name": "NoExiste"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 400
+    assert "La hoja 'NoExiste' no existe" in response.json()["detail"]
+    assert "Resumen" in response.json()["detail"]
+    assert "Revision_GFT_ATC" in response.json()["detail"]
+
+
+def test_imports_excel_dry_run_uses_form_header_row(client, admin_headers):
+    bio = BytesIO()
+    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
+        pd.DataFrame([
+            ["Título", "no es encabezado"],
+            ["CN", "Observaciones revisión"],
+            ["555555", "SI"],
+        ]).to_excel(writer, index=False, header=False)
+
+    response = client.post(
+        "/imports/excel/dry-run",
+        files={"file": ("gft.xlsx", bio.getvalue(), EXCEL_MEDIA_TYPE)},
+        data={"header_row": "2"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["header_row"] == 2
+    assert payload["rows"][0]["row_number"] == 3
+    assert payload["rows"][0]["cn"] == "555555"

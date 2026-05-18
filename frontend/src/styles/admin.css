@@ -748,7 +748,9 @@
   font-weight: 800;
 }
 
-.admin-import-controls input[type="file"] {
+.admin-import-controls input[type="file"],
+.admin-import-controls input[type="number"],
+.admin-import-controls select {
   width: 100%;
   border: 1px dashed #b8c7d5;
   border-radius: 12px;
@@ -757,7 +759,9 @@
   padding: 0.78rem 0.9rem;
 }
 
-.admin-import-controls input[type="file"]:focus {
+.admin-import-controls input[type="file"]:focus,
+.admin-import-controls input[type="number"]:focus,
+.admin-import-controls select:focus {
   border-color: #1f5f8b;
   box-shadow: 0 0 0 3px rgba(31, 95, 139, 0.14);
   outline: none;

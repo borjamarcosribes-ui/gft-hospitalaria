@@ -31,6 +31,7 @@ const ADMIN_SESSION_KEY = 'gft-admin-api-key';
 const DEFAULT_LIMIT = 50;
 const ESTADO_GFT_OPTIONS = ['incluido', 'excluido', 'pendiente_revision'] as const;
 const ESTADO_EDITORIAL_OPTIONS = ['borrador', 'validado', 'publicado', 'retirado'] as const;
+const PREFERRED_GFT_SHEET_NAME = 'Revision_GFT_ATC';
 
 type EditableClinicalField = Exclude<keyof GFTEditorialUpdatePayload, 'comentario_revision' | 'revisado_por'>;
 type EditorialFormState = Record<EditableClinicalField, string>;
@@ -221,6 +222,18 @@ function hasDryRunColumnDiagnostics(dryRun: ImportDryRunResponse): boolean {
   );
 }
 
+function isLikelyNonTabularSheet(dryRun: ImportDryRunResponse): boolean {
+  return (
+    dryRun.sheet_name === 'Resumen'
+    && dryRun.sheet_names.includes(PREFERRED_GFT_SHEET_NAME)
+    && dryRun.missing_required_columns.length > 0
+  );
+}
+
+function normalizeSheetSelection(value: string | number | null): string {
+  return value === null ? '' : String(value);
+}
+
 function AdminExcelImportSection({
   apiKey,
   onApplied,
@@ -229,6 +242,8 @@ function AdminExcelImportSection({
   onApplied: () => Promise<void>;
 }) {
   const [file, setFile] = useState<File | null>(null);
+  const [selectedSheetName, setSelectedSheetName] = useState('');
+  const [headerRow, setHeaderRow] = useState(1);
   const [dryRun, setDryRun] = useState<ImportDryRunResponse | null>(null);
   const [batch, setBatch] = useState<ImportBatchResponse | null>(null);
   const [batchSummary, setBatchSummary] = useState<ImportBatchSummary | null>(null);
@@ -239,6 +254,15 @@ function AdminExcelImportSection({
   const [success, setSuccess] = useState<string | null>(null);
 
   const batchId = batch?.batch_id ?? batchSummary?.batch_id ?? null;
+  const availableSheetNames = dryRun?.sheet_names ?? [];
+  const importOptions = {
+    ...(selectedSheetName.trim() ? { sheet_name: selectedSheetName.trim() } : {}),
+    header_row: headerRow,
+  };
+  const dryRunMatchesSelection = dryRun
+    ? normalizeSheetSelection(dryRun.sheet_name) === (selectedSheetName.trim() || normalizeSheetSelection(dryRun.sheet_name))
+      && dryRun.header_row === headerRow
+    : false;
 
   const resetBatchReview = () => {
     setBatch(null);
@@ -249,6 +273,8 @@ function AdminExcelImportSection({
 
   const handleFileChange = (selectedFile: File | null) => {
     setFile(selectedFile);
+    setSelectedSheetName('');
+    setHeaderRow(1);
     setDryRun(null);
     resetBatchReview();
     setError(null);
@@ -277,8 +303,14 @@ function AdminExcelImportSection({
     resetBatchReview();
 
     try {
-      const response = await dryRunGftExcel(apiKey, file);
+      const response = await dryRunGftExcel(apiKey, file, importOptions);
       setDryRun(response);
+      if (!selectedSheetName.trim()) {
+        const suggestedSheet = response.sheet_names.includes(PREFERRED_GFT_SHEET_NAME)
+          ? PREFERRED_GFT_SHEET_NAME
+          : normalizeSheetSelection(response.sheet_name);
+        setSelectedSheetName(suggestedSheet);
+      }
       setSuccess('Validación dry-run completada. No se ha aplicado ningún cambio.');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'No se pudo validar el Excel.');
@@ -298,13 +330,18 @@ function AdminExcelImportSection({
       return;
     }
 
+    if (!dryRunMatchesSelection) {
+      setError('Ejecuta primero la validación dry-run con la hoja y fila de encabezado seleccionadas.');
+      return;
+    }
+
     setLoadingAction('import');
     setError(null);
     setSuccess(null);
     setApplyResult(null);
 
     try {
-      const response = await importGftExcel(apiKey, file);
+      const response = await importGftExcel(apiKey, file, importOptions);
       setBatch(response);
       await loadBatchReview(response.batch_id);
       setSuccess(`Excel importado a staging. Batch ${response.batch_id}. No se ha aplicado todavía.`);
@@ -390,17 +427,53 @@ function AdminExcelImportSection({
             disabled={isBusy}
           />
         </label>
+        <label>
+          Hoja del Excel
+          <select
+            value={selectedSheetName}
+            onChange={(event) => {
+              setSelectedSheetName(event.target.value);
+              resetBatchReview();
+            }}
+            disabled={isBusy || availableSheetNames.length === 0}
+          >
+            {availableSheetNames.length === 0 ? <option value="">Se detectará al validar</option> : null}
+            {availableSheetNames.map((sheetName) => (
+              <option key={sheetName} value={sheetName}>
+                {sheetName}{sheetName === PREFERRED_GFT_SHEET_NAME ? ' (sugerida)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Fila de encabezado
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={headerRow}
+            onChange={(event) => {
+              const nextHeaderRow = Number.parseInt(event.target.value, 10);
+              setHeaderRow(Number.isNaN(nextHeaderRow) ? 1 : Math.max(1, nextHeaderRow));
+              resetBatchReview();
+            }}
+            disabled={isBusy}
+          />
+        </label>
         <div className="admin-import-controls__actions">
           <button className="admin-button admin-button--primary" type="button" onClick={() => void handleDryRun()} disabled={!file || isBusy}>
             {loadingAction === 'dry-run' ? 'Validando…' : 'Validar Excel'}
           </button>
-          <button className="admin-button admin-button--secondary" type="button" onClick={() => void handleImportToStaging()} disabled={!file || !dryRun || isBusy}>
+          <button className="admin-button admin-button--secondary" type="button" onClick={() => void handleImportToStaging()} disabled={!file || !dryRun || !dryRunMatchesSelection || isBusy}>
             {loadingAction === 'import' ? 'Importando…' : 'Importar a staging'}
           </button>
         </div>
       </div>
 
       {file ? <p className="admin-muted">Archivo seleccionado: <strong>{file.name}</strong></p> : null}
+      {dryRun && !dryRunMatchesSelection ? (
+        <p className="admin-alert admin-alert--warning">La hoja o fila de encabezado seleccionada ha cambiado. Vuelve a validar antes de importar a staging.</p>
+      ) : null}
       {success ? <p className="admin-alert admin-alert--success">{success}</p> : null}
       {error ? <p className="admin-alert admin-alert--error">{error}</p> : null}
 
@@ -436,6 +509,12 @@ function AdminExcelImportSection({
             <dt>Avisos</dt>
             <dd>{dryRun.warning_count}</dd>
           </dl>
+          {isLikelyNonTabularSheet(dryRun) ? (
+            <p className="admin-alert admin-alert--warning">La hoja leída parece no ser tabular. Prueba con {PREFERRED_GFT_SHEET_NAME}.</p>
+          ) : null}
+          {dryRun.sheet_names.includes(PREFERRED_GFT_SHEET_NAME) ? (
+            <p className="admin-muted">Hoja sugerida para este formato: <strong>{PREFERRED_GFT_SHEET_NAME}</strong>.</p>
+          ) : null}
           {hasDryRunColumnDiagnostics(dryRun) && Object.keys(dryRun.column_suggestions).length > 0 ? (
             <div className="admin-import-issues">
               <h4>Sugerencias de columnas</h4>

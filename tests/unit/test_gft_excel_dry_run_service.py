@@ -241,3 +241,53 @@ def test_dry_run_uses_requested_sheet_name():
     assert result.total_rows == 1
     assert result.included_count == 1
     assert result.rows[0].cn == "222222"
+
+
+
+def test_dry_run_without_sheet_name_keeps_first_sheet_behavior():
+    bio = BytesIO()
+    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
+        pd.DataFrame([{"CN": "111111", "Observaciones revisión": "NO"}]).to_excel(
+            writer, index=False, sheet_name="Primera"
+        )
+        pd.DataFrame([{"CN": "222222", "Observaciones revisión": "SI"}]).to_excel(
+            writer, index=False, sheet_name="Revision_GFT_ATC"
+        )
+
+    result = dry_run_gft_excel(bio.getvalue())
+
+    assert result.sheet_name == "Primera"
+    assert result.rows[0].cn == "111111"
+
+
+def test_dry_run_returns_clear_error_for_missing_sheet_name():
+    content = make_excel(pd.DataFrame([{"CN": "111111", "Observaciones revisión": "SI"}]), sheet_name="HojaReal")
+
+    with pytest.raises(ValueError, match="La hoja 'NoExiste' no existe. Hojas disponibles: HojaReal"):
+        dry_run_gft_excel(content, sheet_name="NoExiste")
+
+
+def test_dry_run_uses_requested_header_row():
+    bio = BytesIO()
+    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
+        pd.DataFrame(
+            [
+                ["Título", "no es encabezado"],
+                ["CN", "Observaciones revisión"],
+                ["555555", "SI"],
+            ]
+        ).to_excel(writer, index=False, header=False, sheet_name="Revision_GFT_ATC")
+
+    result = dry_run_gft_excel(bio.getvalue(), sheet_name="Revision_GFT_ATC", header_row=2)
+
+    assert result.header_row == 2
+    assert result.total_rows == 1
+    assert result.rows[0].row_number == 3
+    assert result.rows[0].cn == "555555"
+
+
+def test_dry_run_returns_clear_error_for_invalid_header_row():
+    content = make_excel(pd.DataFrame([{"CN": "111111", "Observaciones revisión": "SI"}]))
+
+    with pytest.raises(ValueError, match="fila de encabezado debe ser un entero mayor o igual que 1"):
+        dry_run_gft_excel(content, header_row=0)

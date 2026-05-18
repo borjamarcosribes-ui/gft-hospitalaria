@@ -159,3 +159,61 @@ def test_imports_apply_route_missing_batch_returns_404(client, admin_headers):
     response = client.post(f"/imports/{uuid.uuid4()}/apply", headers=admin_headers)
     assert response.status_code == 404
     assert response.json()["detail"] == "Batch no encontrado"
+
+
+def test_process_excel_upload_uses_requested_sheet_and_header_row(db_session):
+    bio = BytesIO()
+    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
+        pd.DataFrame([{"CN": "111111", "Observaciones revisión": "NO", "Estado editorial": "publicado"}]).to_excel(
+            writer, index=False, sheet_name="Resumen"
+        )
+        pd.DataFrame(
+            [
+                ["Título", "no es encabezado", "no es encabezado"],
+                ["CN", "Observaciones revisión", "Estado editorial"],
+                ["222222", "SI", "publicado"],
+            ]
+        ).to_excel(writer, index=False, header=False, sheet_name="Revision_GFT_ATC")
+
+    batch = process_excel_upload(
+        db_session,
+        bio.getvalue(),
+        "multisheet.xlsx",
+        sheet_name="Revision_GFT_ATC",
+        header_row=2,
+    )
+
+    assert batch.status == "validated"
+    assert batch.total_rows == 1
+    row = db_session.query(ImportRowStaging).filter(ImportRowStaging.batch_id == batch.id).one()
+    assert row.row_number == 3
+    assert row.cn_normalized == "222222"
+    assert row.estado_gft == "incluido"
+
+
+def test_imports_excel_route_uses_form_sheet_and_header_row(client, db_session, admin_headers):
+    bio = BytesIO()
+    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
+        pd.DataFrame([{"CN": "111111", "Observaciones revisión": "NO", "Estado editorial": "publicado"}]).to_excel(
+            writer, index=False, sheet_name="Resumen"
+        )
+        pd.DataFrame(
+            [
+                ["Título", "no es encabezado", "no es encabezado"],
+                ["CN", "Observaciones revisión", "Estado editorial"],
+                ["222222", "SI", "publicado"],
+            ]
+        ).to_excel(writer, index=False, header=False, sheet_name="Revision_GFT_ATC")
+
+    response = client.post(
+        "/imports/excel",
+        files={"file": ("gft.xlsx", bio.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        data={"sheet_name": "Revision_GFT_ATC", "header_row": "2"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "validated"
+    row = db_session.query(ImportRowStaging).one()
+    assert row.row_number == 3
+    assert row.cn_normalized == "222222"

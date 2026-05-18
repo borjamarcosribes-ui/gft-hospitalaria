@@ -1,5 +1,5 @@
 from uuid import UUID
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.admin_security import require_admin_api_key
 from app.core.database import get_db
@@ -30,9 +30,20 @@ def _parse_sheet_name(value: str | None) -> str | int | None:
 
 
 @router.post('/excel')
-async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def import_excel(
+    file: UploadFile = File(...),
+    sheet_name: str | None = Form(None),
+    header_row: int | None = Form(None),
+    db: Session = Depends(get_db),
+):
     content = await file.read()
-    batch = process_excel_upload(db, content, file.filename)
+    batch = process_excel_upload(
+        db,
+        content,
+        file.filename,
+        sheet_name=_parse_sheet_name(sheet_name),
+        header_row=header_row,
+    )
     return {
         "batch_id": str(batch.id),
         "status": batch.status,
@@ -40,17 +51,23 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_d
         "processed_rows": batch.processed_rows,
         "ok_rows": batch.ok_rows,
         "error_rows": batch.error_rows,
+        "error_summary": batch.error_summary,
     }
 
 
 @router.post('/excel/dry-run')
-async def dry_run_import_excel(file: UploadFile = File(...), sheet_name: str | None = None):
+async def dry_run_import_excel(
+    file: UploadFile = File(...),
+    sheet_name: str | None = Form(None),
+    header_row: int | None = Form(None),
+):
     try:
         content = await file.read()
         result = dry_run_gft_excel(
             content,
             filename=file.filename,
             sheet_name=_parse_sheet_name(sheet_name),
+            header_row=header_row,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No se pudo validar el Excel: {exc}") from exc

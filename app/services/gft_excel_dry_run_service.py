@@ -250,18 +250,49 @@ def _empty_result(
     )
 
 
+def _validate_header_row(header_row: int | None) -> int:
+    selected_header_row = 1 if header_row is None else header_row
+    if selected_header_row < 1:
+        raise ValueError("La fila de encabezado debe ser un entero mayor o igual que 1")
+    return selected_header_row
+
+
+def _validate_sheet_name(excel: pd.ExcelFile, sheet_name: str | int | None) -> str | int:
+    if sheet_name is None:
+        return 0
+
+    if isinstance(sheet_name, int):
+        if sheet_name < 0 or sheet_name >= len(excel.sheet_names):
+            raise ValueError(
+                f"La hoja {sheet_name} no existe. Hojas disponibles: {', '.join(excel.sheet_names)}"
+            )
+        return sheet_name
+
+    if sheet_name not in excel.sheet_names:
+        raise ValueError(
+            f"La hoja '{sheet_name}' no existe. Hojas disponibles: {', '.join(excel.sheet_names)}"
+        )
+    return sheet_name
+
+
+def _resolve_sheet_name(excel: pd.ExcelFile, selected_sheet: str | int) -> str:
+    return excel.sheet_names[selected_sheet] if isinstance(selected_sheet, int) else selected_sheet
+
+
 def dry_run_gft_excel(
     file_bytes: bytes,
     filename: str | None = None,
     sheet_name: str | int | None = None,
+    header_row: int | None = None,
 ) -> GFTExcelDryRunResult:
     excel = pd.ExcelFile(BytesIO(file_bytes))
-    selected_sheet = sheet_name if sheet_name is not None else 0
-    resolved_sheet_name = (
-        excel.sheet_names[selected_sheet] if isinstance(selected_sheet, int) else selected_sheet
-    )
-    df = pd.read_excel(excel, sheet_name=selected_sheet, dtype=str)
-    header_row = 1
+    selected_sheet = _validate_sheet_name(excel, sheet_name)
+    resolved_sheet_name = _resolve_sheet_name(excel, selected_sheet)
+    selected_header_row = _validate_header_row(header_row)
+    try:
+        df = pd.read_excel(excel, sheet_name=selected_sheet, dtype=str, header=selected_header_row - 1)
+    except ValueError as exc:
+        raise ValueError(f"Fila de encabezado inválida ({selected_header_row}): {exc}") from exc
 
     cn_column = _find_column(df.columns, CN_ALIASES)
     observaciones_column = _find_column(df.columns, OBSERVACIONES_REVISION_ALIASES)
@@ -304,7 +335,7 @@ def dry_run_gft_excel(
             resolved_sheet_name,
             column_mapping,
             sheet_names=excel.sheet_names,
-            header_row=header_row,
+            header_row=selected_header_row,
             original_columns=original_columns,
             normalized_columns=normalized_columns,
             missing_required_columns=missing_required_columns,
@@ -321,7 +352,7 @@ def dry_run_gft_excel(
     counts = Counter()
 
     for idx, row in df.iterrows():
-        row_number = int(idx) + 2
+        row_number = int(idx) + selected_header_row + 1
         cn_raw = _safe_cell(row.get(cn_column))
         observaciones_raw = _safe_cell(row.get(observaciones_column))
         row_errors: list[DryRunIssue] = []
@@ -390,7 +421,7 @@ def dry_run_gft_excel(
         dry_run=True,
         sheet_name=resolved_sheet_name,
         sheet_names=excel.sheet_names,
-        header_row=header_row,
+        header_row=selected_header_row,
         original_columns=original_columns,
         normalized_columns=normalized_columns,
         missing_required_columns=missing_required_columns,

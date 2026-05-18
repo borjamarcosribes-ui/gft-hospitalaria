@@ -4,6 +4,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from app.models.import_batch import ImportBatch
 from app.models.import_row_staging import ImportRowStaging
+from app.services.gft_excel_dry_run_service import _validate_header_row, _validate_sheet_name
 from app.services.normalization_service import (
     normalize_cn,
     classify_observaciones_revision,
@@ -19,14 +20,26 @@ def _safe_value(row, key):
     return None if pd.isna(value) else value
 
 
-def process_excel_upload(db: Session, file_bytes: bytes, filename: str):
+def process_excel_upload(
+    db: Session,
+    file_bytes: bytes,
+    filename: str,
+    sheet_name: str | int | None = None,
+    header_row: int | None = None,
+):
     batch = ImportBatch(filename=filename, status="uploaded")
     db.add(batch)
     db.flush()
     try:
         batch.status = "processing"
         batch.started_at = datetime.utcnow()
-        df = pd.read_excel(BytesIO(file_bytes), dtype=str)
+        excel = pd.ExcelFile(BytesIO(file_bytes))
+        selected_sheet = _validate_sheet_name(excel, sheet_name)
+        selected_header_row = _validate_header_row(header_row)
+        try:
+            df = pd.read_excel(excel, sheet_name=selected_sheet, dtype=str, header=selected_header_row - 1)
+        except ValueError as exc:
+            raise ValueError(f"Fila de encabezado inválida ({selected_header_row}): {exc}") from exc
         missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
         if missing:
             raise ValueError(f"Columnas obligatorias ausentes: {missing}")
@@ -51,7 +64,7 @@ def process_excel_upload(db: Session, file_bytes: bytes, filename: str):
 
             staging = ImportRowStaging(
                 batch_id=batch.id,
-                row_number=idx + 2,
+                row_number=idx + selected_header_row + 1,
                 cn_raw=cn_raw,
                 cn_normalized=cn,
                 observaciones_revision_raw=observaciones_revision,
