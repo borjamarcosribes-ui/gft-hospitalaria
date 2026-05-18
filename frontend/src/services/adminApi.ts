@@ -1,4 +1,5 @@
 import type {
+  ApplyImportBatchResponse,
   AdminHealthResponse,
   GFTEditorialAdminListResponse,
   GFTEditorialAdminResponse,
@@ -7,6 +8,10 @@ import type {
   GFTEditorialUpdateResponse,
   GFTPublicationStateUpdatePayload,
   GFTPublicationStateUpdateResponse,
+  ImportBatchResponse,
+  ImportBatchSummary,
+  ImportDryRunResponse,
+  ImportRowStaging,
   ListGftEditorialMedicamentosParams,
 } from '../types/admin';
 
@@ -81,6 +86,31 @@ async function patchAdminJson<T>(path: string, apiKey: string, body: unknown): P
   return handleAdminResponse<T>(response);
 }
 
+async function postAdminJson<T>(path: string, apiKey: string): Promise<T> {
+  const response = await fetch(buildUrl(path).toString(), {
+    method: 'POST',
+    headers: buildAdminHeaders(apiKey),
+  });
+
+  return handleAdminResponse<T>(response);
+}
+
+async function postAdminForm<T>(path: string, apiKey: string, formData: FormData): Promise<T> {
+  const response = await fetch(buildUrl(path).toString(), {
+    method: 'POST',
+    headers: buildAdminHeaders(apiKey),
+    body: formData,
+  });
+
+  return handleAdminResponse<T>(response);
+}
+
+function buildExcelFormData(file: File): FormData {
+  const formData = new FormData();
+  formData.append('file', file);
+  return formData;
+}
+
 function setQueryParam(url: URL, key: string, value?: string) {
   const cleanValue = value?.trim();
 
@@ -137,4 +167,33 @@ export function updateGftMedicationState(
     apiKey,
     payload,
   );
+}
+
+export function dryRunGftExcel(apiKey: string, file: File): Promise<ImportDryRunResponse> {
+  return postAdminForm<ImportDryRunResponse>('/imports/excel/dry-run', apiKey, buildExcelFormData(file));
+}
+
+export function importGftExcel(apiKey: string, file: File): Promise<ImportBatchResponse> {
+  return postAdminForm<ImportBatchResponse>('/imports/excel', apiKey, buildExcelFormData(file));
+}
+
+export function getImportBatchSummary(apiKey: string, batchId: string): Promise<ImportBatchSummary> {
+  return fetchAdminJson<ImportBatchSummary>(`/imports/${encodeURIComponent(batchId)}/summary`, apiKey);
+}
+
+export function getImportBatchRows(
+  apiKey: string,
+  batchId: string,
+  limit: number,
+  offset: number,
+): Promise<ImportRowStaging[]> {
+  const url = buildUrl(`/imports/${encodeURIComponent(batchId)}/rows`);
+  url.searchParams.set('limit', String(limit));
+  url.searchParams.set('offset', String(offset));
+
+  return fetchAdminJson<ImportRowStaging[]>(url, apiKey);
+}
+
+export function applyImportBatch(apiKey: string, batchId: string): Promise<ApplyImportBatchResponse> {
+  return postAdminJson<ApplyImportBatchResponse>(`/imports/${encodeURIComponent(batchId)}/apply`, apiKey);
 }

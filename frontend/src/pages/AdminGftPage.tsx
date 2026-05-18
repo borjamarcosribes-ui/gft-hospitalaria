@@ -1,13 +1,19 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   adminHealth,
+  applyImportBatch,
+  dryRunGftExcel,
+  getImportBatchRows,
+  getImportBatchSummary,
   getGftEditorialMedicamento,
   getGftEditorialSummary,
+  importGftExcel,
   listGftEditorialMedicamentos,
   updateGftMedicationEditorial,
   updateGftMedicationState,
 } from '../services/adminApi';
 import type {
+  ApplyImportBatchResponse,
   GFTEditorialAdminListResponse,
   GFTEditorialAdminResponse,
   GFTEditorialAdminSummaryResponse,
@@ -15,6 +21,10 @@ import type {
   GFTPublicationEditorialState,
   GFTPublicationGftState,
   GFTPublicationStateUpdatePayload,
+  ImportBatchResponse,
+  ImportBatchSummary,
+  ImportDryRunResponse,
+  ImportRowStaging,
 } from '../types/admin';
 
 const ADMIN_SESSION_KEY = 'gft-admin-api-key';
@@ -182,6 +192,317 @@ function StatusBadge({ value, tone = 'neutral' }: { value: string; tone?: 'green
 
 function summaryValue(summary: GFTEditorialAdminSummaryResponse | null, key: string): number {
   return summary?.by_estado_editorial[key] ?? 0;
+}
+
+function formatIssueList(values: string[] | Array<{ message?: string; code?: string }>): string {
+  if (values.length === 0) {
+    return '—';
+  }
+
+  return values.map((value) => (typeof value === 'string' ? value : value.message ?? value.code ?? 'Incidencia')).join('; ');
+}
+
+function getDryRunValidRows(dryRun: ImportDryRunResponse): number {
+  return Math.max(0, dryRun.total_rows - dryRun.error_count);
+}
+
+function AdminExcelImportSection({
+  apiKey,
+  onApplied,
+}: {
+  apiKey: string;
+  onApplied: () => Promise<void>;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [dryRun, setDryRun] = useState<ImportDryRunResponse | null>(null);
+  const [batch, setBatch] = useState<ImportBatchResponse | null>(null);
+  const [batchSummary, setBatchSummary] = useState<ImportBatchSummary | null>(null);
+  const [batchRows, setBatchRows] = useState<ImportRowStaging[]>([]);
+  const [applyResult, setApplyResult] = useState<ApplyImportBatchResponse | null>(null);
+  const [loadingAction, setLoadingAction] = useState<'dry-run' | 'import' | 'summary' | 'apply' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const batchId = batch?.batch_id ?? batchSummary?.batch_id ?? null;
+
+  const resetBatchReview = () => {
+    setBatch(null);
+    setBatchSummary(null);
+    setBatchRows([]);
+    setApplyResult(null);
+  };
+
+  const handleFileChange = (selectedFile: File | null) => {
+    setFile(selectedFile);
+    setDryRun(null);
+    resetBatchReview();
+    setError(null);
+    setSuccess(null);
+  };
+
+  const loadBatchReview = async (activeBatchId: string) => {
+    const [summaryResponse, rowsResponse] = await Promise.all([
+      getImportBatchSummary(apiKey, activeBatchId),
+      getImportBatchRows(apiKey, activeBatchId, 25, 0),
+    ]);
+
+    setBatchSummary(summaryResponse);
+    setBatchRows(rowsResponse);
+  };
+
+  const handleDryRun = async () => {
+    if (!file) {
+      setError('Selecciona un archivo .xlsx antes de validar.');
+      return;
+    }
+
+    setLoadingAction('dry-run');
+    setError(null);
+    setSuccess(null);
+    resetBatchReview();
+
+    try {
+      const response = await dryRunGftExcel(apiKey, file);
+      setDryRun(response);
+      setSuccess('Validación dry-run completada. No se ha aplicado ningún cambio.');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'No se pudo validar el Excel.');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleImportToStaging = async () => {
+    if (!file) {
+      setError('Selecciona un archivo .xlsx antes de importar a staging.');
+      return;
+    }
+
+    if (!dryRun) {
+      setError('Ejecuta primero la validación dry-run antes de importar a staging.');
+      return;
+    }
+
+    setLoadingAction('import');
+    setError(null);
+    setSuccess(null);
+    setApplyResult(null);
+
+    try {
+      const response = await importGftExcel(apiKey, file);
+      setBatch(response);
+      await loadBatchReview(response.batch_id);
+      setSuccess(`Excel importado a staging. Batch ${response.batch_id}. No se ha aplicado todavía.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'No se pudo importar el Excel a staging.');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleRefreshBatchReview = async () => {
+    if (!batchId) {
+      setError('No hay ningún batch de staging cargado para consultar.');
+      return;
+    }
+
+    setLoadingAction('summary');
+    setError(null);
+
+    try {
+      await loadBatchReview(batchId);
+      setSuccess('Resumen y primeras filas del batch actualizados.');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'No se pudo consultar el batch.');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleApplyBatch = async () => {
+    if (!batchId) {
+      setError('No hay ningún batch de staging cargado para aplicar.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Vas a aplicar este batch de staging. No se publicará todo automáticamente: la visibilidad pública seguirá dependiendo de estado_gft = incluido y estado_editorial = publicado. ¿Confirmas la aplicación?',
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setLoadingAction('apply');
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await applyImportBatch(apiKey, batchId);
+      setApplyResult(response);
+      await loadBatchReview(batchId);
+      await onApplied();
+      setSuccess(`Batch aplicado: ${response.applied_rows} filas aplicadas y ${response.total_rows - response.applied_rows} omitidas.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'No se pudo aplicar el batch.');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const isBusy = loadingAction !== null;
+
+  return (
+    <section className="admin-section admin-import-section" aria-labelledby="admin-import-title">
+      <div className="admin-section__header">
+        <div>
+          <h2 id="admin-import-title">Importar Excel GFT</h2>
+          <p>Flujo seguro: seleccionar Excel → validar dry-run → revisar → importar a staging → aplicar con confirmación.</p>
+        </div>
+      </div>
+
+      <p className="admin-alert admin-alert--warning">
+        Aplicar un batch no publica todo automáticamente: la visibilidad pública sigue dependiendo de <strong>estado_gft = incluido</strong> y <strong>estado_editorial = publicado</strong>.
+      </p>
+
+      <div className="admin-import-controls">
+        <label>
+          Archivo maestro .xlsx
+          <input
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
+            disabled={isBusy}
+          />
+        </label>
+        <div className="admin-import-controls__actions">
+          <button className="admin-button admin-button--primary" type="button" onClick={() => void handleDryRun()} disabled={!file || isBusy}>
+            {loadingAction === 'dry-run' ? 'Validando…' : 'Validar Excel'}
+          </button>
+          <button className="admin-button admin-button--secondary" type="button" onClick={() => void handleImportToStaging()} disabled={!file || !dryRun || isBusy}>
+            {loadingAction === 'import' ? 'Importando…' : 'Importar a staging'}
+          </button>
+        </div>
+      </div>
+
+      {file ? <p className="admin-muted">Archivo seleccionado: <strong>{file.name}</strong></p> : null}
+      {success ? <p className="admin-alert admin-alert--success">{success}</p> : null}
+      {error ? <p className="admin-alert admin-alert--error">{error}</p> : null}
+
+      {dryRun ? (
+        <div className="admin-import-panel">
+          <div className="admin-import-panel__header">
+            <h3>Resumen dry-run</h3>
+            <span>No se ha aplicado ningún cambio</span>
+          </div>
+          <div className="admin-summary-grid admin-summary-grid--compact">
+            <article className="admin-summary-card"><span>Total filas</span><strong>{dryRun.total_rows}</strong><small>Leídas del Excel</small></article>
+            <article className="admin-summary-card"><span>Filas válidas</span><strong>{getDryRunValidRows(dryRun)}</strong><small>Sin errores de validación</small></article>
+            <article className="admin-summary-card"><span>Con error</span><strong>{dryRun.error_count}</strong><small>Revisar antes de aplicar</small></article>
+            <article className="admin-summary-card"><span>Pendientes</span><strong>{dryRun.pending_count}</strong><small>No se publican automáticamente</small></article>
+          </div>
+          <dl className="admin-import-definition-list">
+            <dt>Columnas detectadas</dt>
+            <dd>{Object.keys(dryRun.column_mapping).length > 0 ? Object.entries(dryRun.column_mapping).map(([key, value]) => `${formatLabel(key)} → ${value}`).join(', ') : 'No se detectaron columnas válidas'}</dd>
+            <dt>Duplicados CN</dt>
+            <dd>{dryRun.duplicate_cn_count}</dd>
+            <dt>Avisos</dt>
+            <dd>{dryRun.warning_count}</dd>
+          </dl>
+          {dryRun.errors.length > 0 ? (
+            <div className="admin-import-issues">
+              <h4>Errores principales</h4>
+              <ul>
+                {dryRun.errors.slice(0, 6).map((issue) => (
+                  <li key={`${issue.row_number ?? 'global'}-${issue.code}-${issue.message}`}>
+                    {issue.row_number ? `Fila ${issue.row_number}: ` : ''}{issue.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {dryRun.pending_items.length > 0 ? (
+            <p className="admin-alert admin-alert--warning">Hay {dryRun.pending_items.length} filas pendientes de revisión. No se publican automáticamente al aplicar el batch.</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {batch || batchSummary ? (
+        <div className="admin-import-panel">
+          <div className="admin-import-panel__header">
+            <div>
+              <h3>Batch de staging</h3>
+              <p className="admin-muted">Batch ID: <strong>{batchId}</strong></p>
+            </div>
+            <div className="admin-import-controls__actions">
+              <button className="admin-button admin-button--secondary" type="button" onClick={() => void handleRefreshBatchReview()} disabled={isBusy}>
+                {loadingAction === 'summary' ? 'Consultando…' : 'Consultar resumen/filas'}
+              </button>
+              <button className="admin-button admin-button--primary" type="button" onClick={() => void handleApplyBatch()} disabled={!batchId || isBusy}>
+                {loadingAction === 'apply' ? 'Aplicando…' : 'Aplicar batch'}
+              </button>
+            </div>
+          </div>
+
+          {batchSummary ? (
+            <div className="admin-summary-grid admin-summary-grid--compact">
+              <article className="admin-summary-card"><span>Staging</span><strong>{batchSummary.staging_total_rows}</strong><small>Filas cargadas</small></article>
+              <article className="admin-summary-card"><span>Aplicables</span><strong>{batchSummary.applicable_rows}</strong><small>Sin bloqueos</small></article>
+              <article className="admin-summary-card"><span>Errores</span><strong>{batchSummary.error_rows}</strong><small>Omitidas al aplicar</small></article>
+              <article className="admin-summary-card"><span>Pendientes</span><strong>{batchSummary.pending_rows}</strong><small>Revisión manual</small></article>
+            </div>
+          ) : null}
+
+          {applyResult ? (
+            <p className="admin-alert admin-alert--success">Aplicación completada: {applyResult.applied_rows} aplicadas, {applyResult.skipped_errors} con errores omitidas, {applyResult.skipped_pending} pendientes omitidas.</p>
+          ) : null}
+
+          {batchSummary?.error_items.length ? (
+            <div className="admin-import-issues">
+              <h4>Errores del batch</h4>
+              <ul>
+                {batchSummary.error_items.slice(0, 6).map((item) => (
+                  <li key={`batch-error-${item.row_number}`}>Fila {item.row_number}: {formatIssueList(item.validation_errors)}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div className="admin-table-card admin-import-table-card">
+            <table className="admin-table admin-import-table">
+              <thead>
+                <tr>
+                  <th>Fila</th>
+                  <th>CN</th>
+                  <th>Estado GFT</th>
+                  <th>Estado editorial</th>
+                  <th>Nemónico</th>
+                  <th>Errores</th>
+                  <th>Avisos</th>
+                </tr>
+              </thead>
+              <tbody>
+                {batchRows.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.row_number}</td>
+                    <td>{row.cn_normalized ?? row.cn_raw ?? '—'}</td>
+                    <td><StatusBadge value={row.estado_gft} tone={row.estado_gft === 'incluido' ? 'green' : row.estado_gft === 'pendiente_revision' ? 'amber' : 'neutral'} /></td>
+                    <td>{row.estado_editorial ? <StatusBadge value={row.estado_editorial} tone={row.estado_editorial === 'publicado' ? 'blue' : 'amber'} /> : '—'}</td>
+                    <td>{row.nemonico_raw ?? '—'}</td>
+                    <td>{formatIssueList(row.validation_errors)}</td>
+                    <td>{formatIssueList(row.validation_warnings)}</td>
+                  </tr>
+                ))}
+                {batchRows.length === 0 ? (
+                  <tr><td colSpan={7}>No hay filas de staging cargadas para este batch.</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 export function AdminGftPage() {
@@ -594,6 +915,17 @@ export function AdminGftPage() {
               </details>
             ) : null}
           </section>
+
+          <AdminExcelImportSection
+            apiKey={apiKey}
+            onApplied={async () => {
+              await loadSummary(apiKey);
+              await loadList(apiKey);
+              if (selectedCn) {
+                await handleSelect(selectedCn);
+              }
+            }}
+          />
 
           <section className="admin-section" aria-labelledby="admin-list-title">
             <div className="admin-section__header">
