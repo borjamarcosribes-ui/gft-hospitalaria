@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from difflib import SequenceMatcher
 from dataclasses import asdict, dataclass, field
 from io import BytesIO
 import re
@@ -69,6 +70,12 @@ class GFTExcelDryRunResult:
     duplicate_cn: list[DuplicateCN] = field(default_factory=list)
     rows: list[DryRunRow] = field(default_factory=list)
     filename: str | None = None
+    sheet_names: list[str] = field(default_factory=list)
+    header_row: int = 1
+    original_columns: list[str] = field(default_factory=list)
+    normalized_columns: list[str] = field(default_factory=list)
+    missing_required_columns: list[str] = field(default_factory=list)
+    column_suggestions: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -77,13 +84,22 @@ class GFTExcelDryRunResult:
 CN_ALIASES = {
     "cn",
     "codigo nacional",
+    "c n",
     "cod nacional",
 }
 
 OBSERVACIONES_REVISION_ALIASES = {
     "observaciones revision",
     "observacion revision",
+    "observaciones",
+    "observaciones gft",
+    "observaciones revision gft",
     "obs revision",
+}
+
+REQUIRED_COLUMN_ALIASES = {
+    "CN": CN_ALIASES,
+    "Observaciones revisión": OBSERVACIONES_REVISION_ALIASES,
 }
 
 INCLUDED_OBSERVACIONES = {"si"}
@@ -94,6 +110,7 @@ def _norm_column_name(value) -> str:
     text = normalize_text(value) or ""
     text = text.lower()
     text = "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn")
+    text = re.sub(r"[._-]+", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
@@ -104,11 +121,60 @@ def _safe_cell(value) -> str | None:
     return str(value).strip()
 
 
+def _original_column_name(value) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def _find_column(columns, aliases: set[str]) -> str | None:
     for column in columns:
         if _norm_column_name(column) in aliases:
             return column
     return None
+
+
+def _column_similarity(left: str, right: str) -> float:
+    if not left or not right:
+        return 0.0
+    if left in right or right in left:
+        return 1.0
+    left_tokens = set(left.split())
+    right_tokens = set(right.split())
+    overlap = len(left_tokens & right_tokens) / max(len(left_tokens | right_tokens), 1)
+    return max(SequenceMatcher(a=left, b=right).ratio(), overlap)
+
+
+def _suggest_columns(columns, aliases: set[str], limit: int = 3) -> list[str]:
+    scored: list[tuple[float, str]] = []
+    seen: set[str] = set()
+
+    for column in columns:
+        original = _original_column_name(column)
+        if not original or original in seen:
+            continue
+        normalized = _norm_column_name(column)
+        score = max((_column_similarity(normalized, alias) for alias in aliases), default=0.0)
+        if score >= 0.62:
+            scored.append((score, original))
+            seen.add(original)
+
+    scored.sort(key=lambda item: (-item[0], item[1].lower()))
+    return [column for _, column in scored[:limit]]
+
+
+def _build_column_diagnostics(
+    columns,
+    missing_required_columns: list[str],
+) -> tuple[list[str], list[str], dict[str, list[str]]]:
+    original_columns = [_original_column_name(column) for column in columns]
+    normalized_columns = [_norm_column_name(column) for column in columns]
+    suggestions = {
+        required_column: _suggest_columns(columns, aliases)
+        for required_column, aliases in REQUIRED_COLUMN_ALIASES.items()
+        if required_column in missing_required_columns
+    }
+    return original_columns, normalized_columns, suggestions
 
 
 def normalize_cn_for_gft_dry_run(value) -> str:
@@ -156,10 +222,22 @@ def _empty_result(
     filename: str | None,
     sheet_name: str | int | None,
     column_mapping: dict[str, str] | None = None,
+    sheet_names: list[str] | None = None,
+    header_row: int = 1,
+    original_columns: list[str] | None = None,
+    normalized_columns: list[str] | None = None,
+    missing_required_columns: list[str] | None = None,
+    column_suggestions: dict[str, list[str]] | None = None,
 ) -> GFTExcelDryRunResult:
     return GFTExcelDryRunResult(
         dry_run=True,
         sheet_name=sheet_name,
+        sheet_names=sheet_names or [],
+        header_row=header_row,
+        original_columns=original_columns or [],
+        normalized_columns=normalized_columns or [],
+        missing_required_columns=missing_required_columns or [],
+        column_suggestions=column_suggestions or {},
         total_rows=0,
         included_count=0,
         excluded_count=0,
@@ -183,15 +261,18 @@ def dry_run_gft_excel(
         excel.sheet_names[selected_sheet] if isinstance(selected_sheet, int) else selected_sheet
     )
     df = pd.read_excel(excel, sheet_name=selected_sheet, dtype=str)
+    header_row = 1
 
     cn_column = _find_column(df.columns, CN_ALIASES)
     observaciones_column = _find_column(df.columns, OBSERVACIONES_REVISION_ALIASES)
     column_mapping = {}
     errors: list[DryRunIssue] = []
+    missing_required_columns: list[str] = []
 
     if cn_column is not None:
         column_mapping["cn"] = cn_column
     else:
+        missing_required_columns.append("CN")
         errors.append(
             DryRunIssue(
                 row_number=None,
@@ -203,6 +284,7 @@ def dry_run_gft_excel(
     if observaciones_column is not None:
         column_mapping["observaciones_revision"] = observaciones_column
     else:
+        missing_required_columns.append("Observaciones revisión")
         errors.append(
             DryRunIssue(
                 row_number=None,
@@ -211,8 +293,23 @@ def dry_run_gft_excel(
             )
         )
 
+    original_columns, normalized_columns, column_suggestions = _build_column_diagnostics(
+        df.columns,
+        missing_required_columns,
+    )
+
     if errors:
-        result = _empty_result(filename, resolved_sheet_name, column_mapping)
+        result = _empty_result(
+            filename,
+            resolved_sheet_name,
+            column_mapping,
+            sheet_names=excel.sheet_names,
+            header_row=header_row,
+            original_columns=original_columns,
+            normalized_columns=normalized_columns,
+            missing_required_columns=missing_required_columns,
+            column_suggestions=column_suggestions,
+        )
         result.errors = errors
         result.error_count = len(errors)
         return result
@@ -292,6 +389,12 @@ def dry_run_gft_excel(
     return GFTExcelDryRunResult(
         dry_run=True,
         sheet_name=resolved_sheet_name,
+        sheet_names=excel.sheet_names,
+        header_row=header_row,
+        original_columns=original_columns,
+        normalized_columns=normalized_columns,
+        missing_required_columns=missing_required_columns,
+        column_suggestions=column_suggestions,
         total_rows=len(df),
         included_count=counts["incluido"],
         excluded_count=counts["excluido"],

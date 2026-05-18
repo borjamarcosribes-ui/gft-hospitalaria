@@ -82,6 +82,64 @@ def test_dry_run_detects_observaciones_revision_without_accent_alias():
     assert result.column_mapping["observaciones_revision"] == "Observaciones revision"
 
 
+def test_dry_run_reports_column_diagnostics_when_required_columns_are_missing():
+    result = dry_run_gft_excel(
+        make_excel(
+            pd.DataFrame(
+                [
+                    {
+                        "Codigo Nacional medicamento": "123456",
+                        "Observaciones revision comentario": "SI",
+                        "Otra columna": "valor",
+                    }
+                ]
+            )
+        ),
+        filename="diagnostico.xlsx",
+    )
+
+    assert result.dry_run is True
+    assert result.filename == "diagnostico.xlsx"
+    assert result.sheet_name == "Hoja1"
+    assert result.sheet_names == ["Hoja1"]
+    assert result.header_row == 1
+    assert result.total_rows == 0
+    assert result.error_count == 2
+    assert result.original_columns == [
+        "Codigo Nacional medicamento",
+        "Observaciones revision comentario",
+        "Otra columna",
+    ]
+    assert result.normalized_columns == [
+        "codigo nacional medicamento",
+        "observaciones revision comentario",
+        "otra columna",
+    ]
+    assert result.missing_required_columns == ["CN", "Observaciones revisión"]
+    assert result.column_suggestions["CN"] == ["Codigo Nacional medicamento"]
+    assert result.column_suggestions["Observaciones revisión"] == ["Observaciones revision comentario"]
+
+
+def test_dry_run_detects_safe_cn_and_observaciones_aliases():
+    result = dry_run_gft_excel(
+        make_excel(
+            pd.DataFrame(
+                [
+                    {
+                        "C.N.": "123456",
+                        "Observaciones GFT": "SI",
+                    }
+                ]
+            )
+        )
+    )
+
+    assert result.error_count == 0
+    assert result.column_mapping == {"cn": "C.N.", "observaciones_revision": "Observaciones GFT"}
+    assert result.rows[0].cn == "123456"
+    assert result.included_count == 1
+
+
 def test_dry_run_returns_clear_error_when_cn_column_is_missing():
     result = dry_run_gft_excel(make_excel(pd.DataFrame([{"Observaciones revisión": "SI"}])))
 

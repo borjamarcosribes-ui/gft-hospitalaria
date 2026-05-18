@@ -2,6 +2,8 @@ from io import BytesIO
 
 import pandas as pd
 
+from app.models.import_batch import ImportBatch
+
 
 EXCEL_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -68,3 +70,23 @@ def test_imports_excel_dry_run_route_is_not_captured_by_batch_id(client, admin_h
     assert response.status_code == 200
     assert "value is not a valid uuid" not in response.text.lower()
     assert "uuid" not in response.text.lower()
+
+
+def test_imports_excel_dry_run_returns_column_diagnostics_and_does_not_create_batch(client, db_session, admin_headers):
+    response = post_dry_run(
+        client,
+        make_excel([{"Codigo Nacional medicamento": "111111", "Notas revision": "SI"}]),
+        admin_headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["dry_run"] is True
+    assert payload["total_rows"] == 0
+    assert payload["sheet_name"] == "Sheet1"
+    assert payload["sheet_names"] == ["Sheet1"]
+    assert payload["header_row"] == 1
+    assert payload["original_columns"] == ["Codigo Nacional medicamento", "Notas revision"]
+    assert payload["missing_required_columns"] == ["CN", "Observaciones revisión"]
+    assert payload["column_suggestions"]["CN"] == ["Codigo Nacional medicamento"]
+    assert db_session.query(ImportBatch).count() == 0

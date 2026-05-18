@@ -123,6 +123,12 @@ export interface ImportDryRunResponse {
   dry_run: boolean;
   filename: string | null;
   sheet_name: string | number | null;
+  sheet_names: string[];
+  header_row: number;
+  original_columns: string[];
+  normalized_columns: string[];
+  missing_required_columns: string[];
+  column_suggestions: Record<string, string[]>;
   total_rows: number;
   included_count: number;
   excluded_count: number;
