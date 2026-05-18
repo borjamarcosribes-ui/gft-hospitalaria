@@ -206,6 +206,21 @@ function getDryRunValidRows(dryRun: ImportDryRunResponse): number {
   return Math.max(0, dryRun.total_rows - dryRun.error_count);
 }
 
+function formatStringList(values: string[] | undefined, emptyText = '—'): string {
+  return values && values.length > 0 ? values.join(', ') : emptyText;
+}
+
+function hasDryRunColumnDiagnostics(dryRun: ImportDryRunResponse): boolean {
+  return (
+    dryRun.sheet_name !== null
+    || dryRun.sheet_names.length > 0
+    || dryRun.original_columns.length > 0
+    || dryRun.normalized_columns.length > 0
+    || dryRun.missing_required_columns.length > 0
+    || Object.values(dryRun.column_suggestions).some((candidates) => candidates.length > 0)
+  );
+}
+
 function AdminExcelImportSection({
   apiKey,
   onApplied,
@@ -402,13 +417,38 @@ function AdminExcelImportSection({
             <article className="admin-summary-card"><span>Pendientes</span><strong>{dryRun.pending_count}</strong><small>No se publican automáticamente</small></article>
           </div>
           <dl className="admin-import-definition-list">
+            <dt>Hoja leída</dt>
+            <dd>{dryRun.sheet_name ?? '—'}</dd>
+            <dt>Hojas disponibles</dt>
+            <dd>{formatStringList(dryRun.sheet_names)}</dd>
+            <dt>Fila de encabezado usada</dt>
+            <dd>{dryRun.header_row}</dd>
             <dt>Columnas detectadas</dt>
             <dd>{Object.keys(dryRun.column_mapping).length > 0 ? Object.entries(dryRun.column_mapping).map(([key, value]) => `${formatLabel(key)} → ${value}`).join(', ') : 'No se detectaron columnas válidas'}</dd>
+            <dt>Columnas originales leídas</dt>
+            <dd>{formatStringList(dryRun.original_columns, 'No se leyeron encabezados')}</dd>
+            <dt>Columnas normalizadas</dt>
+            <dd>{formatStringList(dryRun.normalized_columns, 'No hay encabezados normalizados')}</dd>
+            <dt>Obligatorias faltantes</dt>
+            <dd>{formatStringList(dryRun.missing_required_columns)}</dd>
             <dt>Duplicados CN</dt>
             <dd>{dryRun.duplicate_cn_count}</dd>
             <dt>Avisos</dt>
             <dd>{dryRun.warning_count}</dd>
           </dl>
+          {hasDryRunColumnDiagnostics(dryRun) && Object.keys(dryRun.column_suggestions).length > 0 ? (
+            <div className="admin-import-issues">
+              <h4>Sugerencias de columnas</h4>
+              <ul>
+                {Object.entries(dryRun.column_suggestions).map(([requiredColumn, candidates]) => (
+                  <li key={`suggestion-${requiredColumn}`}>
+                    <strong>{requiredColumn}</strong>: {formatStringList(candidates, 'sin candidatas parecidas')}
+                  </li>
+                ))}
+              </ul>
+              <p className="admin-muted">No se ha aplicado ningún cambio. Revisa si la hoja, la fila de encabezados o los nombres de columnas coinciden con el formato esperado.</p>
+            </div>
+          ) : null}
           {dryRun.errors.length > 0 ? (
             <div className="admin-import-issues">
               <h4>Errores principales</h4>
