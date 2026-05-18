@@ -4,6 +4,11 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from app.models.import_batch import ImportBatch
 from app.models.import_row_staging import ImportRowStaging
+from app.services.gft_excel_dry_run_service import (
+    build_gft_excel_column_mapping,
+    _validate_header_row,
+    _validate_sheet_name,
+)
 from app.services.normalization_service import (
     normalize_cn,
     classify_observaciones_revision,
@@ -11,51 +16,65 @@ from app.services.normalization_service import (
     NormalizationError,
 )
 
-REQUIRED_COLUMNS = ["CN", "Observaciones revisión", "Estado editorial"]
-
 
 def _safe_value(row, key):
     value = row.get(key)
     return None if pd.isna(value) else value
 
 
-def process_excel_upload(db: Session, file_bytes: bytes, filename: str):
+def process_excel_upload(
+    db: Session,
+    file_bytes: bytes,
+    filename: str,
+    sheet_name: str | int | None = None,
+    header_row: int | None = None,
+):
     batch = ImportBatch(filename=filename, status="uploaded")
     db.add(batch)
     db.flush()
     try:
         batch.status = "processing"
         batch.started_at = datetime.utcnow()
-        df = pd.read_excel(BytesIO(file_bytes), dtype=str)
-        missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+        excel = pd.ExcelFile(BytesIO(file_bytes))
+        selected_sheet = _validate_sheet_name(excel, sheet_name)
+        selected_header_row = _validate_header_row(header_row)
+        try:
+            df = pd.read_excel(excel, sheet_name=selected_sheet, dtype=str, header=selected_header_row - 1)
+        except ValueError as exc:
+            raise ValueError(f"Fila de encabezado inválida ({selected_header_row}): {exc}") from exc
+        column_mapping, missing, _ = build_gft_excel_column_mapping(df.columns)
         if missing:
             raise ValueError(f"Columnas obligatorias ausentes: {missing}")
+
+        cn_column = column_mapping["cn"]
+        observaciones_column = column_mapping["observaciones_revision"]
+        estado_editorial_column = column_mapping["estado_editorial"]
 
         batch.total_rows = len(df)
         for idx, row in df.iterrows():
             errors, warnings = [], []
-            cn_raw = _safe_value(row, "CN")
+            cn_raw = _safe_value(row, cn_column)
             try:
                 cn = normalize_cn(cn_raw)
             except Exception as exc:
                 cn = None
                 errors.append(str(exc))
 
-            observaciones_revision = _safe_value(row, "Observaciones revisión")
+            observaciones_revision = _safe_value(row, observaciones_column)
             estado_gft = classify_observaciones_revision(observaciones_revision)
             try:
-                estado_editorial = normalize_estado_editorial(_safe_value(row, "Estado editorial"))
+                estado_editorial = normalize_estado_editorial(_safe_value(row, estado_editorial_column))
             except NormalizationError as exc:
                 estado_editorial = None
                 errors.append(str(exc))
 
             staging = ImportRowStaging(
                 batch_id=batch.id,
-                row_number=idx + 2,
+                row_number=idx + selected_header_row + 1,
                 cn_raw=cn_raw,
                 cn_normalized=cn,
                 observaciones_revision_raw=observaciones_revision,
-                estado_editorial_raw=_safe_value(row, "Estado editorial"),
+                estado_editorial_raw=_safe_value(row, estado_editorial_column),
                 nemonico_raw=_safe_value(row, "Nemónico"),
                 restricciones_hospitalarias_raw=_safe_value(row, "Restricciones hospitalarias"),
                 observaciones_internas_raw=_safe_value(row, "Observaciones internas GFT"),

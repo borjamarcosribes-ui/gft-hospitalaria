@@ -119,6 +119,11 @@ export interface ImportDryRunDuplicateCn {
   rows: number[];
 }
 
+export interface ImportExcelOptions {
+  sheet_name?: string;
+  header_row?: number;
+}
+
 export interface ImportDryRunResponse {
   dry_run: boolean;
   filename: string | null;
@@ -159,6 +164,7 @@ export interface ImportBatchResponse {
   processed_rows: number;
   ok_rows: number;
   error_rows: number;
+  error_summary?: Record<string, unknown> | null;
 }
 
 export interface ImportBatchSummary {

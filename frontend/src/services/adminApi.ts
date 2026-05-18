@@ -11,6 +11,7 @@ import type {
   ImportBatchResponse,
   ImportBatchSummary,
   ImportDryRunResponse,
+  ImportExcelOptions,
   ImportRowStaging,
   ListGftEditorialMedicamentosParams,
 } from '../types/admin';
@@ -105,9 +106,19 @@ async function postAdminForm<T>(path: string, apiKey: string, formData: FormData
   return handleAdminResponse<T>(response);
 }
 
-function buildExcelFormData(file: File): FormData {
+function buildExcelFormData(file: File, options: ImportExcelOptions = {}): FormData {
   const formData = new FormData();
   formData.append('file', file);
+
+  const sheetName = options.sheet_name?.trim();
+  if (sheetName) {
+    formData.append('sheet_name', sheetName);
+  }
+
+  if (options.header_row !== undefined) {
+    formData.append('header_row', String(options.header_row));
+  }
+
   return formData;
 }
 
@@ -169,12 +180,20 @@ export function updateGftMedicationState(
   );
 }
 
-export function dryRunGftExcel(apiKey: string, file: File): Promise<ImportDryRunResponse> {
-  return postAdminForm<ImportDryRunResponse>('/imports/excel/dry-run', apiKey, buildExcelFormData(file));
+export function dryRunGftExcel(
+  apiKey: string,
+  file: File,
+  options: ImportExcelOptions = {},
+): Promise<ImportDryRunResponse> {
+  return postAdminForm<ImportDryRunResponse>('/imports/excel/dry-run', apiKey, buildExcelFormData(file, options));
 }
 
-export function importGftExcel(apiKey: string, file: File): Promise<ImportBatchResponse> {
-  return postAdminForm<ImportBatchResponse>('/imports/excel', apiKey, buildExcelFormData(file));
+export function importGftExcel(
+  apiKey: string,
+  file: File,
+  options: ImportExcelOptions = {},
+): Promise<ImportBatchResponse> {
+  return postAdminForm<ImportBatchResponse>('/imports/excel', apiKey, buildExcelFormData(file, options));
 }
 
 export function getImportBatchSummary(apiKey: string, batchId: string): Promise<ImportBatchSummary> {
