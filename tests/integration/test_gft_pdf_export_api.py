@@ -53,6 +53,48 @@ def test_gft_export_pdf_endpoint_uses_existing_export_html_pdf_chain(client, mon
     assert response.content.startswith(b"%PDF")
 
 
+def test_gft_export_pdf_endpoint_returns_503_when_pdf_renderer_is_unavailable(
+    client, db_session, monkeypatch
+):
+    _insert_medicamento(db_session, "820001", nombre="Medicamento con PDF no disponible")
+    _create_view(db_session)
+
+    def fake_pdf_bytes(html):
+        raise GFTPDFRenderingError("native renderer traceback detail must stay internal")
+
+    monkeypatch.setattr(gft_routes, "render_gft_pdf_bytes", fake_pdf_bytes)
+
+    response = client.get("/gft/export/pdf")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": (
+            "PDF rendering is unavailable. Use /gft/export/html or install "
+            "PDF rendering dependencies."
+        )
+    }
+    assert "traceback" not in response.text.lower()
+    assert "native renderer" not in response.text
+
+
+def test_gft_export_html_remains_available_when_pdf_renderer_is_unavailable(
+    client, db_session, monkeypatch
+):
+    _insert_medicamento(db_session, "820002", nombre="Medicamento HTML alternativo")
+    _create_view(db_session)
+
+    def fake_pdf_bytes(html):
+        raise GFTPDFRenderingError("PDF unavailable")
+
+    monkeypatch.setattr(gft_routes, "render_gft_pdf_bytes", fake_pdf_bytes)
+
+    response = client.get("/gft/export/html")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Medicamento HTML alternativo" in response.text
+
+
 def test_gft_export_pdf_endpoint_returns_valid_empty_pdf(client, db_session, monkeypatch):
     _create_view(db_session)
     captured = {}
@@ -102,3 +144,21 @@ def test_render_gft_pdf_bytes_raises_clear_error_when_weasyprint_is_missing(monk
 
     with pytest.raises(GFTPDFRenderingError, match="WeasyPrint is required"):
         render_gft_pdf_bytes("<!doctype html><html><body>missing dependency</body></html>")
+
+
+def test_render_gft_pdf_bytes_raises_clear_error_when_weasyprint_import_fails(monkeypatch):
+    def fake_import(name, *args, **kwargs):
+        if name == "weasyprint":
+            raise OSError("missing native library")
+        return original_import(name, *args, **kwargs)
+
+    original_import = __import__
+    monkeypatch.setattr(
+        binary_service,
+        "find_spec",
+        lambda name: object() if name == "weasyprint" else None,
+    )
+    monkeypatch.setattr("builtins.__import__", fake_import)
+
+    with pytest.raises(GFTPDFRenderingError, match="could not be loaded"):
+        render_gft_pdf_bytes("<!doctype html><html><body>import failure</body></html>")

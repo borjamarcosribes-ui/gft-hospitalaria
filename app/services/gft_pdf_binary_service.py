@@ -20,7 +20,13 @@ def render_gft_pdf_bytes(html: str) -> bytes:
             "libraries are available."
         )
 
-    from weasyprint import HTML
+    try:
+        from weasyprint import HTML
+    except Exception as exc:
+        raise GFTPDFRenderingError(
+            "WeasyPrint is installed but could not be loaded. Ensure PDF "
+            "rendering system libraries are available."
+        ) from exc
 
     try:
         pdf_bytes = HTML(string=html).write_pdf()
