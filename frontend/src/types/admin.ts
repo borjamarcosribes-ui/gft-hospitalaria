@@ -99,3 +99,117 @@ export interface ListGftEditorialMedicamentosParams {
   limit: number;
   offset: number;
 }
+
+export interface ImportDryRunIssue {
+  row_number: number | null;
+  code: string;
+  message: string;
+  cn_raw?: string | null;
+}
+
+export interface ImportDryRunPendingItem {
+  row_number: number;
+  cn: string | null;
+  observaciones_revision_raw: string | null;
+  reason: string;
+}
+
+export interface ImportDryRunDuplicateCn {
+  cn: string;
+  rows: number[];
+}
+
+export interface ImportDryRunResponse {
+  dry_run: boolean;
+  filename: string | null;
+  sheet_name: string | number | null;
+  total_rows: number;
+  included_count: number;
+  excluded_count: number;
+  pending_count: number;
+  error_count: number;
+  warning_count: number;
+  duplicate_cn_count: number;
+  column_mapping: Record<string, string>;
+  errors: ImportDryRunIssue[];
+  warnings: ImportDryRunIssue[];
+  pending_items: ImportDryRunPendingItem[];
+  duplicate_cn: ImportDryRunDuplicateCn[];
+  rows?: Array<{
+    row_number: number;
+    cn_raw: string | null;
+    cn: string | null;
+    observaciones_revision_raw: string | null;
+    estado_gft: string;
+    errors: ImportDryRunIssue[];
+    warnings: ImportDryRunIssue[];
+  }>;
+}
+
+export interface ImportBatchResponse {
+  batch_id: string;
+  status: string;
+  total_rows: number;
+  processed_rows: number;
+  ok_rows: number;
+  error_rows: number;
+}
+
+export interface ImportBatchSummary {
+  batch_id: string;
+  status: string;
+  filename: string;
+  batch_total_rows: number;
+  staging_total_rows: number;
+  included_rows: number;
+  excluded_rows: number;
+  pending_rows: number;
+  error_rows: number;
+  warning_rows: number;
+  applicable_rows: number;
+  not_applicable_rows: number;
+  skipped_errors: number;
+  skipped_missing_cn: number;
+  skipped_pending: number;
+  skipped_missing_estado_editorial: number;
+  duplicate_cn_count: number;
+  duplicate_cn: ImportDryRunDuplicateCn[];
+  pending_items: Array<{
+    row_number: number;
+    cn: string | null;
+    observaciones_revision_raw: string | null;
+    estado_editorial: string | null;
+  }>;
+  error_items: Array<{
+    row_number: number;
+    cn_raw: string | null;
+    cn: string | null;
+    validation_errors: string[];
+  }>;
+}
+
+export interface ImportRowStaging {
+  id: string;
+  batch_id: string;
+  row_number: number;
+  cn_raw: string | null;
+  cn_normalized: string | null;
+  observaciones_revision_raw: string | null;
+  estado_editorial_raw: string | null;
+  nemonico_raw: string | null;
+  estado_gft: string;
+  estado_editorial: string | null;
+  validation_errors: string[];
+  validation_warnings: string[];
+  created_at: string | null;
+}
+
+export interface ApplyImportBatchResponse {
+  batch_id: string;
+  total_rows: number;
+  applied_rows: number;
+  skipped_errors: number;
+  skipped_missing_cn: number;
+  skipped_pending: number;
+  skipped_missing_estado_editorial: number;
+}
