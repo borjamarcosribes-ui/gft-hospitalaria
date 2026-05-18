@@ -155,7 +155,9 @@ El endpoint consume obligatoriamente la cadena completa:
 2. `render_gft_pdf_html(export_data)`.
 3. `render_gft_pdf_bytes(html)`.
 
-La implementación actual usa WeasyPrint como motor HTML→PDF. Si en el futuro se sustituye el motor, el contrato funcional se mantiene: el servicio binario recibe HTML completo y devuelve bytes PDF sin introducir reglas de negocio.
+La implementación actual usa WeasyPrint como motor HTML→PDF y requiere tanto el paquete Python como las librerías nativas del sistema que WeasyPrint necesita para generar el binario. Si WeasyPrint no está instalado, no puede importarse o falla durante el renderizado, `/gft/export/pdf` debe responder `503 Service Unavailable` con un mensaje claro y estable en vez de exponer un `500` o un traceback interno.
+
+En ese caso, `/gft/export/html` sigue siendo la alternativa imprimible pública y debe permanecer operativa para validación visual e impresión desde navegador. Si en el futuro se sustituye el motor, el contrato funcional se mantiene: el servicio binario recibe HTML completo y devuelve bytes PDF sin introducir reglas de negocio.
 
 ## 10. Criterios de aceptación
 
