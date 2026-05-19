@@ -37,6 +37,7 @@ def _medication(**overrides) -> GFTPDFMedication:
         "precauciones_embarazo": "Valorar beneficio/riesgo",
         "precauciones_lactancia": "Compatible con vigilancia",
         "restricciones_hospitalarias": "Uso hospitalario",
+        "observaciones_publicables": "Observación publicable de prueba",
         "situacion_financiacion_bifimed": "Financiado",
         "url_ficha_tecnica": "https://example.test/ficha/123456",
         "url_prospecto": "https://example.test/prospecto/123456",
@@ -105,6 +106,7 @@ def test_render_gft_pdf_html_renders_atc_groups_and_medications():
     assert "Anilidas" in html
     assert "Dolor y fiebre" in html
     assert "Uso hospitalario" in html
+    assert "Observación publicable de prueba" in html
     assert "Ajustar si procede" in html
     assert "Precaución en insuficiencia hepática" in html
     assert "Valorar beneficio/riesgo" in html

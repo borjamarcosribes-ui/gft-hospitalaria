@@ -45,7 +45,7 @@ def _create_view(db_session):
               g.ajuste_insuficiencia_hepatica,
               g.precauciones_embarazo,
               g.precauciones_lactancia,
-              g.observaciones_internas
+              g.observaciones_publicables
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
             LEFT JOIN bifimed_cache b ON b.cn = g.cn
@@ -93,6 +93,7 @@ def _insert_medicamento(
             precauciones_embarazo=precauciones_embarazo,
             precauciones_lactancia=precauciones_lactancia,
             observaciones_internas="Observación interna no exportable",
+            observaciones_publicables="Observación publicable exportable",
             comentario_revision="Comentario no exportable",
             revisado_por="revisor no exportable",
         )
