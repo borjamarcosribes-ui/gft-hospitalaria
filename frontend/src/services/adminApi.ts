@@ -119,6 +119,10 @@ function buildExcelFormData(file: File, options: ImportExcelOptions = {}): FormD
     formData.append('header_row', String(options.header_row));
   }
 
+  if (options.default_estado_editorial) {
+    formData.append('default_estado_editorial', options.default_estado_editorial);
+  }
+
   return formData;
 }
 

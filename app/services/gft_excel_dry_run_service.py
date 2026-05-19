@@ -9,7 +9,7 @@ import unicodedata
 
 import pandas as pd
 
-from app.services.normalization_service import NormalizationError, is_missing, normalize_cn, normalize_text
+from app.services.normalization_service import NormalizationError, is_missing, normalize_cn, normalize_estado_editorial, normalize_text
 
 
 @dataclass
@@ -76,6 +76,7 @@ class GFTExcelDryRunResult:
     normalized_columns: list[str] = field(default_factory=list)
     missing_required_columns: list[str] = field(default_factory=list)
     column_suggestions: dict[str, list[str]] = field(default_factory=dict)
+    default_estado_editorial_used: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -106,6 +107,9 @@ ESTADO_EDITORIAL_ALIASES = {
 REQUIRED_COLUMN_ALIASES = {
     "CN": CN_ALIASES,
     "Observaciones revisión": OBSERVACIONES_REVISION_ALIASES,
+}
+
+OPTIONAL_COLUMN_ALIASES = {
     "Estado editorial": ESTADO_EDITORIAL_ALIASES,
 }
 
@@ -166,6 +170,12 @@ def build_gft_excel_column_mapping(columns) -> tuple[dict[str, str], list[str], 
                 message=f"Columna obligatoria ausente: {required_column}",
             )
         )
+
+
+    for optional_column, aliases in OPTIONAL_COLUMN_ALIASES.items():
+        matched_column = _find_column(columns, aliases)
+        if matched_column is not None:
+            column_mapping[REQUIRED_COLUMN_MAPPING_KEYS[optional_column]] = matched_column
 
     return column_mapping, missing_required_columns, errors
 
@@ -283,6 +293,7 @@ def _empty_result(
         duplicate_cn_count=0,
         column_mapping=column_mapping or {},
         filename=filename,
+        default_estado_editorial_used=(normalized_default_estado_editorial if estado_editorial_column is None else None),
     )
 
 
@@ -320,6 +331,7 @@ def dry_run_gft_excel(
     filename: str | None = None,
     sheet_name: str | int | None = None,
     header_row: int | None = None,
+    default_estado_editorial: str | None = None,
 ) -> GFTExcelDryRunResult:
     excel = pd.ExcelFile(BytesIO(file_bytes))
     selected_sheet = _validate_sheet_name(excel, sheet_name)
@@ -333,6 +345,23 @@ def dry_run_gft_excel(
     column_mapping, missing_required_columns, errors = build_gft_excel_column_mapping(df.columns)
     cn_column = column_mapping.get("cn")
     observaciones_column = column_mapping.get("observaciones_revision")
+    estado_editorial_column = column_mapping.get("estado_editorial")
+
+    normalized_default_estado_editorial = None
+    if default_estado_editorial is not None:
+        try:
+            normalized_default_estado_editorial = normalize_estado_editorial(default_estado_editorial)
+        except NormalizationError as exc:
+            raise ValueError(f"default_estado_editorial inválido: {exc}") from exc
+
+    if estado_editorial_column is None and normalized_default_estado_editorial is None:
+        issue = DryRunIssue(
+            row_number=None,
+            code="missing_required_column",
+            message="Columna obligatoria ausente: Estado editorial",
+        )
+        errors.append(issue)
+        missing_required_columns.append("Estado editorial")
 
     original_columns, normalized_columns, column_suggestions = _build_column_diagnostics(
         df.columns,
@@ -451,4 +480,5 @@ def dry_run_gft_excel(
         duplicate_cn=duplicate_cn,
         rows=rows,
         filename=filename,
+        default_estado_editorial_used=(normalized_default_estado_editorial if estado_editorial_column is None else None),
     )

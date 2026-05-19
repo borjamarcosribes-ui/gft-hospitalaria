@@ -19,10 +19,11 @@ def make_excel(rows: list[dict], add_estado_editorial: bool = True) -> bytes:
     return bio.getvalue()
 
 
-def post_dry_run(client, content: bytes, admin_headers):
+def post_dry_run(client, content: bytes, admin_headers, data: dict | None = None):
     return client.post(
         "/imports/excel/dry-run",
         files={"file": ("gft.xlsx", content, EXCEL_MEDIA_TYPE)},
+        data=data or {},
         headers=admin_headers,
     )
 
@@ -159,7 +160,7 @@ def test_imports_excel_dry_run_uses_form_header_row(client, admin_headers):
     assert payload["rows"][0]["cn"] == "555555"
 
 
-def test_imports_excel_dry_run_fails_when_estado_editorial_is_missing(client, admin_headers):
+def test_imports_excel_dry_run_fails_when_estado_editorial_is_missing_and_no_default(client, admin_headers):
     response = post_dry_run(
         client,
         make_excel(
@@ -174,3 +175,27 @@ def test_imports_excel_dry_run_fails_when_estado_editorial_is_missing(client, ad
     assert payload["total_rows"] == 0
     assert payload["missing_required_columns"] == ["Estado editorial"]
     assert payload["errors"][0]["message"] == "Columna obligatoria ausente: Estado editorial"
+
+
+def test_imports_excel_dry_run_without_estado_editorial_uses_default(client, admin_headers):
+    response = post_dry_run(
+        client,
+        make_excel([{"CN": "111111", "Observaciones revisión": "SI"}], add_estado_editorial=False),
+        admin_headers,
+        data={"default_estado_editorial": "borrador"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error_count"] == 0
+    assert payload["default_estado_editorial_used"] == "borrador"
+
+
+def test_imports_excel_dry_run_invalid_default_estado_editorial_returns_clear_error(client, admin_headers):
+    response = post_dry_run(
+        client,
+        make_excel([{"CN": "111111", "Observaciones revisión": "SI"}], add_estado_editorial=False),
+        admin_headers,
+        data={"default_estado_editorial": "raro"},
+    )
+    assert response.status_code == 400
+    assert "default_estado_editorial inválido" in response.json()["detail"]

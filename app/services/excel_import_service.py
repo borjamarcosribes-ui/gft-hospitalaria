@@ -28,6 +28,7 @@ def process_excel_upload(
     filename: str,
     sheet_name: str | int | None = None,
     header_row: int | None = None,
+    default_estado_editorial: str | None = None,
 ):
     batch = ImportBatch(filename=filename, status="uploaded")
     db.add(batch)
@@ -43,12 +44,20 @@ def process_excel_upload(
         except ValueError as exc:
             raise ValueError(f"Fila de encabezado inválida ({selected_header_row}): {exc}") from exc
         column_mapping, missing, _ = build_gft_excel_column_mapping(df.columns)
+        estado_editorial_column = column_mapping.get("estado_editorial")
+
+        normalized_default_estado_editorial = None
+        if default_estado_editorial is not None:
+            normalized_default_estado_editorial = normalize_estado_editorial(default_estado_editorial)
+
+        if estado_editorial_column is None and normalized_default_estado_editorial is None:
+            missing = [*missing, "Estado editorial"]
+
         if missing:
             raise ValueError(f"Columnas obligatorias ausentes: {missing}")
 
         cn_column = column_mapping["cn"]
         observaciones_column = column_mapping["observaciones_revision"]
-        estado_editorial_column = column_mapping["estado_editorial"]
 
         batch.total_rows = len(df)
         for idx, row in df.iterrows():
@@ -62,8 +71,9 @@ def process_excel_upload(
 
             observaciones_revision = _safe_value(row, observaciones_column)
             estado_gft = classify_observaciones_revision(observaciones_revision)
+            estado_editorial_raw = _safe_value(row, estado_editorial_column) if estado_editorial_column else normalized_default_estado_editorial
             try:
-                estado_editorial = normalize_estado_editorial(_safe_value(row, estado_editorial_column))
+                estado_editorial = normalize_estado_editorial(estado_editorial_raw)
             except NormalizationError as exc:
                 estado_editorial = None
                 errors.append(str(exc))
@@ -74,7 +84,7 @@ def process_excel_upload(
                 cn_raw=cn_raw,
                 cn_normalized=cn,
                 observaciones_revision_raw=observaciones_revision,
-                estado_editorial_raw=_safe_value(row, estado_editorial_column),
+                estado_editorial_raw=estado_editorial_raw,
                 nemonico_raw=_safe_value(row, "Nemónico"),
                 restricciones_hospitalarias_raw=_safe_value(row, "Restricciones hospitalarias"),
                 observaciones_internas_raw=_safe_value(row, "Observaciones internas GFT"),

@@ -298,3 +298,48 @@ def test_excel_validated_by_dry_run_imports_to_staging_with_alias_columns(client
     assert row.cn_normalized == "333333"
     assert row.estado_gft == "excluido"
     assert row.estado_editorial == "validado"
+
+
+def test_import_excel_without_estado_editorial_uses_default_borrador(client, db_session, admin_headers):
+    response = client.post(
+        "/imports/excel",
+        files={
+            "file": excel_file([
+                {"CN": "777777", "Observaciones revisión": "SI"}
+            ])
+        },
+        data={"default_estado_editorial": "borrador"},
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "validated"
+    row = db_session.query(ImportRowStaging).filter(ImportRowStaging.cn_normalized == "777777").one()
+    assert row.estado_editorial == "borrador"
+
+
+def test_import_excel_estado_editorial_column_prevails_over_default(client, db_session, admin_headers):
+    response = client.post(
+        "/imports/excel",
+        files={
+            "file": excel_file([
+                {"CN": "888888", "Observaciones revisión": "SI", "Estado editorial": "validado"}
+            ])
+        },
+        data={"default_estado_editorial": "borrador"},
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+    row = db_session.query(ImportRowStaging).filter(ImportRowStaging.cn_normalized == "888888").one()
+    assert row.estado_editorial == "validado"
+
+
+def test_import_excel_invalid_default_estado_editorial_fails_cleanly(client, admin_headers):
+    response = client.post(
+        "/imports/excel",
+        files={"file": excel_file([{"CN": "999999", "Observaciones revisión": "SI"}])},
+        data={"default_estado_editorial": "raro"},
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "failed"
+    assert "Estado editorial inválido" in response.json()["error_summary"]["error"]

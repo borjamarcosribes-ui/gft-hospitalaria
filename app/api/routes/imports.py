@@ -34,6 +34,7 @@ async def import_excel(
     file: UploadFile = File(...),
     sheet_name: str | None = Form(None),
     header_row: int | None = Form(None),
+    default_estado_editorial: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     content = await file.read()
@@ -43,6 +44,7 @@ async def import_excel(
         file.filename,
         sheet_name=_parse_sheet_name(sheet_name),
         header_row=header_row,
+        default_estado_editorial=default_estado_editorial,
     )
     return {
         "batch_id": str(batch.id),
@@ -60,6 +62,7 @@ async def dry_run_import_excel(
     file: UploadFile = File(...),
     sheet_name: str | None = Form(None),
     header_row: int | None = Form(None),
+    default_estado_editorial: str | None = Form(None),
 ):
     try:
         content = await file.read()
@@ -68,6 +71,7 @@ async def dry_run_import_excel(
             filename=file.filename,
             sheet_name=_parse_sheet_name(sheet_name),
             header_row=header_row,
+            default_estado_editorial=default_estado_editorial,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No se pudo validar el Excel: {exc}") from exc

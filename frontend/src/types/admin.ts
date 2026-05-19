@@ -119,9 +119,12 @@ export interface ImportDryRunDuplicateCn {
   rows: number[];
 }
 
+export type ImportDefaultEditorialState = 'borrador' | 'validado' | 'publicado';
+
 export interface ImportExcelOptions {
   sheet_name?: string;
   header_row?: number;
+  default_estado_editorial?: ImportDefaultEditorialState;
 }
 
 export interface ImportDryRunResponse {
@@ -134,6 +137,7 @@ export interface ImportDryRunResponse {
   normalized_columns: string[];
   missing_required_columns: string[];
   column_suggestions: Record<string, string[]>;
+  default_estado_editorial_used: ImportDefaultEditorialState | null;
   total_rows: number;
   included_count: number;
   excluded_count: number;
