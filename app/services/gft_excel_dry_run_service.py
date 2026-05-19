@@ -294,7 +294,7 @@ def _empty_result(
         duplicate_cn_count=0,
         column_mapping=column_mapping or {},
         filename=filename,
-        default_estado_editorial_used=(normalized_default_estado_editorial if estado_editorial_column is None else None),
+        default_estado_editorial_used=default_estado_editorial_used,
     )
 
 
@@ -458,6 +458,12 @@ def dry_run_gft_excel(
         UnknownObservacionesValue(value=value, count=count)
         for value, count in sorted(unknown_values.items(), key=lambda item: item[0])
     ]
+
+    default_estado_editorial_used = (
+        normalized_default_estado_editorial
+        if estado_editorial_column is None
+        else None
+    )
 
     return GFTExcelDryRunResult(
         dry_run=True,
