@@ -6,6 +6,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/gft': 'http://localhost:8000',
+      '/imports': 'http://localhost:8000',
+      '/cima': 'http://localhost:8000',
+      '/bifimed': 'http://localhost:8000',
+      '/health': 'http://localhost:8000',
     },
   },
 });
