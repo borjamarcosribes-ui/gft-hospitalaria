@@ -765,6 +765,72 @@ def test_admin_gft_editorial_list_rejects_invalid_offset(client, monkeypatch):
     assert response.json()["detail"] == "offset debe ser mayor o igual a 0"
 
 
+
+
+def test_admin_gft_editorial_list_rejects_invalid_quality_filter(client, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    response = client.get("/admin/gft/medicamentos/editorial?quality_filter=foo", headers=ADMIN_HEADERS)
+    assert response.status_code == 400
+    assert response.json()["detail"] == "quality_filter inválido"
+
+
+def test_admin_gft_editorial_list_filters_by_quality_incluidos_no_publicados(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido", estado_editorial="borrador")
+    _insert_gft_estado(db_session, cn="222222", estado_gft="incluido", estado_editorial="publicado")
+    response = client.get("/admin/gft/medicamentos/editorial?quality_filter=incluidos_no_publicados", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    assert [item["cn"] for item in response.json()["items"]] == ["111111"]
+
+
+def test_admin_gft_editorial_list_filters_by_quality_pendientes_revision(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="pendiente_revision")
+    _insert_gft_estado(db_session, cn="222222", estado_gft="incluido")
+    response = client.get("/admin/gft/medicamentos/editorial?quality_filter=pendientes_revision", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    assert [item["cn"] for item in response.json()["items"]] == ["111111"]
+
+
+def test_admin_gft_editorial_list_filters_by_quality_sin_cima(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido")
+    _insert_gft_estado(db_session, cn="222222", estado_gft="incluido")
+    _insert_cima_medicamento(db_session, cn="222222", nombre="OK", presentacion="OK", sync_status="ok")
+    response = client.get("/admin/gft/medicamentos/editorial?quality_filter=sin_cima", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    assert [item["cn"] for item in response.json()["items"]] == ["111111"]
+
+
+def test_admin_gft_editorial_list_filters_by_quality_sin_bifimed(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido")
+    _insert_gft_estado(db_session, cn="222222", estado_gft="incluido")
+    _insert_bifimed(db_session, cn="222222", sync_status="ok")
+    response = client.get("/admin/gft/medicamentos/editorial?quality_filter=sin_bifimed", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    assert [item["cn"] for item in response.json()["items"]] == ["111111"]
+
+
+def test_admin_gft_editorial_list_filters_by_quality_sin_ficha_tecnica_41(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido")
+    _insert_gft_estado(db_session, cn="222222", estado_gft="incluido")
+    _insert_ficha_41(db_session, cn="222222", sync_status="ok", contenido_texto="Indicaciones")
+    response = client.get("/admin/gft/medicamentos/editorial?quality_filter=sin_ficha_tecnica_41", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    assert [item["cn"] for item in response.json()["items"]] == ["111111"]
+
+
+def test_admin_gft_editorial_list_filters_by_quality_sin_ajuste_renal(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido", ajuste_insuficiencia_renal=None)
+    _insert_gft_estado(db_session, cn="222222", estado_gft="incluido", ajuste_insuficiencia_renal="Ajustar")
+    response = client.get("/admin/gft/medicamentos/editorial?quality_filter=sin_ajuste_renal", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    assert [item["cn"] for item in response.json()["items"]] == ["111111"]
+
+
 def test_admin_gft_editorial_list_route_order_does_not_treat_editorial_as_cn(
     client, db_session, monkeypatch
 ):
