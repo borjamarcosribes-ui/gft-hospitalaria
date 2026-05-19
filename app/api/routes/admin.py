@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import String, cast, exists, func, or_
+from sqlalchemy import String, and_, cast, exists, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.admin_security import require_admin_api_key
@@ -102,6 +102,7 @@ class GFTEditorialAdminResponse(BaseModel):
     updated_at: datetime | None = None
     last_import_batch_id: UUID | None = None
     last_imported_at: datetime | None = None
+    publication_warnings: list[str] = []
 
 
 class GFTEditorialAdminListItem(BaseModel):
@@ -126,6 +127,7 @@ class GFTEditorialAdminListItem(BaseModel):
     updated_at: datetime | None = None
     last_import_batch_id: UUID | None = None
     last_imported_at: datetime | None = None
+    publication_warnings: list[str] = []
 
 
 class GFTEditorialAdminListResponse(BaseModel):
@@ -250,10 +252,12 @@ def _principio_activo_from_sources(
 
 
 def _build_admin_editorial_payload(
+    db: Session,
     gft: GFTEstadoPresentacion,
     cima: CimaMedicamentoCache | None,
     principio_names: list[str],
 ) -> dict:
+    publication_warnings = _get_publication_warnings(db, gft, cima)
     return {
         "cn": gft.cn,
         "estado_gft": gft.estado_gft,
@@ -276,8 +280,57 @@ def _build_admin_editorial_payload(
         "updated_at": gft.updated_at,
         "last_import_batch_id": gft.last_import_batch_id,
         "last_imported_at": gft.last_imported_at,
+        "publication_warnings": publication_warnings,
     }
 
+
+
+
+def _has_non_empty_text(value: str | None) -> bool:
+    return bool(value and value.strip())
+
+
+def _get_publication_warnings(db: Session, gft: GFTEstadoPresentacion, cima: CimaMedicamentoCache | None) -> list[str]:
+    if gft.estado_gft != "incluido":
+        return []
+
+    warnings: list[str] = []
+    has_cima_name_or_presentacion = (
+        cima is not None
+        and cima.sync_status == "ok"
+        and (_has_non_empty_text(cima.nombre) or _has_non_empty_text(cima.presentacion))
+    )
+    if not has_cima_name_or_presentacion:
+        warnings.append("Sin datos CIMA OK")
+
+    bifimed_ok = db.query(BifimedCache.cn).filter(
+        BifimedCache.cn == gft.cn,
+        BifimedCache.sync_status == "ok",
+    ).first()
+    if bifimed_ok is None:
+        warnings.append("Sin datos BIFIMED OK")
+
+    ficha_ok = db.query(CimaFichaTecnicaCache.cn).filter(
+        CimaFichaTecnicaCache.cn == gft.cn,
+        CimaFichaTecnicaCache.seccion == "4.1",
+        CimaFichaTecnicaCache.sync_status == "ok",
+        func.nullif(func.trim(CimaFichaTecnicaCache.contenido_texto), None).is_not(None),
+    ).first()
+    if ficha_ok is None:
+        warnings.append("Sin ficha técnica 4.1 / indicaciones")
+
+    if not _has_non_empty_text(gft.restricciones_hospitalarias):
+        warnings.append("Sin restricciones hospitalarias")
+    if not _has_non_empty_text(gft.ajuste_insuficiencia_renal):
+        warnings.append("Sin ajuste renal")
+    if not _has_non_empty_text(gft.ajuste_insuficiencia_hepatica):
+        warnings.append("Sin ajuste hepático")
+    if not _has_non_empty_text(gft.precauciones_embarazo):
+        warnings.append("Sin precauciones en embarazo")
+    if not _has_non_empty_text(gft.precauciones_lactancia):
+        warnings.append("Sin precauciones en lactancia")
+
+    return warnings
 
 def _principio_activo_matches(pattern: str):
     return exists().where(
@@ -561,7 +614,7 @@ def list_gft_medicamentos_editorial(
     cns = [gft.cn for gft, _ in rows]
     principios_by_cn = _get_principio_activo_names_by_cn(db, cns)
     items = [
-        _build_admin_editorial_payload(gft, cima, principios_by_cn.get(gft.cn, []))
+        _build_admin_editorial_payload(db, gft, cima, principios_by_cn.get(gft.cn, []))
         for gft, cima in rows
     ]
 
@@ -596,7 +649,7 @@ def get_gft_medicamento_editorial(
     gft, cima = row
     principios_by_cn = _get_principio_activo_names_by_cn(db, [normalized_cn])
     return _build_admin_editorial_payload(
-        gft, cima, principios_by_cn.get(normalized_cn, [])
+        db, gft, cima, principios_by_cn.get(normalized_cn, [])
     )
 
 
