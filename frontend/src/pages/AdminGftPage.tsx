@@ -244,6 +244,7 @@ function AdminExcelImportSection({
   const [file, setFile] = useState<File | null>(null);
   const [selectedSheetName, setSelectedSheetName] = useState('');
   const [headerRow, setHeaderRow] = useState(1);
+  const [defaultEstadoEditorial, setDefaultEstadoEditorial] = useState<'borrador' | 'validado' | 'publicado'>('borrador');
   const [dryRun, setDryRun] = useState<ImportDryRunResponse | null>(null);
   const [batch, setBatch] = useState<ImportBatchResponse | null>(null);
   const [batchSummary, setBatchSummary] = useState<ImportBatchSummary | null>(null);
@@ -258,10 +259,12 @@ function AdminExcelImportSection({
   const importOptions = {
     ...(selectedSheetName.trim() ? { sheet_name: selectedSheetName.trim() } : {}),
     header_row: headerRow,
+    default_estado_editorial: defaultEstadoEditorial,
   };
   const dryRunMatchesSelection = dryRun
     ? normalizeSheetSelection(dryRun.sheet_name) === (selectedSheetName.trim() || normalizeSheetSelection(dryRun.sheet_name))
       && dryRun.header_row === headerRow
+      && (dryRun.default_estado_editorial_used ?? null) === (dryRun.column_mapping.estado_editorial ? null : defaultEstadoEditorial)
     : false;
 
   const resetBatchReview = () => {
@@ -275,6 +278,7 @@ function AdminExcelImportSection({
     setFile(selectedFile);
     setSelectedSheetName('');
     setHeaderRow(1);
+    setDefaultEstadoEditorial('borrador');
     setDryRun(null);
     resetBatchReview();
     setError(null);
@@ -460,6 +464,21 @@ function AdminExcelImportSection({
             disabled={isBusy}
           />
         </label>
+        <label>
+          Estado editorial por defecto si falta la columna
+          <select
+            value={defaultEstadoEditorial}
+            onChange={(event) => {
+              setDefaultEstadoEditorial(event.target.value as 'borrador' | 'validado' | 'publicado');
+              resetBatchReview();
+            }}
+            disabled={isBusy}
+          >
+            <option value="borrador">borrador</option>
+            <option value="validado">validado</option>
+            <option value="publicado">publicado</option>
+          </select>
+        </label>
         <div className="admin-import-controls__actions">
           <button className="admin-button admin-button--primary" type="button" onClick={() => void handleDryRun()} disabled={!file || isBusy}>
             {loadingAction === 'dry-run' ? 'Validando…' : 'Validar Excel'}
@@ -471,8 +490,11 @@ function AdminExcelImportSection({
       </div>
 
       {file ? <p className="admin-muted">Archivo seleccionado: <strong>{file.name}</strong></p> : null}
+      {defaultEstadoEditorial === 'publicado' ? (
+        <p className="admin-alert admin-alert--warning">Advertencia: usar <strong>publicado</strong> como estado editorial por defecto puede aumentar la visibilidad pública potencial. Solo se publicarán medicamentos con <strong>estado_gft = incluido</strong> y <strong>estado_editorial = publicado</strong>.</p>
+      ) : null}
       {dryRun && !dryRunMatchesSelection ? (
-        <p className="admin-alert admin-alert--warning">La hoja o fila de encabezado seleccionada ha cambiado. Vuelve a validar antes de importar a staging.</p>
+        <p className="admin-alert admin-alert--warning">La hoja, la fila de encabezado o el estado editorial por defecto han cambiado. Vuelve a validar antes de importar a staging.</p>
       ) : null}
       {success ? <p className="admin-alert admin-alert--success">{success}</p> : null}
       {error ? <p className="admin-alert admin-alert--error">{error}</p> : null}
@@ -496,6 +518,8 @@ function AdminExcelImportSection({
             <dd>{formatStringList(dryRun.sheet_names)}</dd>
             <dt>Fila de encabezado usada</dt>
             <dd>{dryRun.header_row}</dd>
+            <dt>Estado editorial por defecto usado</dt>
+            <dd>{dryRun.default_estado_editorial_used ?? 'No (se usó la columna del Excel)'}</dd>
             <dt>Columnas detectadas</dt>
             <dd>{Object.keys(dryRun.column_mapping).length > 0 ? Object.entries(dryRun.column_mapping).map(([key, value]) => `${formatLabel(key)} → ${value}`).join(', ') : 'No se detectaron columnas válidas'}</dd>
             <dt>Columnas originales leídas</dt>
