@@ -440,6 +440,78 @@ def test_admin_gft_editorial_patch_then_get_returns_updated_values(
     assert body["ajuste_insuficiencia_renal"] == "Ajustar FG actualizado"
 
 
+
+
+def test_admin_gft_editorial_get_publication_warnings_empty_when_complete(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(
+        db_session,
+        cn="111111",
+        estado_gft="incluido",
+        estado_editorial="validado",
+        restricciones_hospitalarias="Uso hospitalario",
+        ajuste_insuficiencia_renal="Ajustar FG",
+        ajuste_insuficiencia_hepatica="Ajustar Child-Pugh",
+        precauciones_embarazo="Evitar",
+        precauciones_lactancia="Valorar riesgo-beneficio",
+    )
+    _insert_cima_medicamento(db_session, cn="111111", nombre="Medicamento", presentacion="Comp 10mg", sync_status="ok")
+    _insert_bifimed(db_session, cn="111111", sync_status="ok")
+    _insert_ficha_41(db_session, cn="111111", sync_status="ok", contenido_texto="Indicaciones")
+
+    response = client.get("/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json()["publication_warnings"] == []
+
+
+def test_admin_gft_editorial_get_publication_warnings_missing_cima(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido")
+
+    response = client.get("/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    assert "Sin datos CIMA OK" in response.json()["publication_warnings"]
+
+
+def test_admin_gft_editorial_get_publication_warnings_missing_bifimed(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido")
+    _insert_cima_medicamento(db_session, cn="111111", nombre="Medicamento", presentacion="Comp 10mg", sync_status="ok")
+
+    response = client.get("/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    assert "Sin datos BIFIMED OK" in response.json()["publication_warnings"]
+
+
+def test_admin_gft_editorial_get_publication_warnings_missing_ficha_41(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido")
+    _insert_cima_medicamento(db_session, cn="111111", nombre="Medicamento", presentacion="Comp 10mg", sync_status="ok")
+    _insert_bifimed(db_session, cn="111111", sync_status="ok")
+
+    response = client.get("/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    assert "Sin ficha técnica 4.1 / indicaciones" in response.json()["publication_warnings"]
+
+
+def test_admin_gft_editorial_get_publication_warnings_for_empty_clinical_fields(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido")
+
+    response = client.get("/admin/gft/medicamentos/111111/editorial", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    warnings = response.json()["publication_warnings"]
+    assert "Sin restricciones hospitalarias" in warnings
+    assert "Sin ajuste renal" in warnings
+    assert "Sin ajuste hepático" in warnings
+    assert "Sin precauciones en embarazo" in warnings
+    assert "Sin precauciones en lactancia" in warnings
+
 def test_admin_gft_editorial_summary_requires_admin_key(client, monkeypatch):
     monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
 

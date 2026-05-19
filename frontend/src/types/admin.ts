@@ -38,6 +38,7 @@ export interface GFTEditorialAdminListItem {
   updated_at: string | null;
   last_import_batch_id: string | null;
   last_imported_at: string | null;
+  publication_warnings: string[];
 }
 
 export interface GFTEditorialAdminListResponse {

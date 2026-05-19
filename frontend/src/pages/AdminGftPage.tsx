@@ -947,6 +947,17 @@ export function AdminGftPage() {
         return;
       }
 
+      const isPublishing = publicationStateForm.estado_editorial === 'publicado' && detail.estado_editorial !== 'publicado';
+      if (isPublishing && detail.publication_warnings.length > 0) {
+        const warningList = detail.publication_warnings.map((warning) => `- ${warning}`).join('\n');
+        const confirmPublishWithWarnings = window.confirm(
+          `Este medicamento se va a publicar con advertencias pendientes. ¿Continuar?\n\n${warningList}`
+        );
+        if (!confirmPublishWithWarnings) {
+          return;
+        }
+      }
+
       await updateGftMedicationState(apiKey, detail.cn, payload);
       const fullDetail = await getGftEditorialMedicamento(apiKey, detail.cn);
 
@@ -1268,6 +1279,18 @@ export function AdminGftPage() {
                         <dt>Nemónico</dt><dd><EmptyValue value={detail.nemonico} /></dd>
                       </dl>
                     </section>
+
+                    {detail.publication_warnings.length > 0 ? (
+                      <section className="admin-detail-block">
+                        <h3>Avisos de preparación para publicación</h3>
+                        <p className="admin-muted">Estos avisos no bloquean la publicación, pero conviene revisarlos antes de publicar.</p>
+                        <ul className="admin-detail-list">
+                          {detail.publication_warnings.map((warning) => (
+                            <li key={warning} className="admin-alert admin-alert--warning">{warning}</li>
+                          ))}
+                        </ul>
+                      </section>
+                    ) : null}
                     <section className="admin-detail-block admin-publication-state">
                       <div className="admin-publication-state__header">
                         <div>
