@@ -205,10 +205,10 @@ export function GftMedicationDetailPanel({ cn, detail, loading, error, onClose }
 
           <GftCimaDocuments documentos={detail.documentos} />
 
-          {detail.observaciones_internas_publicables ? (
+          {detail.observaciones_publicables ? (
             <section className="gft-detail__section gft-detail__section--note">
-              <h3>Observaciones internas publicables</h3>
-              <p>{detail.observaciones_internas_publicables}</p>
+              <h3>Observaciones</h3>
+              <p>{detail.observaciones_publicables}</p>
             </section>
           ) : null}
         </div>

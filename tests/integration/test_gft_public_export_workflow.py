@@ -296,7 +296,7 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
     assert detail_payload["ajuste_insuficiencia_hepatica"] == PUBLIC_HEPATIC_ADJUSTMENT
     assert detail_payload["precauciones_embarazo"] == PUBLIC_PREGNANCY_WARNING
     assert detail_payload["precauciones_lactancia"] == PUBLIC_LACTATION_WARNING
-    assert detail_payload["observaciones_internas_publicables"] == PUBLIC_OBSERVATIONS
+    assert detail_payload["observaciones_publicables"] == PUBLIC_OBSERVATIONS
     assert detail_payload["financiacion_detalle"]["situacion_financiacion"] == "Financiado E2E"
     assert client.get(f"/gft/medicamentos/{EXCLUDED_CN}").status_code == 404
     assert client.get(f"/gft/medicamentos/{PENDING_CN}").status_code == 404

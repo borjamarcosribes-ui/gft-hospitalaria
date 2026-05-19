@@ -17,6 +17,7 @@ class GFTEstadoPresentacion(Base):
     precauciones_embarazo: Mapped[str | None] = mapped_column(Text)
     precauciones_lactancia: Mapped[str | None] = mapped_column(Text)
     observaciones_internas: Mapped[str | None] = mapped_column(Text)
+    observaciones_publicables: Mapped[str | None] = mapped_column(Text)
     comentario_revision: Mapped[str | None] = mapped_column(Text)
     revisado_por: Mapped[str | None] = mapped_column(Text)
     fecha_revision: Mapped[date | None] = mapped_column(Date)

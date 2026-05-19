@@ -51,6 +51,7 @@ const EDITABLE_CLINICAL_FIELDS: Array<{ key: EditableClinicalField; label: strin
   { key: 'precauciones_embarazo', label: 'Precauciones embarazo', control: 'textarea' },
   { key: 'precauciones_lactancia', label: 'Precauciones lactancia', control: 'textarea' },
   { key: 'observaciones_internas', label: 'Observaciones internas', control: 'textarea' },
+  { key: 'observaciones_publicables', label: 'Observaciones publicables', control: 'textarea' },
 ];
 
 function buildPublicationStateFormState(detail: GFTEditorialAdminResponse): PublicationStateFormState {
@@ -1394,6 +1395,8 @@ export function AdminGftPage() {
                           {EDITABLE_CLINICAL_FIELDS.map((field) => (
                             <label className="admin-clinical-form__field" key={field.key}>
                               {field.label}
+                              {field.key === 'observaciones_internas' ? <small className="admin-clinical-form__help">Solo visibles en administración. No se publican.</small> : null}
+                              {field.key === 'observaciones_publicables' ? <small className="admin-clinical-form__help">Visibles en la GFT pública y en el PDF si el medicamento está publicado.</small> : null}
                               {field.control === 'textarea' ? (
                                 <textarea
                                   value={editorialForm[field.key]}
@@ -1429,6 +1432,7 @@ export function AdminGftPage() {
                           <dt>Precauciones embarazo</dt><dd><EmptyValue value={detail.precauciones_embarazo} /></dd>
                           <dt>Precauciones lactancia</dt><dd><EmptyValue value={detail.precauciones_lactancia} /></dd>
                           <dt>Observaciones internas</dt><dd><EmptyValue value={detail.observaciones_internas} /></dd>
+                          <dt>Observaciones publicables</dt><dd><EmptyValue value={detail.observaciones_publicables} /></dd>
                         </dl>
                       )}
                     </section>

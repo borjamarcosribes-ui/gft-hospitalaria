@@ -50,6 +50,7 @@ export interface GFTEditorialAdminListResponse {
 
 export interface GFTEditorialAdminResponse extends GFTEditorialAdminListItem {
   observaciones_internas: string | null;
+  observaciones_publicables: string | null;
   comentario_revision: string | null;
 }
 
@@ -60,6 +61,7 @@ export interface GFTEditorialUpdatePayload {
   precauciones_embarazo?: string | null;
   precauciones_lactancia?: string | null;
   observaciones_internas?: string | null;
+  observaciones_publicables?: string | null;
   comentario_revision?: string | null;
   revisado_por?: string | null;
 }
@@ -72,6 +74,7 @@ export interface GFTEditorialUpdateResponse {
   precauciones_embarazo: string | null;
   precauciones_lactancia: string | null;
   observaciones_internas: string | null;
+  observaciones_publicables: string | null;
   comentario_revision: string | null;
   revisado_por: string | null;
   fecha_revision: string | null;

@@ -1,3 +1,17 @@
+"""add gft observaciones_publicables
+
+Revision ID: 0007_gft_observaciones_publicables
+Revises: 0006_gft_clinical_fields
+"""
+from alembic import op
+import sqlalchemy as sa
+
+revision = "0007_gft_observaciones_publicables"
+down_revision = "0006_gft_clinical_fields"
+branch_labels = None
+depends_on = None
+
+UPGRADED_VIEW_SQL = """
 CREATE VIEW v_gft_publicada AS
 SELECT
   g.cn,
@@ -36,4 +50,21 @@ LEFT JOIN cima_ficha_tecnica_cache ft41
  AND ft41.seccion = '4.1'
  AND ft41.sync_status = 'ok'
 WHERE g.estado_gft = 'incluido'
-  AND g.estado_editorial = 'publicado';
+  AND g.estado_editorial = 'publicado'
+"""
+
+DOWNGRADED_VIEW_SQL = UPGRADED_VIEW_SQL.replace('g.observaciones_publicables','g.observaciones_internas')
+
+
+def upgrade():
+    op.execute("DROP VIEW IF EXISTS v_gft_publicada;")
+    with op.batch_alter_table("gft_estado_presentacion") as batch_op:
+        batch_op.add_column(sa.Column("observaciones_publicables", sa.Text(), nullable=True))
+    op.execute(UPGRADED_VIEW_SQL)
+
+
+def downgrade():
+    op.execute("DROP VIEW IF EXISTS v_gft_publicada;")
+    with op.batch_alter_table("gft_estado_presentacion") as batch_op:
+        batch_op.drop_column("observaciones_publicables")
+    op.execute(DOWNGRADED_VIEW_SQL)

@@ -226,7 +226,7 @@ def _row_to_list_item(row, principios: list[dict]) -> dict:
 
 def _row_to_detail(row, principios: list[dict]) -> dict:
     item = _row_to_list_item(row, principios)
-    item["observaciones_internas_publicables"] = row["observaciones_internas"]
+    item["observaciones_publicables"] = _row_get(row, "observaciones_publicables")
     item["documentos"] = _parse_documentos(row["documentos_json"])
     item["financiacion_detalle"] = _build_financiacion_detalle(row)
     return item

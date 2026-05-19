@@ -480,6 +480,12 @@
   font-weight: 800;
 }
 
+.admin-clinical-form__help {
+  color: #52616f;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .admin-clinical-form input,
 .admin-clinical-form textarea {
   width: 100%;
