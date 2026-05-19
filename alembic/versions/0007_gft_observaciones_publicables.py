@@ -1,12 +1,12 @@
 """add gft observaciones_publicables
 
-Revision ID: 0007_gft_observaciones_publicables
+Revision ID: 0007_gft_obs_public
 Revises: 0006_gft_clinical_fields
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0007_gft_observaciones_publicables"
+revision = "0007_gft_obs_public"
 down_revision = "0006_gft_clinical_fields"
 branch_labels = None
 depends_on = None
