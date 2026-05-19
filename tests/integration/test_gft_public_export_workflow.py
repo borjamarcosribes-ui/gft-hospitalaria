@@ -34,7 +34,8 @@ PUBLIC_RENAL_ADJUSTMENT = "Ajustar dosis en insuficiencia renal pública"
 PUBLIC_HEPATIC_ADJUSTMENT = "Precaución en insuficiencia hepática pública"
 PUBLIC_PREGNANCY_WARNING = "Valorar beneficio riesgo en embarazo público"
 PUBLIC_LACTATION_WARNING = "Compatible con lactancia bajo criterio clínico público"
-PUBLIC_OBSERVATIONS = "Observación interna publicable E2E"
+INTERNAL_OBSERVATIONS = "Comentario interno no publicable E2E"
+PUBLIC_OBSERVATIONS = "Observación publicable E2E"
 
 
 def _create_view(db_session):
@@ -70,7 +71,7 @@ def _create_view(db_session):
               g.ajuste_insuficiencia_hepatica,
               g.precauciones_embarazo,
               g.precauciones_lactancia,
-              g.observaciones_internas
+              g.observaciones_publicables
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
             LEFT JOIN bifimed_cache b ON b.cn = g.cn
@@ -118,7 +119,7 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
                         "Estado editorial": "publicado",
                         "Nemónico": f"NEM-{PUBLIC_CN}",
                         "Restricciones hospitalarias": PUBLIC_RESTRICTIONS,
-                        "Observaciones internas GFT": PUBLIC_OBSERVATIONS,
+                        "Observaciones internas GFT": INTERNAL_OBSERVATIONS,
                         "Comentario revisión": "Comentario interno no publicable E2E",
                         "Revisado por": "Revisor interno no publicable E2E",
                     },
@@ -261,6 +262,8 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
     public_state.ajuste_insuficiencia_hepatica = PUBLIC_HEPATIC_ADJUSTMENT
     public_state.precauciones_embarazo = PUBLIC_PREGNANCY_WARNING
     public_state.precauciones_lactancia = PUBLIC_LACTATION_WARNING
+    public_state.observaciones_internas = INTERNAL_OBSERVATIONS
+    public_state.observaciones_publicables = PUBLIC_OBSERVATIONS
     db_session.commit()
 
     _create_view(db_session)
@@ -297,6 +300,7 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
     assert detail_payload["precauciones_embarazo"] == PUBLIC_PREGNANCY_WARNING
     assert detail_payload["precauciones_lactancia"] == PUBLIC_LACTATION_WARNING
     assert detail_payload["observaciones_publicables"] == PUBLIC_OBSERVATIONS
+    assert "observaciones_internas" not in detail_payload
     assert detail_payload["financiacion_detalle"]["situacion_financiacion"] == "Financiado E2E"
     assert client.get(f"/gft/medicamentos/{EXCLUDED_CN}").status_code == 404
     assert client.get(f"/gft/medicamentos/{PENDING_CN}").status_code == 404
@@ -316,6 +320,8 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
     assert PUBLIC_HEPATIC_ADJUSTMENT in html
     assert PUBLIC_PREGNANCY_WARNING in html
     assert PUBLIC_LACTATION_WARNING in html
+    assert PUBLIC_OBSERVATIONS in html
+    assert INTERNAL_OBSERVATIONS not in html
     assert EXCLUDED_CN not in html
     assert EXCLUDED_NAME not in html
     assert PENDING_CN not in html
@@ -350,6 +356,8 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
     assert PUBLIC_HEPATIC_ADJUSTMENT in pdf_html
     assert PUBLIC_PREGNANCY_WARNING in pdf_html
     assert PUBLIC_LACTATION_WARNING in pdf_html
+    assert PUBLIC_OBSERVATIONS in pdf_html
+    assert INTERNAL_OBSERVATIONS not in pdf_html
     assert EXCLUDED_CN not in pdf_html
     assert EXCLUDED_NAME not in pdf_html
     assert PENDING_CN not in pdf_html
