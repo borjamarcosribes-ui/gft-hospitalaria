@@ -973,6 +973,21 @@ export function AdminGftPage() {
     ],
     [summary],
   );
+  const qualityCards = useMemo(
+    () => [
+      ['Incluidos no publicados', summary?.quality?.incluidos_no_publicados ?? 0, 'Incluidos pendientes de publicación editorial'],
+      ['Pendientes de revisión GFT', summary?.quality?.pendientes_revision ?? 0, 'Registros marcados como pendiente_revision'],
+      ['Sin datos CIMA', summary?.quality?.sin_cima ?? 0, 'Sin cache CIMA OK o sin nombre/presentación'],
+      ['Sin BIFIMED', summary?.quality?.sin_bifimed ?? 0, 'Sin cache BIFIMED OK asociada por CN'],
+      ['Sin ficha técnica 4.1', summary?.quality?.sin_ficha_tecnica_41 ?? 0, 'Sin indicaciones de la sección 4.1'],
+      ['Sin restricciones hospitalarias', summary?.quality?.sin_restricciones_hospitalarias ?? 0, 'Campos clínicos hospitalarios incompletos'],
+      ['Sin ajuste renal', summary?.quality?.sin_ajuste_renal ?? 0, 'Falta pauta o advertencia en insuficiencia renal'],
+      ['Sin ajuste hepático', summary?.quality?.sin_ajuste_hepatico ?? 0, 'Falta pauta o advertencia en insuficiencia hepática'],
+      ['Sin embarazo', summary?.quality?.sin_embarazo ?? 0, 'Faltan precauciones en embarazo'],
+      ['Sin lactancia', summary?.quality?.sin_lactancia ?? 0, 'Faltan precauciones en lactancia'],
+    ],
+    [summary],
+  );
 
   const total = listData?.total ?? 0;
   const canGoBack = offset > 0;
@@ -1057,6 +1072,49 @@ export function AdminGftPage() {
                 </div>
               </details>
             ) : null}
+          </section>
+          <section className="admin-section" aria-labelledby="admin-quality-title">
+            <div className="admin-section__header">
+              <div>
+                <h2 id="admin-quality-title">Calidad de datos y revisión</h2>
+                <p>Contadores operativos para priorizar la revisión editorial de medicamentos.</p>
+              </div>
+            </div>
+            <div className="admin-summary-grid" aria-busy={summaryLoading}>
+              {qualityCards.map(([label, value, description]) => (
+                <article className="admin-summary-card" key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                  <small>{description}</small>
+                  {label === 'Incluidos no publicados' ? (
+                    <button
+                      className="admin-link-button"
+                      type="button"
+                      onClick={() => {
+                        setOffset(0);
+                        setEstadoGft('incluido');
+                        setEstadoEditorial('');
+                      }}
+                    >
+                      Filtrar listado
+                    </button>
+                  ) : null}
+                  {label === 'Pendientes de revisión GFT' ? (
+                    <button
+                      className="admin-link-button"
+                      type="button"
+                      onClick={() => {
+                        setOffset(0);
+                        setEstadoGft('pendiente_revision');
+                        setEstadoEditorial('');
+                      }}
+                    >
+                      Filtrar listado
+                    </button>
+                  ) : null}
+                </article>
+              ))}
+            </div>
           </section>
 
           <AdminExcelImportSection
