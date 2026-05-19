@@ -274,6 +274,7 @@ def _empty_result(
     normalized_columns: list[str] | None = None,
     missing_required_columns: list[str] | None = None,
     column_suggestions: dict[str, list[str]] | None = None,
+    default_estado_editorial_used: str | None = None,
 ) -> GFTExcelDryRunResult:
     return GFTExcelDryRunResult(
         dry_run=True,
@@ -369,6 +370,7 @@ def dry_run_gft_excel(
     )
 
     if errors:
+        default_used = normalized_default_estado_editorial if estado_editorial_column is None else None
         result = _empty_result(
             filename,
             resolved_sheet_name,
@@ -379,6 +381,7 @@ def dry_run_gft_excel(
             normalized_columns=normalized_columns,
             missing_required_columns=missing_required_columns,
             column_suggestions=column_suggestions,
+            default_estado_editorial_used=default_used,
         )
         result.errors = errors
         result.error_count = len(errors)
@@ -480,5 +483,5 @@ def dry_run_gft_excel(
         duplicate_cn=duplicate_cn,
         rows=rows,
         filename=filename,
-        default_estado_editorial_used=(normalized_default_estado_editorial if estado_editorial_column is None else None),
+        default_estado_editorial_used=default_estado_editorial_used,
     )

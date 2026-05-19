@@ -342,4 +342,4 @@ def test_import_excel_invalid_default_estado_editorial_fails_cleanly(client, adm
     )
     assert response.status_code == 200
     assert response.json()["status"] == "failed"
-    assert "Estado editorial inválido" in response.json()["error_summary"]["error"]
+    assert "Estado editorial desconocido" in response.json()["error_summary"]["error"]
