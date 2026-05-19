@@ -12,6 +12,7 @@ ALLOWED_EDITORIAL_FIELDS = {
     "precauciones_embarazo",
     "precauciones_lactancia",
     "observaciones_internas",
+    "observaciones_publicables",
     "comentario_revision",
 }
 

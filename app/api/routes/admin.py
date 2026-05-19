@@ -58,6 +58,7 @@ class GFTEditorialUpdateRequest(BaseModel):
     precauciones_embarazo: str | None = None
     precauciones_lactancia: str | None = None
     observaciones_internas: str | None = None
+    observaciones_publicables: str | None = None
     comentario_revision: str | None = None
     revisado_por: str | None = None
 
@@ -72,6 +73,7 @@ class GFTEditorialUpdateResponse(BaseModel):
     precauciones_embarazo: str | None = None
     precauciones_lactancia: str | None = None
     observaciones_internas: str | None = None
+    observaciones_publicables: str | None = None
     comentario_revision: str | None = None
     revisado_por: str | None = None
     fecha_revision: date | None = None
@@ -96,6 +98,7 @@ class GFTEditorialAdminResponse(BaseModel):
     precauciones_embarazo: str | None = None
     precauciones_lactancia: str | None = None
     observaciones_internas: str | None = None
+    observaciones_publicables: str | None = None
     comentario_revision: str | None = None
     revisado_por: str | None = None
     fecha_revision: date | None = None
@@ -274,6 +277,7 @@ def _build_admin_editorial_payload(
         "precauciones_embarazo": gft.precauciones_embarazo,
         "precauciones_lactancia": gft.precauciones_lactancia,
         "observaciones_internas": gft.observaciones_internas,
+        "observaciones_publicables": gft.observaciones_publicables,
         "comentario_revision": gft.comentario_revision,
         "revisado_por": gft.revisado_por,
         "fecha_revision": gft.fecha_revision,

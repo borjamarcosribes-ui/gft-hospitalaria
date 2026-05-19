@@ -82,7 +82,7 @@ class GFTMedicamentoListItem(BaseModel):
 
 
 class GFTMedicamentoDetail(GFTMedicamentoListItem):
-    observaciones_internas_publicables: str | None = None
+    observaciones_publicables: str | None = None
     documentos: list[GFTDocumentoCimaRef] = Field(default_factory=list)
     financiacion_detalle: GFTFinanciacionDetalle | None = None
 

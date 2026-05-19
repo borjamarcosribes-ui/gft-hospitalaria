@@ -64,6 +64,7 @@ def _render_medication(medication: GFTPDFMedication) -> str:
         ("Ajuste por insuficiencia hepática", medication.ajuste_insuficiencia_hepatica),
         ("Precauciones en embarazo", medication.precauciones_embarazo),
         ("Precauciones en lactancia", medication.precauciones_lactancia),
+        ("Observaciones", medication.observaciones_publicables),
         ("Situación de financiación BIFIMED", medication.situacion_financiacion_bifimed),
         ("URL ficha técnica", medication.url_ficha_tecnica),
         ("URL prospecto", medication.url_prospecto),

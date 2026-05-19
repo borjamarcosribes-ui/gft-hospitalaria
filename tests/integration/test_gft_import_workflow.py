@@ -45,7 +45,7 @@ def _create_view(db_session):
               g.ajuste_insuficiencia_hepatica,
               g.precauciones_embarazo,
               g.precauciones_lactancia,
-              g.observaciones_internas
+              g.observaciones_publicables
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
             LEFT JOIN bifimed_cache b ON b.cn = g.cn
@@ -342,7 +342,9 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
     assert detail_payload["ajuste_insuficiencia_hepatica"] is None
     assert detail_payload["precauciones_embarazo"] is None
     assert detail_payload["precauciones_lactancia"] is None
-    assert detail_payload["observaciones_internas_publicables"] == "Observación visible test"
+    assert detail_payload["observaciones_publicables"] is None
+    assert "observaciones_internas" not in detail_payload
+    assert "observaciones_internas_publicables" not in detail_payload
     assert detail_payload["financiacion_detalle"] == {
         "situacion_financiacion": "Si",
         "condiciones_financiacion_restringidas": "Visado",

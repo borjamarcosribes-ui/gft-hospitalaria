@@ -27,6 +27,7 @@ class GFTPDFMedication:
     precauciones_embarazo: str
     precauciones_lactancia: str
     restricciones_hospitalarias: str
+    observaciones_publicables: str
     situacion_financiacion_bifimed: str
     url_ficha_tecnica: str
     url_prospecto: str
@@ -114,6 +115,7 @@ def _row_to_medication(row, principios: list[dict]) -> tuple[GFTPDFMedication, d
         precauciones_embarazo=_public_text(_row_get(row, "precauciones_embarazo")),
         precauciones_lactancia=_public_text(_row_get(row, "precauciones_lactancia")),
         restricciones_hospitalarias=_public_text(row["restricciones_hospitalarias"]),
+        observaciones_publicables=_public_text(_row_get(row, "observaciones_publicables")),
         situacion_financiacion_bifimed=_public_text(_row_get(row, "situacion_financiacion")),
         url_ficha_tecnica=_public_text(row["url_ficha_tecnica"]),
         url_prospecto=_public_text(row["url_prospecto"]),
@@ -189,4 +191,3 @@ def build_gft_pdf_export_data(db: Session) -> GFTPDFExportData:
         total_medicamentos=total_medicamentos,
         groups=groups,
     )
-

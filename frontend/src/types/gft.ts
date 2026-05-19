@@ -53,7 +53,7 @@ export interface GFTFinanciacionDetalle {
 }
 
 export interface GFTMedicamentoDetail extends GFTMedicamentoListItem {
-  observaciones_internas_publicables: string | null;
+  observaciones_publicables: string | null;
   documentos: GFTDocumentoCimaRef[];
   financiacion_detalle: GFTFinanciacionDetalle | null;
 }
