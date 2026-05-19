@@ -14,6 +14,7 @@ export interface GFTEditorialAdminSummaryResponse {
   incluidos_no_publicados: number;
   pendientes_revision: number;
   excluidos: number;
+  quality: Record<string, number>;
 }
 
 export interface GFTEditorialAdminListItem {

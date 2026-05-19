@@ -1,6 +1,8 @@
 from sqlalchemy import text
 
 from app.core import config
+from app.models.bifimed_cache import BifimedCache
+from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 
@@ -35,18 +37,44 @@ def _insert_cima_medicamento(
     db_session,
     cn: str = "111111",
     nombre: str | None = "Medicamento Test",
+    presentacion: str | None = "Presentación Test",
     forma_farmaceutica: str | None = "Comprimido",
     vias_administracion_json=None,
     atc_json=None,
     principios_activos_json=None,
+    sync_status: str = "ok",
 ):
     row = CimaMedicamentoCache(
         cn=cn,
         nombre=nombre,
+        presentacion=presentacion,
         forma_farmaceutica=forma_farmaceutica,
         vias_administracion_json=vias_administracion_json,
         atc_json=atc_json,
         principios_activos_json=principios_activos_json,
+        sync_status=sync_status,
+    )
+    db_session.add(row)
+    db_session.commit()
+    return row
+
+
+def _insert_bifimed(db_session, cn: str, sync_status: str = "ok"):
+    row = BifimedCache(cn=cn, sync_status=sync_status)
+    db_session.add(row)
+    db_session.commit()
+    return row
+
+
+def _insert_ficha_41(db_session, cn: str, sync_status: str = "ok", contenido_texto: str | None = "Indicaciones"):
+    row = CimaFichaTecnicaCache(
+        nregistro=f"REG-{cn}",
+        cn=cn,
+        tipo_documento=1,
+        seccion="4.1",
+        titulo="Indicaciones terapéuticas",
+        contenido_texto=contenido_texto,
+        sync_status=sync_status,
     )
     db_session.add(row)
     db_session.commit()
@@ -489,6 +517,7 @@ def test_admin_gft_editorial_summary_counts_states(client, db_session, monkeypat
     assert body["incluidos_no_publicados"] == 1
     assert body["pendientes_revision"] == 1
     assert body["excluidos"] == 1
+    assert "quality" in body
 
 
 def test_admin_gft_editorial_summary_includes_unknown_states(
@@ -534,7 +563,50 @@ def test_admin_gft_editorial_summary_route_order(client, monkeypatch):
         "incluidos_no_publicados",
         "pendientes_revision",
         "excluidos",
+        "quality",
     }
+
+
+def test_admin_gft_editorial_summary_quality_metrics(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido", estado_editorial="borrador")
+    _insert_gft_estado(
+        db_session,
+        cn="222222",
+        estado_gft="incluido",
+        estado_editorial="publicado",
+        restricciones_hospitalarias="ok",
+        ajuste_insuficiencia_renal="ok",
+        ajuste_insuficiencia_hepatica="ok",
+        precauciones_embarazo="ok",
+        precauciones_lactancia="ok",
+    )
+    _insert_cima_medicamento(
+        db_session,
+        cn="222222",
+        nombre="Med OK",
+        presentacion="Presentación OK",
+        forma_farmaceutica="Comp",
+        sync_status="ok",
+    )
+    _insert_bifimed(db_session, cn="222222", sync_status="ok")
+    _insert_ficha_41(db_session, cn="222222")
+    _insert_gft_estado(db_session, cn="333333", estado_gft="pendiente_revision", estado_editorial="borrador")
+    _insert_gft_estado(db_session, cn="444444", estado_gft="excluido", estado_editorial="retirado")
+
+    response = client.get("/admin/gft/medicamentos/editorial/summary", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    quality = response.json()["quality"]
+    assert quality["incluidos_no_publicados"] == 1
+    assert quality["pendientes_revision"] == 1
+    assert quality["sin_cima"] == 1
+    assert quality["sin_bifimed"] == 1
+    assert quality["sin_ficha_tecnica_41"] == 1
+    assert quality["sin_restricciones_hospitalarias"] == 1
+    assert quality["sin_ajuste_renal"] == 1
+    assert quality["sin_ajuste_hepatico"] == 1
+    assert quality["sin_embarazo"] == 1
+    assert quality["sin_lactancia"] == 1
 
 
 def test_admin_gft_editorial_list_requires_admin_key(client, monkeypatch):

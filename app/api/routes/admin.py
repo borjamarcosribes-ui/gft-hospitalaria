@@ -10,6 +10,8 @@ from app.core.admin_security import require_admin_api_key
 from app.core.database import get_db
 from app.core.enums import ESTADO_EDITORIAL_VALUES, ESTADO_GFT_VALUES
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
+from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
+from app.models.bifimed_cache import BifimedCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
 from app.models.principio_activo import PrincipioActivo
@@ -142,6 +144,7 @@ class GFTEditorialAdminSummaryResponse(BaseModel):
     incluidos_no_publicados: int
     pendientes_revision: int
     excluidos: int
+    quality: dict[str, int]
 
 
 def _first_non_empty(values) -> str | None:
@@ -334,6 +337,78 @@ def get_gft_medicamentos_editorial_summary(
     }
 
     total = sum(by_estado_gft.values())
+    included_filter = GFTEstadoPresentacion.estado_gft == "incluido"
+    non_empty = lambda field: func.nullif(func.trim(field), None)  # noqa: E731
+    has_cima_name_or_presentacion = or_(
+        non_empty(CimaMedicamentoCache.nombre).is_not(None),
+        non_empty(CimaMedicamentoCache.presentacion).is_not(None),
+    )
+
+    quality = {
+        "incluidos_no_publicados": db.query(func.count())
+        .select_from(GFTEstadoPresentacion)
+        .filter(
+            GFTEstadoPresentacion.estado_gft == "incluido",
+            GFTEstadoPresentacion.estado_editorial != "publicado",
+        )
+        .scalar(),
+        "pendientes_revision": db.query(func.count())
+        .select_from(GFTEstadoPresentacion)
+        .filter(GFTEstadoPresentacion.estado_gft == "pendiente_revision")
+        .scalar(),
+        "sin_cima": db.query(func.count())
+        .select_from(GFTEstadoPresentacion)
+        .outerjoin(CimaMedicamentoCache, CimaMedicamentoCache.cn == GFTEstadoPresentacion.cn)
+        .filter(
+            included_filter,
+            or_(
+                CimaMedicamentoCache.cn.is_(None),
+                CimaMedicamentoCache.sync_status != "ok",
+                ~has_cima_name_or_presentacion,
+            ),
+        )
+        .scalar(),
+        "sin_bifimed": db.query(func.count())
+        .select_from(GFTEstadoPresentacion)
+        .outerjoin(BifimedCache, BifimedCache.cn == GFTEstadoPresentacion.cn)
+        .filter(
+            included_filter,
+            or_(BifimedCache.cn.is_(None), BifimedCache.sync_status != "ok"),
+        )
+        .scalar(),
+        "sin_ficha_tecnica_41": db.query(func.count())
+        .select_from(GFTEstadoPresentacion)
+        .filter(
+            included_filter,
+            ~exists().where(
+                CimaFichaTecnicaCache.cn == GFTEstadoPresentacion.cn,
+                CimaFichaTecnicaCache.seccion == "4.1",
+                CimaFichaTecnicaCache.sync_status == "ok",
+                non_empty(CimaFichaTecnicaCache.contenido_texto).is_not(None),
+            ),
+        )
+        .scalar(),
+        "sin_restricciones_hospitalarias": db.query(func.count())
+        .select_from(GFTEstadoPresentacion)
+        .filter(included_filter, non_empty(GFTEstadoPresentacion.restricciones_hospitalarias).is_(None))
+        .scalar(),
+        "sin_ajuste_renal": db.query(func.count())
+        .select_from(GFTEstadoPresentacion)
+        .filter(included_filter, non_empty(GFTEstadoPresentacion.ajuste_insuficiencia_renal).is_(None))
+        .scalar(),
+        "sin_ajuste_hepatico": db.query(func.count())
+        .select_from(GFTEstadoPresentacion)
+        .filter(included_filter, non_empty(GFTEstadoPresentacion.ajuste_insuficiencia_hepatica).is_(None))
+        .scalar(),
+        "sin_embarazo": db.query(func.count())
+        .select_from(GFTEstadoPresentacion)
+        .filter(included_filter, non_empty(GFTEstadoPresentacion.precauciones_embarazo).is_(None))
+        .scalar(),
+        "sin_lactancia": db.query(func.count())
+        .select_from(GFTEstadoPresentacion)
+        .filter(included_filter, non_empty(GFTEstadoPresentacion.precauciones_lactancia).is_(None))
+        .scalar(),
+    }
 
     return GFTEditorialAdminSummaryResponse(
         total=total,
@@ -345,6 +420,7 @@ def get_gft_medicamentos_editorial_summary(
         - by_combination.get("incluido|publicado", 0),
         pendientes_revision=by_estado_gft.get("pendiente_revision", 0),
         excluidos=by_estado_gft.get("excluido", 0),
+        quality=quality,
     )
 
 
