@@ -2,12 +2,25 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.import_row_staging import ImportRowStaging
-from app.services.cima_client import CimaClient
+from app.services.cima_client import CimaClient, _coerce_cima_text
 from app.services.normalization_service import normalize_cn
 from app.services.principio_activo_service import (
     extract_principios_from_cima_data,
     upsert_principios_for_cn,
 )
+
+
+
+
+def _coerce_cache_text(value):
+    if isinstance(value, (dict, list)):
+        return _coerce_cima_text(value)
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if value is None:
+        return None
+    return str(value)
 
 
 def sync_cn(db: Session, cn: str, force: bool = False):
@@ -25,19 +38,19 @@ def sync_cn(db: Session, cn: str, force: bool = False):
 
     if result.status == "ok" and result.data:
         d = result.data
-        row.nregistro = d.get("nregistro")
-        row.nombre = d.get("nombre")
-        row.presentacion = d.get("presentacion")
-        row.forma_farmaceutica = d.get("forma_farmaceutica")
-        row.forma_farmaceutica_simplificada = d.get("forma_farmaceutica_simplificada")
+        row.nregistro = _coerce_cache_text(d.get("nregistro"))
+        row.nombre = _coerce_cache_text(d.get("nombre"))
+        row.presentacion = _coerce_cache_text(d.get("presentacion"))
+        row.forma_farmaceutica = _coerce_cache_text(d.get("forma_farmaceutica"))
+        row.forma_farmaceutica_simplificada = _coerce_cache_text(d.get("forma_farmaceutica_simplificada"))
         row.vias_administracion_json = d.get("vias_administracion_json")
         row.atc_json = d.get("atc_json")
         row.principios_activos_json = d.get("principios_activos_json")
         principios = extract_principios_from_cima_data(d)
         upsert_principios_for_cn(db, cn_norm, principios)
         row.documentos_json = d.get("documentos_json")
-        row.url_ficha_tecnica = d.get("url_ficha_tecnica")
-        row.url_prospecto = d.get("url_prospecto")
+        row.url_ficha_tecnica = _coerce_cache_text(d.get("url_ficha_tecnica"))
+        row.url_prospecto = _coerce_cache_text(d.get("url_prospecto"))
         row.fecha_ficha_tecnica = d.get("fecha_ficha_tecnica")
         row.fecha_prospecto = d.get("fecha_prospecto")
         row.raw_data = result.raw_payload

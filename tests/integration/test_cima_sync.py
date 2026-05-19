@@ -45,6 +45,42 @@ class FakeError:
     data = None
 
 
+def test_sync_cn_with_dict_text_values_is_coerced_before_persist(db_session, monkeypatch):
+    class FakeOkDictText:
+        status = "ok"
+        error = None
+        raw_payload = {"x": 1}
+        data = {
+            "nregistro": {"codigo": "nr"},
+            "nombre": "N",
+            "presentacion": {"descripcion": "P"},
+            "forma_farmaceutica": {"id": 288, "nombre": "POLVO PARA SOLUCIÓN INYECTABLE Y PARA PERFUSIÓN"},
+            "forma_farmaceutica_simplificada": {"id": 34, "nombre": "INYECTABLE"},
+            "vias_administracion_json": [],
+            "atc_json": [],
+            "principios_activos_json": [],
+            "documentos_json": [{"tipo": 1, "url": "u1"}, {"tipo": 2, "url": "u2"}],
+            "url_ficha_tecnica": {"descripcion": "u1"},
+            "url_prospecto": ["u2"],
+            "fecha_ficha_tecnica": None,
+            "fecha_prospecto": None,
+        }
+
+    monkeypatch.setattr(
+        "app.services.cima_sync_service.CimaClient.get_by_cn",
+        lambda self, cn: FakeOkDictText(),
+    )
+
+    row = sync_cn(db_session, "600028", force=True)
+
+    assert row.sync_status == "ok"
+    assert row.forma_farmaceutica == "POLVO PARA SOLUCIÓN INYECTABLE Y PARA PERFUSIÓN"
+    assert row.forma_farmaceutica_simplificada == "INYECTABLE"
+    assert row.nregistro == "nr"
+    assert row.url_ficha_tecnica == "u1"
+    assert row.url_prospecto is None
+
+
 def test_sync_cn_saves_cache(db_session, monkeypatch):
     monkeypatch.setattr(
         "app.services.cima_sync_service.CimaClient.get_by_cn",

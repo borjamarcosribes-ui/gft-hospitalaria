@@ -13,6 +13,29 @@ class CimaFetchResult:
     raw_payload: dict | None = None
 
 
+
+
+def _coerce_cima_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, dict):
+        for key in ("nombre", "descripcion", "codigo"):
+            raw = value.get(key)
+            if raw is None:
+                continue
+            if isinstance(raw, str):
+                text = raw.strip()
+                if text:
+                    return text
+            else:
+                return str(raw)
+        return None
+    return None
+
+
 class CimaClient:
     def __init__(self, base_url: str = CIMA_BASE_URL, timeout: float = 10.0):
         self.base_url = base_url.rstrip("/")
@@ -53,10 +76,10 @@ class CimaClient:
         url_pr, fecha_pr = self._pick_doc(docs, 2)
         return {
             "nregistro": med.get("nregistro"),
-            "nombre": med.get("nombre"),
-            "presentacion": med.get("presentacion"),
-            "forma_farmaceutica": med.get("formaFarmaceutica") or med.get("forma_farmaceutica"),
-            "forma_farmaceutica_simplificada": med.get("formaFarmaceuticaSimplificada") or med.get("forma_farmaceutica_simplificada"),
+            "nombre": _coerce_cima_text(med.get("nombre")),
+            "presentacion": _coerce_cima_text(med.get("presentacion")),
+            "forma_farmaceutica": _coerce_cima_text(med.get("formaFarmaceutica") or med.get("forma_farmaceutica")),
+            "forma_farmaceutica_simplificada": _coerce_cima_text(med.get("formaFarmaceuticaSimplificada") or med.get("forma_farmaceutica_simplificada")),
             "vias_administracion_json": med.get("viasAdministracion") or med.get("vias_administracion"),
             "atc_json": med.get("atc"),
             "principios_activos_json": med.get("principiosActivos") or med.get("principios_activos"),
@@ -86,7 +109,7 @@ class CimaClient:
         for d in docs:
             if d.get("tipo") == tipo:
                 fecha = self._parse_date(d.get("fecha"))
-                return d.get("url") or d.get("urlHtml"), fecha
+                return _coerce_cima_text(d.get("url") or d.get("urlHtml")), fecha
         return None, None
 
     def _parse_date(self, value: str | None):
