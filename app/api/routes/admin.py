@@ -424,10 +424,77 @@ def get_gft_medicamentos_editorial_summary(
     )
 
 
+
+QUALITY_FILTERS = {
+    "incluidos_no_publicados",
+    "pendientes_revision",
+    "sin_cima",
+    "sin_bifimed",
+    "sin_ficha_tecnica_41",
+    "sin_restricciones_hospitalarias",
+    "sin_ajuste_renal",
+    "sin_ajuste_hepatico",
+    "sin_embarazo",
+    "sin_lactancia",
+}
+
+
+def _apply_quality_filter(query, quality_filter: str):
+    included_filter = GFTEstadoPresentacion.estado_gft == "incluido"
+    non_empty = lambda field: func.nullif(func.trim(field), None)  # noqa: E731
+    has_cima_name_or_presentacion = or_(
+        non_empty(CimaMedicamentoCache.nombre).is_not(None),
+        non_empty(CimaMedicamentoCache.presentacion).is_not(None),
+    )
+
+    if quality_filter == "incluidos_no_publicados":
+        return query.filter(
+            GFTEstadoPresentacion.estado_gft == "incluido",
+            GFTEstadoPresentacion.estado_editorial != "publicado",
+        )
+    if quality_filter == "pendientes_revision":
+        return query.filter(GFTEstadoPresentacion.estado_gft == "pendiente_revision")
+    if quality_filter == "sin_cima":
+        return query.filter(
+            included_filter,
+            or_(
+                CimaMedicamentoCache.cn.is_(None),
+                CimaMedicamentoCache.sync_status != "ok",
+                ~has_cima_name_or_presentacion,
+            ),
+        )
+    if quality_filter == "sin_bifimed":
+        query = query.outerjoin(BifimedCache, BifimedCache.cn == GFTEstadoPresentacion.cn)
+        return query.filter(
+            included_filter,
+            or_(BifimedCache.cn.is_(None), BifimedCache.sync_status != "ok"),
+        )
+    if quality_filter == "sin_ficha_tecnica_41":
+        return query.filter(
+            included_filter,
+            ~exists().where(
+                CimaFichaTecnicaCache.cn == GFTEstadoPresentacion.cn,
+                CimaFichaTecnicaCache.seccion == "4.1",
+                CimaFichaTecnicaCache.sync_status == "ok",
+                non_empty(CimaFichaTecnicaCache.contenido_texto).is_not(None),
+            ),
+        )
+    if quality_filter == "sin_restricciones_hospitalarias":
+        return query.filter(included_filter, non_empty(GFTEstadoPresentacion.restricciones_hospitalarias).is_(None))
+    if quality_filter == "sin_ajuste_renal":
+        return query.filter(included_filter, non_empty(GFTEstadoPresentacion.ajuste_insuficiencia_renal).is_(None))
+    if quality_filter == "sin_ajuste_hepatico":
+        return query.filter(included_filter, non_empty(GFTEstadoPresentacion.ajuste_insuficiencia_hepatica).is_(None))
+    if quality_filter == "sin_embarazo":
+        return query.filter(included_filter, non_empty(GFTEstadoPresentacion.precauciones_embarazo).is_(None))
+    if quality_filter == "sin_lactancia":
+        return query.filter(included_filter, non_empty(GFTEstadoPresentacion.precauciones_lactancia).is_(None))
+    raise HTTPException(status_code=400, detail="quality_filter inválido")
 @router.get("/gft/medicamentos/editorial", response_model=GFTEditorialAdminListResponse)
 def list_gft_medicamentos_editorial(
     estado_gft: str | None = None,
     estado_editorial: str | None = None,
+    quality_filter: str | None = None,
     q: str | None = None,
     limit: int = 50,
     offset: int = 0,
@@ -456,6 +523,12 @@ def list_gft_medicamentos_editorial(
             query = query.filter(
                 GFTEstadoPresentacion.estado_editorial == normalized_estado_editorial
             )
+
+    if quality_filter is not None and quality_filter.strip():
+        normalized_quality_filter = quality_filter.strip()
+        if normalized_quality_filter not in QUALITY_FILTERS:
+            raise HTTPException(status_code=400, detail="quality_filter inválido")
+        query = _apply_quality_filter(query, normalized_quality_filter)
 
     if q is not None:
         normalized_q = q.strip()

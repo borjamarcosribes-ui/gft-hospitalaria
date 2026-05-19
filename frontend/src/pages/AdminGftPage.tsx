@@ -19,6 +19,7 @@ import type {
   GFTEditorialAdminSummaryResponse,
   GFTEditorialUpdatePayload,
   GFTPublicationEditorialState,
+  GFTQualityFilter,
   GFTPublicationGftState,
   GFTPublicationStateUpdatePayload,
   ImportBatchResponse,
@@ -662,6 +663,7 @@ export function AdminGftPage() {
   const [q, setQ] = useState('');
   const [estadoGft, setEstadoGft] = useState('');
   const [estadoEditorial, setEstadoEditorial] = useState('');
+  const [qualityFilter, setQualityFilter] = useState<GFTQualityFilter | "">("");
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [offset, setOffset] = useState(0);
 
@@ -744,6 +746,7 @@ export function AdminGftPage() {
             q,
             estado_gft: estadoGft,
             estado_editorial: estadoEditorial,
+            quality_filter: qualityFilter || undefined,
             limit,
             offset,
           }),
@@ -754,7 +757,7 @@ export function AdminGftPage() {
         setListLoading(false);
       }
     },
-    [estadoEditorial, estadoGft, limit, offset, q],
+    [estadoEditorial, estadoGft, qualityFilter, limit, offset, q],
   );
 
   useEffect(() => {
@@ -975,17 +978,17 @@ export function AdminGftPage() {
   );
   const qualityCards = useMemo(
     () => [
-      ['Incluidos no publicados', summary?.quality?.incluidos_no_publicados ?? 0, 'Incluidos pendientes de publicación editorial'],
-      ['Pendientes de revisión GFT', summary?.quality?.pendientes_revision ?? 0, 'Registros marcados como pendiente_revision'],
-      ['Sin datos CIMA', summary?.quality?.sin_cima ?? 0, 'Sin cache CIMA OK o sin nombre/presentación'],
-      ['Sin BIFIMED', summary?.quality?.sin_bifimed ?? 0, 'Sin cache BIFIMED OK asociada por CN'],
-      ['Sin ficha técnica 4.1', summary?.quality?.sin_ficha_tecnica_41 ?? 0, 'Sin indicaciones de la sección 4.1'],
-      ['Sin restricciones hospitalarias', summary?.quality?.sin_restricciones_hospitalarias ?? 0, 'Campos clínicos hospitalarios incompletos'],
-      ['Sin ajuste renal', summary?.quality?.sin_ajuste_renal ?? 0, 'Falta pauta o advertencia en insuficiencia renal'],
-      ['Sin ajuste hepático', summary?.quality?.sin_ajuste_hepatico ?? 0, 'Falta pauta o advertencia en insuficiencia hepática'],
-      ['Sin embarazo', summary?.quality?.sin_embarazo ?? 0, 'Faltan precauciones en embarazo'],
-      ['Sin lactancia', summary?.quality?.sin_lactancia ?? 0, 'Faltan precauciones en lactancia'],
-    ],
+      ['incluidos_no_publicados', 'Incluidos no publicados', summary?.quality?.incluidos_no_publicados ?? 0, 'Incluidos pendientes de publicación editorial'],
+      ['pendientes_revision', 'Pendientes de revisión GFT', summary?.quality?.pendientes_revision ?? 0, 'Registros marcados como pendiente_revision'],
+      ['sin_cima', 'Sin datos CIMA', summary?.quality?.sin_cima ?? 0, 'Sin cache CIMA OK o sin nombre/presentación'],
+      ['sin_bifimed', 'Sin BIFIMED', summary?.quality?.sin_bifimed ?? 0, 'Sin cache BIFIMED OK asociada por CN'],
+      ['sin_ficha_tecnica_41', 'Sin ficha técnica 4.1', summary?.quality?.sin_ficha_tecnica_41 ?? 0, 'Sin indicaciones de la sección 4.1'],
+      ['sin_restricciones_hospitalarias', 'Sin restricciones hospitalarias', summary?.quality?.sin_restricciones_hospitalarias ?? 0, 'Campos clínicos hospitalarios incompletos'],
+      ['sin_ajuste_renal', 'Sin ajuste renal', summary?.quality?.sin_ajuste_renal ?? 0, 'Falta pauta o advertencia en insuficiencia renal'],
+      ['sin_ajuste_hepatico', 'Sin ajuste hepático', summary?.quality?.sin_ajuste_hepatico ?? 0, 'Falta pauta o advertencia en insuficiencia hepática'],
+      ['sin_embarazo', 'Sin embarazo', summary?.quality?.sin_embarazo ?? 0, 'Faltan precauciones en embarazo'],
+      ['sin_lactancia', 'Sin lactancia', summary?.quality?.sin_lactancia ?? 0, 'Faltan precauciones en lactancia'],
+    ] as const,
     [summary],
   );
 
@@ -1081,37 +1084,21 @@ export function AdminGftPage() {
               </div>
             </div>
             <div className="admin-summary-grid" aria-busy={summaryLoading}>
-              {qualityCards.map(([label, value, description]) => (
-                <article className="admin-summary-card" key={label}>
+              {qualityCards.map(([filterKey, label, value, description]) => (
+                <article className={`admin-summary-card ${qualityFilter === filterKey ? 'admin-summary-card--active' : ''}`} key={label}>
                   <span>{label}</span>
                   <strong>{value}</strong>
                   <small>{description}</small>
-                  {label === 'Incluidos no publicados' ? (
-                    <button
-                      className="admin-link-button"
-                      type="button"
-                      onClick={() => {
-                        setOffset(0);
-                        setEstadoGft('incluido');
-                        setEstadoEditorial('');
-                      }}
-                    >
-                      Filtrar listado
-                    </button>
-                  ) : null}
-                  {label === 'Pendientes de revisión GFT' ? (
-                    <button
-                      className="admin-link-button"
-                      type="button"
-                      onClick={() => {
-                        setOffset(0);
-                        setEstadoGft('pendiente_revision');
-                        setEstadoEditorial('');
-                      }}
-                    >
-                      Filtrar listado
-                    </button>
-                  ) : null}
+                  <button
+                    className="admin-link-button"
+                    type="button"
+                    onClick={() => {
+                      setOffset(0);
+                      setQualityFilter(filterKey as GFTQualityFilter);
+                    }}
+                  >
+                    Filtrar listado
+                  </button>
                 </article>
               ))}
             </div>
@@ -1135,6 +1122,13 @@ export function AdminGftPage() {
                 <p>{total} registros encontrados.</p>
               </div>
             </div>
+
+            {qualityFilter ? (
+              <div className="admin-active-filter">
+                <span>Filtro de calidad activo: <strong>{formatLabel(qualityFilter)}</strong></span>
+                <button className="admin-button admin-button--secondary" type="button" onClick={() => { setOffset(0); setQualityFilter(''); }}>Limpiar filtro de calidad</button>
+              </div>
+            ) : null}
 
             <form className="admin-toolbar" onSubmit={handleSearch}>
               <label>

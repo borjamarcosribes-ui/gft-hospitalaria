@@ -881,3 +881,16 @@
     grid-template-columns: 1fr;
   }
 }
+
+.admin-summary-card--active {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.admin-active-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}

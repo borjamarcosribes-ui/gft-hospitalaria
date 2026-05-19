@@ -152,6 +152,7 @@ export function listGftEditorialMedicamentos(
   setQueryParam(url, 'q', params.q);
   setQueryParam(url, 'estado_gft', params.estado_gft);
   setQueryParam(url, 'estado_editorial', params.estado_editorial);
+  setQueryParam(url, 'quality_filter', params.quality_filter);
 
   return fetchAdminJson<GFTEditorialAdminListResponse>(url, apiKey);
 }

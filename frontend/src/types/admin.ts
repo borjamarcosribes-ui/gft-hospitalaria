@@ -4,6 +4,7 @@ export interface AdminHealthResponse {
 
 export type GFTPublicationGftState = 'incluido' | 'excluido' | 'pendiente_revision';
 export type GFTPublicationEditorialState = 'borrador' | 'validado' | 'publicado' | 'retirado';
+export type GFTQualityFilter = 'incluidos_no_publicados' | 'pendientes_revision' | 'sin_cima' | 'sin_bifimed' | 'sin_ficha_tecnica_41' | 'sin_restricciones_hospitalarias' | 'sin_ajuste_renal' | 'sin_ajuste_hepatico' | 'sin_embarazo' | 'sin_lactancia';
 
 export interface GFTEditorialAdminSummaryResponse {
   total: number;
@@ -97,6 +98,7 @@ export interface ListGftEditorialMedicamentosParams {
   q?: string;
   estado_gft?: string;
   estado_editorial?: string;
+  quality_filter?: GFTQualityFilter;
   limit: number;
   offset: number;
 }
