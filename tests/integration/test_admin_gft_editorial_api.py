@@ -37,18 +37,22 @@ def _insert_cima_medicamento(
     db_session,
     cn: str = "111111",
     nombre: str | None = "Medicamento Test",
+    presentacion: str | None = "Presentación Test",
     forma_farmaceutica: str | None = "Comprimido",
     vias_administracion_json=None,
     atc_json=None,
     principios_activos_json=None,
+    sync_status: str = "ok",
 ):
     row = CimaMedicamentoCache(
         cn=cn,
         nombre=nombre,
+        presentacion=presentacion,
         forma_farmaceutica=forma_farmaceutica,
         vias_administracion_json=vias_administracion_json,
         atc_json=atc_json,
         principios_activos_json=principios_activos_json,
+        sync_status=sync_status,
     )
     db_session.add(row)
     db_session.commit()
@@ -577,7 +581,14 @@ def test_admin_gft_editorial_summary_quality_metrics(client, db_session, monkeyp
         precauciones_embarazo="ok",
         precauciones_lactancia="ok",
     )
-    _insert_cima_medicamento(db_session, cn="222222", nombre="Med OK", forma_farmaceutica="Comp")
+    _insert_cima_medicamento(
+        db_session,
+        cn="222222",
+        nombre="Med OK",
+        presentacion="Presentación OK",
+        forma_farmaceutica="Comp",
+        sync_status="ok",
+    )
     _insert_bifimed(db_session, cn="222222", sync_status="ok")
     _insert_ficha_41(db_session, cn="222222")
     _insert_gft_estado(db_session, cn="333333", estado_gft="pendiente_revision", estado_editorial="borrador")
