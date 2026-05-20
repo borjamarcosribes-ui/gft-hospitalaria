@@ -11,6 +11,7 @@ import {
   listGftEditorialMedicamentos,
   updateGftMedicationEditorial,
   updateGftMedicationState,
+  updateGftMedicationStateBulk,
 } from '../services/adminApi';
 import type {
   ApplyImportBatchResponse,
@@ -22,6 +23,7 @@ import type {
   GFTQualityFilter,
   GFTPublicationGftState,
   GFTPublicationStateUpdatePayload,
+  GFTPublicationBulkStateUpdateResponse,
   ImportBatchResponse,
   ImportBatchSummary,
   ImportDryRunResponse,
@@ -735,6 +737,12 @@ export function AdminGftPage() {
   const [stateSaveError, setStateSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [stateSaveSuccess, setStateSaveSuccess] = useState<string | null>(null);
+  const [selectedCns, setSelectedCns] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<GFTPublicationEditorialState>('validado');
+  const [bulkComentarioRevision, setBulkComentarioRevision] = useState('');
+  const [bulkRevisadoPor, setBulkRevisadoPor] = useState('');
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<GFTPublicationBulkStateUpdateResponse | null>(null);
 
   const checkAccess = useCallback(async (candidateKey: string, persist: boolean) => {
     const cleanKey = candidateKey.trim();
@@ -835,6 +843,7 @@ export function AdminGftPage() {
     event.preventDefault();
     setOffset(0);
     setQ(qInput.trim());
+    setSelectedCns(new Set());
   };
 
   const handleSelect = async (cn: string) => {
@@ -1024,6 +1033,36 @@ export function AdminGftPage() {
     }
   };
 
+  const toggleSelection = (cn: string, checked: boolean) => {
+    setSelectedCns((current) => {
+      const next = new Set(current);
+      if (checked) next.add(cn); else next.delete(cn);
+      return next;
+    });
+  };
+
+  const handleBulkUpdate = async () => {
+    if (!apiKey || selectedCns.size === 0) return;
+    const selectedItems = (listData?.items ?? []).filter((item) => selectedCns.has(item.cn));
+    const nonIncluded = selectedItems.filter((item) => item.estado_gft !== 'incluido').length;
+    if (bulkAction === 'publicado') {
+      const ok = window.confirm(`Vas a publicar ${selectedCns.size} medicamentos seleccionados en la GFT pública si su estado_gft es incluido. ¿Confirmas?`);
+      if (!ok) return;
+      if (nonIncluded > 0 && !window.confirm('Los medicamentos no incluidos no serán visibles públicamente aunque queden estado_editorial = publicado. ¿Continuar?')) return;
+    }
+    if (bulkAction === 'retirado' && !window.confirm(`Vas a retirar ${selectedCns.size} medicamentos seleccionados. ¿Confirmas?`)) return;
+    setBulkLoading(true);
+    try {
+      const result = await updateGftMedicationStateBulk(apiKey, { cns: Array.from(selectedCns), estado_editorial: bulkAction, comentario_revision: normalizeEditorialValue(bulkComentarioRevision), revisado_por: normalizeEditorialValue(bulkRevisadoPor) });
+      setBulkResult(result);
+      await loadList(apiKey);
+      await loadSummary(apiKey);
+      setSelectedCns(new Set());
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   const summaryCards = useMemo(
     () => [
       ['Total', summary?.total ?? 0, 'Registros administrativos'],
@@ -1054,6 +1093,9 @@ export function AdminGftPage() {
   );
 
   const total = listData?.total ?? 0;
+  const visibleItems = listData?.items ?? [];
+  const selectedCount = selectedCns.size;
+  const allVisibleSelected = visibleItems.length > 0 && visibleItems.every((item) => selectedCns.has(item.cn));
   const canGoBack = offset > 0;
   const canGoForward = listData ? offset + listData.limit < listData.total : false;
   const detailIsPubliclyVisible = detail ? isPubliclyVisible(detail.estado_gft, detail.estado_editorial) : false;
@@ -1240,6 +1282,27 @@ export function AdminGftPage() {
               </label>
               <button className="admin-button admin-button--primary" type="submit">Aplicar</button>
             </form>
+            <p className="admin-muted">Publicar medicamentos los hará visibles en la GFT pública solo si estado_gft = incluido.</p>
+            <div className="admin-active-filter">
+              <span>{selectedCount} medicamentos seleccionados</span>
+              <button className="admin-button admin-button--secondary" type="button" onClick={() => setSelectedCns(new Set())}>Limpiar selección</button>
+            </div>
+            {selectedCount > 0 ? (
+              <div className="admin-toolbar">
+                <label>Acción editorial
+                  <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value as GFTPublicationEditorialState)}>
+                    <option value="borrador">Marcar como borrador</option>
+                    <option value="validado">Marcar como validado</option>
+                    <option value="publicado">Publicar seleccionados</option>
+                    <option value="retirado">Retirar seleccionados</option>
+                  </select>
+                </label>
+                <label>Comentario revisión<input value={bulkComentarioRevision} onChange={(e) => setBulkComentarioRevision(e.target.value)} /></label>
+                <label>Revisado por<input value={bulkRevisadoPor} onChange={(e) => setBulkRevisadoPor(e.target.value)} /></label>
+                <button className="admin-button admin-button--primary" type="button" disabled={bulkLoading} onClick={() => void handleBulkUpdate()}>Aplicar a seleccionados</button>
+              </div>
+            ) : null}
+            {bulkResult ? <p className="admin-alert admin-alert--success">Resultado: seleccionados {bulkResult.requested}, actualizados {bulkResult.updated}, no encontrados {bulkResult.not_found.length}, errores {bulkResult.errors.length}.</p> : null}
 
             {listError ? <p className="admin-alert admin-alert--error">{listError}</p> : null}
 
@@ -1258,13 +1321,29 @@ export function AdminGftPage() {
                     </tr>
                   </thead>
                   <tbody>
+                    {!listLoading ? (
+                      <tr>
+                        <td><input type="checkbox" checked={allVisibleSelected} onChange={(e) => {
+                          const checked = e.target.checked;
+                          setSelectedCns((current) => {
+                            const next = new Set(current);
+                            visibleItems.forEach((item) => { if (checked) next.add(item.cn); else next.delete(item.cn); });
+                            return next;
+                          });
+                        }} /></td>
+                        <td colSpan={6}>Seleccionar visibles (solo página actual)</td>
+                      </tr>
+                    ) : null}
                     {listData?.items.map((item) => (
                       <tr
                         className={selectedCn === item.cn ? 'admin-table__row--selected' : ''}
                         key={item.cn}
                         onClick={() => void handleSelect(item.cn)}
                       >
-                        <td><button type="button" onClick={(event) => { event.stopPropagation(); void handleSelect(item.cn); }}>{item.cn}</button></td>
+                        <td>
+                          <input type="checkbox" checked={selectedCns.has(item.cn)} onChange={(event) => { event.stopPropagation(); toggleSelection(item.cn, event.target.checked); }} />
+                          <button type="button" onClick={(event) => { event.stopPropagation(); void handleSelect(item.cn); }}>{item.cn}</button>
+                        </td>
                         <td><EmptyValue value={item.nombre_comercial} /></td>
                         <td><EmptyValue value={item.principio_activo} /></td>
                         <td><EmptyValue value={item.nemonico} /></td>

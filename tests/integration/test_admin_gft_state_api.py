@@ -292,6 +292,41 @@ def test_admin_gft_state_patch_rejects_invalid_estado_editorial(
     assert response.json()["detail"] == "estado_editorial inválido"
 
 
+def test_admin_gft_state_bulk_requires_admin_key(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido", estado_editorial="borrador")
+    response = client.patch("/admin/gft/medicamentos/estado/bulk", json={"cns": ["111111"], "estado_editorial": "validado"})
+    assert response.status_code == 401
+
+
+def test_admin_gft_state_bulk_updates_multiple_and_not_found(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    _insert_gft_estado(db_session, cn="111111", estado_gft="incluido", estado_editorial="borrador")
+    _insert_gft_estado(db_session, cn="222222", estado_gft="excluido", estado_editorial="borrador")
+    response = client.patch(
+        "/admin/gft/medicamentos/estado/bulk",
+        headers=ADMIN_HEADERS,
+        json={"cns": ["111111", "222222", "999999"], "estado_editorial": "publicado"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["requested"] == 3
+    assert body["updated"] == 2
+    assert body["not_found"] == ["999999"]
+    assert _get_gft_estado(db_session, "111111").estado_gft == "incluido"
+    assert _get_gft_estado(db_session, "222222").estado_gft == "excluido"
+
+
+def test_admin_gft_state_bulk_rejects_invalid_editorial_state(client, db_session, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_API_KEY", "secret")
+    response = client.patch(
+        "/admin/gft/medicamentos/estado/bulk",
+        headers=ADMIN_HEADERS,
+        json={"cns": ["111111"], "estado_editorial": "foo"},
+    )
+    assert response.status_code == 400
+
+
 def test_admin_gft_state_patch_rejects_no_state_changes(
     client, db_session, monkeypatch
 ):

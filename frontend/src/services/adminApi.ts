@@ -7,6 +7,8 @@ import type {
   GFTEditorialUpdatePayload,
   GFTEditorialUpdateResponse,
   GFTPublicationStateUpdatePayload,
+  GFTPublicationBulkStateUpdatePayload,
+  GFTPublicationBulkStateUpdateResponse,
   GFTPublicationStateUpdateResponse,
   ImportBatchResponse,
   ImportBatchSummary,
@@ -180,6 +182,17 @@ export function updateGftMedicationState(
 ): Promise<GFTPublicationStateUpdateResponse> {
   return patchAdminJson<GFTPublicationStateUpdateResponse>(
     `/admin/gft/medicamentos/${encodeURIComponent(cn)}/estado`,
+    apiKey,
+    payload,
+  );
+}
+
+export function updateGftMedicationStateBulk(
+  apiKey: string,
+  payload: GFTPublicationBulkStateUpdatePayload,
+): Promise<GFTPublicationBulkStateUpdateResponse> {
+  return patchAdminJson<GFTPublicationBulkStateUpdateResponse>(
+    '/admin/gft/medicamentos/estado/bulk',
     apiKey,
     payload,
   );
