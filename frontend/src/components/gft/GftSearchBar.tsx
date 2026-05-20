@@ -36,7 +36,7 @@ export function GftSearchBar({ value, loading, onSearch, onClear }: GftSearchBar
           type="search"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Buscar por nombre, CN, presentación o principio activo"
+          placeholder="Buscar por CN, medicamento, principio activo o nemónico"
         />
         <button className="gft-button gft-button--primary" type="submit" disabled={loading}>
           Buscar
@@ -45,7 +45,6 @@ export function GftSearchBar({ value, loading, onSearch, onClear }: GftSearchBar
           Limpiar
         </button>
       </div>
-      <p className="gft-search__hint">Pulsa Enter o el botón Buscar para consultar. No se busca en cada pulsación.</p>
     </form>
   );
 }
