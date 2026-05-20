@@ -49,6 +49,22 @@ class GFTPublicationStateUpdateResponse(BaseModel):
     updated_at: datetime | None = None
 
 
+class GFTPublicationBulkStateUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cns: list[str]
+    estado_editorial: str
+    comentario_revision: str | None = None
+    revisado_por: str | None = None
+
+
+class GFTPublicationBulkStateUpdateResponse(BaseModel):
+    requested: int
+    updated: int
+    not_found: list[str]
+    errors: list[str]
+
+
 class GFTEditorialUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -685,6 +701,53 @@ def update_gft_medicamento_publication_state(
         raise HTTPException(status_code=404, detail="Medicamento GFT no encontrado")
 
     return result
+
+
+@router.patch(
+    "/gft/medicamentos/estado/bulk",
+    response_model=GFTPublicationBulkStateUpdateResponse,
+)
+def bulk_update_gft_medicamento_publication_state(
+    body: GFTPublicationBulkStateUpdateRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_api_key),
+):
+    normalized_estado_editorial = body.estado_editorial.strip()
+    if normalized_estado_editorial not in ESTADO_EDITORIAL_VALUES:
+        raise HTTPException(status_code=400, detail="estado_editorial inválido")
+
+    normalized_cns: list[str] = []
+    for cn in body.cns:
+        normalized = cn.strip()
+        if normalized and normalized not in normalized_cns:
+            normalized_cns.append(normalized)
+
+    if not normalized_cns:
+        raise HTTPException(status_code=400, detail="Debe enviar al menos un CN")
+
+    rows = (
+        db.query(GFTEstadoPresentacion)
+        .filter(GFTEstadoPresentacion.cn.in_(normalized_cns))
+        .all()
+    )
+    rows_by_cn = {row.cn: row for row in rows}
+    not_found = [cn for cn in normalized_cns if cn not in rows_by_cn]
+
+    for row in rows:
+        row.estado_editorial = normalized_estado_editorial
+        row.comentario_revision = body.comentario_revision
+        if body.revisado_por:
+            row.revisado_por = body.revisado_por
+        row.updated_at = datetime.utcnow()
+        row.fecha_revision = date.today()
+
+    db.commit()
+    return GFTPublicationBulkStateUpdateResponse(
+        requested=len(normalized_cns),
+        updated=len(rows),
+        not_found=not_found,
+        errors=[],
+    )
 
 
 @router.patch(
