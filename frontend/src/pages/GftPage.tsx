@@ -18,6 +18,22 @@ import type {
 
 const PAGE_SIZE = 20;
 
+
+function shouldAutoApplySearch(value: string): boolean {
+  const cleanValue = value.trim();
+
+  if (cleanValue.length === 0) {
+    return true;
+  }
+
+  if (/^\d{3,}$/.test(cleanValue)) {
+    return true;
+  }
+
+  return cleanValue.length >= 3;
+}
+
+
 export function GftPage() {
   const [q, setQ] = useState('');
   const [submittedQ, setSubmittedQ] = useState('');
@@ -124,10 +140,32 @@ export function GftPage() {
   }, [atcData, atc]);
 
   function handleSearch(value: string) {
+    const cleanValue = value.trim();
     setQ(value);
-    setSubmittedQ(value);
+    setSubmittedQ(cleanValue);
     setOffset(0);
   }
+
+  useEffect(() => {
+    const cleanValue = q.trim();
+
+    if (!shouldAutoApplySearch(q)) {
+      return;
+    }
+
+    if (cleanValue === submittedQ) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSubmittedQ(cleanValue);
+      setOffset(0);
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [q, submittedQ]);
 
   function handleClearQ() {
     setQ('');
@@ -199,6 +237,7 @@ export function GftPage() {
         <section className="gft-panel gft-search-panel" aria-label="Búsqueda y exportación de medicamentos">
           <div className="gft-search-panel__content">
             <GftSearchBar value={q} loading={loading} onSearch={handleSearch} onClear={handleClearQ} />
+            <p className="gft-search-panel__hint">La búsqueda se aplica automáticamente al escribir 3 o más caracteres. También puedes pulsar Buscar/Aplicar.</p>
             <aside className="gft-export" aria-label="Exportación de la GFT publicada">
               <a className="gft-button gft-button--export" href={pdfExportUrl}>
                 Exportar PDF

@@ -187,6 +187,21 @@ function formatLabel(value: string): string {
   return value.replace(/_/g, ' ');
 }
 
+
+function shouldAutoApplySearch(value: string): boolean {
+  const cleanValue = value.trim();
+
+  if (cleanValue.length === 0) {
+    return true;
+  }
+
+  if (/^\d{3,}$/.test(cleanValue)) {
+    return true;
+  }
+
+  return cleanValue.length >= 3;
+}
+
 function EmptyValue({ value }: { value: string | null }) {
   return value ? <>{value}</> : <span className="admin-muted">No informado</span>;
 }
@@ -834,6 +849,29 @@ export function AdminGftPage() {
     void loadList(apiKey);
   }, [apiKey, loadList]);
 
+
+  useEffect(() => {
+    const cleanValue = qInput.trim();
+
+    if (!shouldAutoApplySearch(qInput)) {
+      return;
+    }
+
+    if (cleanValue === q) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      clearBulkSelection();
+      setOffset(0);
+      setQ(cleanValue);
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [qInput, q]);
+
   const handleLogin = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void checkAccess(apiKeyInput, true);
@@ -1287,6 +1325,7 @@ export function AdminGftPage() {
               </label>
               <button className="admin-button admin-button--primary" type="submit">Aplicar</button>
             </form>
+            <p className="admin-muted">La búsqueda se aplica automáticamente al escribir 3 o más caracteres. También puedes pulsar Buscar/Aplicar.</p>
             <p className="admin-muted">Publicar medicamentos los hará visibles en la GFT pública solo si estado_gft = incluido.</p>
             <div className="admin-active-filter">
               <span>{selectedCount} medicamentos seleccionados</span>
