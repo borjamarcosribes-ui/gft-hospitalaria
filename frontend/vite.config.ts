@@ -10,6 +10,8 @@ export default defineConfig({
       '/cima': 'http://localhost:8000',
       '/bifimed': 'http://localhost:8000',
       '/health': 'http://localhost:8000',
+      '/admin/health': 'http://localhost:8000',
+      '/admin/gft/medicamentos': 'http://localhost:8000',
     },
   },
 });
