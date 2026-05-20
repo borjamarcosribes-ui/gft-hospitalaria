@@ -18,12 +18,33 @@ function joinVias(vias: string[]): string {
   return vias.length > 0 ? vias.join(', ') : 'No informado';
 }
 
+function getAtcLevelOrder(nivel: string | null): number {
+  if (!nivel) {
+    return 99;
+  }
+
+  const normalized = nivel.trim().toUpperCase();
+  const withPrefixMatch = normalized.match(/^L([1-5])$/);
+
+  if (withPrefixMatch) {
+    return Number(withPrefixMatch[1]);
+  }
+
+  const numericMatch = normalized.match(/^([1-5])$/);
+
+  if (numericMatch) {
+    return Number(numericMatch[1]);
+  }
+
+  return 99;
+}
+
 function getAtcRoute(atc: GFTAtcRef[]): string {
   if (atc.length === 0) {
     return 'No disponible en la fuente actual';
   }
 
-  const sorted = [...atc].sort((a, b) => Number(a.nivel ?? 99) - Number(b.nivel ?? 99));
+  const sorted = [...atc].sort((a, b) => getAtcLevelOrder(a.nivel) - getAtcLevelOrder(b.nivel));
   return sorted
     .map((item) => (item.nombre ? `${item.codigo} ${item.nombre}` : item.codigo))
     .join(' > ');
@@ -34,7 +55,7 @@ function getAtcResumen(atc: GFTAtcRef[]): string {
     return 'No informado';
   }
 
-  const levelFive = atc.find((item) => item.nivel === '5') ?? atc[0];
+  const levelFive = atc.find((item) => getAtcLevelOrder(item.nivel) === 5) ?? atc[0];
   return levelFive.nombre ? `${levelFive.codigo} · ${levelFive.nombre}` : levelFive.codigo;
 }
 
