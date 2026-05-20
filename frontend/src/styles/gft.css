@@ -1017,3 +1017,51 @@
     padding-left: 0;
   }
 }
+
+.gft-card__subtitle {
+  margin: 0.35rem 0 0;
+  color: #52616f;
+  font-size: 1rem;
+}
+
+.gft-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
+
+.gft-card__section {
+  margin-top: 1rem;
+  border: 1px solid #e5edf3;
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: #fbfdff;
+}
+
+.gft-card__section h4 {
+  margin: 0 0 0.75rem;
+  color: #1f5f8b;
+  font-size: 0.98rem;
+}
+
+.gft-card__details--single {
+  grid-template-columns: 1fr;
+}
+
+.gft-card__text {
+  margin: 0;
+  line-height: 1.55;
+  color: #17324d;
+}
+
+.gft-active-filters {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.gft-active-filters__summary p,
+.gft-active-filters__none {
+  margin: 0;
+  color: #52616f;
+}
