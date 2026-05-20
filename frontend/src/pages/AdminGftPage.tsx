@@ -841,9 +841,9 @@ export function AdminGftPage() {
 
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    clearBulkSelection();
     setOffset(0);
     setQ(qInput.trim());
-    setSelectedCns(new Set());
   };
 
   const handleSelect = async (cn: string) => {
@@ -1333,7 +1333,7 @@ export function AdminGftPage() {
                   <tbody>
                     {!listLoading ? (
                       <tr>
-                        <td><input type="checkbox" checked={allVisibleSelected} onChange={(e) => {
+                        <td><input type="checkbox" checked={allVisibleSelected} onClick={(event) => { event.stopPropagation(); }} onChange={(e) => {
                           const checked = e.target.checked;
                           setSelectedCns((current) => {
                             const next = new Set(current);
@@ -1351,7 +1351,7 @@ export function AdminGftPage() {
                         onClick={() => void handleSelect(item.cn)}
                       >
                         <td>
-                          <input type="checkbox" checked={selectedCns.has(item.cn)} onChange={(event) => { event.stopPropagation(); toggleSelection(item.cn, event.target.checked); }} />
+                          <input type="checkbox" checked={selectedCns.has(item.cn)} onClick={(event) => { event.stopPropagation(); }} onChange={(event) => { event.stopPropagation(); toggleSelection(item.cn, event.target.checked); }} />
                           <button type="button" onClick={(event) => { event.stopPropagation(); void handleSelect(item.cn); }}>{item.cn}</button>
                         </td>
                         <td><EmptyValue value={item.nombre_comercial} /></td>
