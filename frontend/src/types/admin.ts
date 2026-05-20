@@ -98,6 +98,20 @@ export interface GFTPublicationStateUpdateResponse {
   updated_at: string | null;
 }
 
+export interface GFTPublicationBulkStateUpdatePayload {
+  cns: string[];
+  estado_editorial: GFTPublicationEditorialState;
+  comentario_revision?: string | null;
+  revisado_por?: string | null;
+}
+
+export interface GFTPublicationBulkStateUpdateResponse {
+  requested: number;
+  updated: number;
+  not_found: string[];
+  errors: string[];
+}
+
 export interface ListGftEditorialMedicamentosParams {
   q?: string;
   estado_gft?: string;
