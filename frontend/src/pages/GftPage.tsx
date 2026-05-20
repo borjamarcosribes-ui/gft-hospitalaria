@@ -237,7 +237,7 @@ export function GftPage() {
         <section className="gft-panel gft-search-panel" aria-label="Búsqueda y exportación de medicamentos">
           <div className="gft-search-panel__content">
             <GftSearchBar value={q} loading={loading} onSearch={handleSearch} onClear={handleClearQ} />
-            <p className="gft-search-panel__hint">La búsqueda se aplica automáticamente al escribir 3 o más caracteres. También puedes pulsar Buscar/Aplicar.</p>
+            <p className="gft-search-panel__hint">La búsqueda se aplica automáticamente al escribir 3 o más caracteres. También puedes pulsar Buscar.</p>
             <aside className="gft-export" aria-label="Exportación de la GFT publicada">
               <a className="gft-button gft-button--export" href={pdfExportUrl}>
                 Exportar PDF
