@@ -209,6 +209,10 @@ function getDryRunValidRows(dryRun: ImportDryRunResponse): number {
   return Math.max(0, dryRun.total_rows - dryRun.error_count);
 }
 
+function getEstimatedApplicableRows(dryRun: ImportDryRunResponse): number {
+  return Math.max(0, dryRun.total_rows - dryRun.pending_count - dryRun.error_count);
+}
+
 function formatStringList(values: string[] | undefined, emptyText = '—'): string {
   return values && values.length > 0 ? values.join(', ') : emptyText;
 }
@@ -409,19 +413,51 @@ function AdminExcelImportSection({
   };
 
   const isBusy = loadingAction !== null;
+  const canApplyBatch = Boolean(batchId) && Boolean(batchSummary) && (batchSummary?.error_rows ?? 0) === 0 && !applyResult;
+  const currentStep = !dryRun ? 1 : !(batch || batchSummary) ? 2 : 3;
+
+  const resetImportWorkflow = () => {
+    setFile(null);
+    setSelectedSheetName('');
+    setHeaderRow(1);
+    setDefaultEstadoEditorial('borrador');
+    setDryRun(null);
+    resetBatchReview();
+    setError(null);
+    setSuccess(null);
+  };
+
+  const stepStatus = (step: number): "Pendiente" | "Completado" | "Activo" | "Bloqueado" => {
+    if (step < currentStep) return "Completado";
+    if (step === currentStep) return "Activo";
+    return step === currentStep + 1 ? "Pendiente" : "Bloqueado";
+  };
 
   return (
     <section className="admin-section admin-import-section" aria-labelledby="admin-import-title">
       <div className="admin-section__header">
         <div>
           <h2 id="admin-import-title">Importar Excel GFT</h2>
-          <p>Flujo seguro: seleccionar Excel → validar dry-run → revisar → importar a staging → aplicar con confirmación.</p>
+          <p>Sigue los 3 pasos para validar el Excel, crear un lote de staging y aplicar solo lo revisado.</p>
         </div>
       </div>
 
       <p className="admin-alert admin-alert--warning">
-        Aplicar un batch no publica todo automáticamente: la visibilidad pública sigue dependiendo de <strong>estado_gft = incluido</strong> y <strong>estado_editorial = publicado</strong>.
+        La carga del Excel no publica medicamentos automáticamente. La visibilidad pública depende de <strong>estado_gft = incluido</strong> y <strong>estado_editorial = publicado</strong>.
       </p>
+
+      <div className="admin-import-steps">
+        {[
+          { id: 1, title: 'Paso 1', description: 'Seleccionar y validar Excel' },
+          { id: 2, title: 'Paso 2', description: 'Crear lote de staging' },
+          { id: 3, title: 'Paso 3', description: 'Revisar y aplicar lote' },
+        ].map((step) => (
+          <article key={step.id} className={`admin-import-step admin-import-step--${stepStatus(step.id).toLowerCase()}`}>
+            <p>{step.title}</p><h4>{step.description}</h4>
+            <span>{stepStatus(step.id) === 'Bloqueado' ? 'Bloqueado hasta completar el paso anterior' : stepStatus(step.id)}</span>
+          </article>
+        ))}
+      </div>
 
       <div className="admin-import-controls">
         <label>
@@ -482,11 +518,14 @@ function AdminExcelImportSection({
           </select>
         </label>
         <div className="admin-import-controls__actions">
+          <button className="admin-button" type="button" onClick={resetImportWorkflow} disabled={isBusy}>
+            Nueva importación / limpiar selección
+          </button>
           <button className="admin-button admin-button--primary" type="button" onClick={() => void handleDryRun()} disabled={!file || isBusy}>
             {loadingAction === 'dry-run' ? 'Validando…' : 'Validar Excel'}
           </button>
           <button className="admin-button admin-button--secondary" type="button" onClick={() => void handleImportToStaging()} disabled={!file || !dryRun || !dryRunMatchesSelection || isBusy}>
-            {loadingAction === 'import' ? 'Importando…' : 'Importar a staging'}
+            {loadingAction === 'import' ? 'Importando…' : 'Crear lote de staging'}
           </button>
         </div>
       </div>
@@ -511,9 +550,11 @@ function AdminExcelImportSection({
             <article className="admin-summary-card"><span>Total filas</span><strong>{dryRun.total_rows}</strong><small>Leídas del Excel</small></article>
             <article className="admin-summary-card"><span>Filas válidas</span><strong>{getDryRunValidRows(dryRun)}</strong><small>Sin errores de validación</small></article>
             <article className="admin-summary-card"><span>Con error</span><strong>{dryRun.error_count}</strong><small>Revisar antes de aplicar</small></article>
-            <article className="admin-summary-card"><span>Pendientes</span><strong>{dryRun.pending_count}</strong><small>No se publican automáticamente</small></article>
+            <article className="admin-summary-card"><span>Pendientes de revisión</span><strong>{dryRun.pending_count}</strong><small>Las filas pendientes no se aplican automáticamente</small></article>
+            <article className="admin-summary-card"><span>Se aplicarán (estimado)</span><strong>{getEstimatedApplicableRows(dryRun)}</strong><small>Estimación total - pendientes - errores</small></article>
           </div>
-          <dl className="admin-import-definition-list">
+          <p className="admin-muted">No se ha aplicado ningún cambio. Los errores deben resolverse antes de aplicar.</p>
+          <details className="admin-import-details"><summary>Ver detalles técnicos de columnas</summary><dl className="admin-import-definition-list">
             <dt>Hoja leída</dt>
             <dd>{dryRun.sheet_name ?? '—'}</dd>
             <dt>Hojas disponibles</dt>
@@ -534,7 +575,7 @@ function AdminExcelImportSection({
             <dd>{dryRun.duplicate_cn_count}</dd>
             <dt>Avisos</dt>
             <dd>{dryRun.warning_count}</dd>
-          </dl>
+          </dl></details>
           {isLikelyNonTabularSheet(dryRun) ? (
             <p className="admin-alert admin-alert--warning">La hoja leída parece no ser tabular. Prueba con {PREFERRED_GFT_SHEET_NAME}.</p>
           ) : null}
@@ -576,15 +617,15 @@ function AdminExcelImportSection({
         <div className="admin-import-panel">
           <div className="admin-import-panel__header">
             <div>
-              <h3>Batch de staging</h3>
-              <p className="admin-muted">Batch ID: <strong>{batchId}</strong></p>
+              <h3>Lote de staging</h3>
+              <p className="admin-muted">Batch ID: <strong>{batchId}</strong> <button className="admin-link-button" type="button" onClick={() => batchId && void navigator.clipboard?.writeText(batchId)}>Copiar Batch ID</button></p>
             </div>
             <div className="admin-import-controls__actions">
               <button className="admin-button admin-button--secondary" type="button" onClick={() => void handleRefreshBatchReview()} disabled={isBusy}>
                 {loadingAction === 'summary' ? 'Consultando…' : 'Consultar resumen/filas'}
               </button>
-              <button className="admin-button admin-button--primary" type="button" onClick={() => void handleApplyBatch()} disabled={!batchId || isBusy}>
-                {loadingAction === 'apply' ? 'Aplicando…' : 'Aplicar batch'}
+              <button className="admin-button admin-button--primary" type="button" onClick={() => void handleApplyBatch()} disabled={!canApplyBatch || isBusy}>
+                {loadingAction === 'apply' ? 'Aplicando…' : applyResult ? 'Lote ya aplicado' : 'Aplicar lote revisado'}
               </button>
             </div>
           </div>
@@ -592,14 +633,21 @@ function AdminExcelImportSection({
           {batchSummary ? (
             <div className="admin-summary-grid admin-summary-grid--compact">
               <article className="admin-summary-card"><span>Staging</span><strong>{batchSummary.staging_total_rows}</strong><small>Filas cargadas</small></article>
-              <article className="admin-summary-card"><span>Aplicables</span><strong>{batchSummary.applicable_rows}</strong><small>Sin bloqueos</small></article>
+              <article className="admin-summary-card"><span>Se aplicarán</span><strong>{batchSummary.applicable_rows}</strong><small>Sin bloqueos</small></article>
               <article className="admin-summary-card"><span>Errores</span><strong>{batchSummary.error_rows}</strong><small>Omitidas al aplicar</small></article>
               <article className="admin-summary-card"><span>Pendientes</span><strong>{batchSummary.pending_rows}</strong><small>Revisión manual</small></article>
             </div>
           ) : null}
 
+          <p className="admin-alert admin-alert--warning">Aplicar este batch actualizará los estados GFT/editoriales en la tabla de trabajo, pero no publicará automáticamente todo.</p>
+          {batchSummary ? <p className="admin-muted">Resumen del lote: se aplicarán {batchSummary.applicable_rows}, pendientes {batchSummary.pending_rows}, con errores {batchSummary.error_rows}.</p> : null}
           {applyResult ? (
-            <p className="admin-alert admin-alert--success">Aplicación completada: {applyResult.applied_rows} aplicadas, {applyResult.skipped_errors} con errores omitidas, {applyResult.skipped_pending} pendientes omitidas.</p>
+            <div className="admin-import-apply-result">
+              <p className="admin-alert admin-alert--success">Aplicación completada correctamente.</p>
+              <ul>
+                <li>applied_rows: {applyResult.applied_rows}</li><li>skipped_pending: {applyResult.skipped_pending}</li><li>skipped_errors: {applyResult.skipped_errors}</li><li>skipped_missing_cn: {applyResult.skipped_missing_cn}</li><li>skipped_missing_estado_editorial: {applyResult.skipped_missing_estado_editorial}</li><li>total_rows: {applyResult.total_rows}</li>
+              </ul>
+            </div>
           ) : null}
 
           {batchSummary?.error_items.length ? (
@@ -613,6 +661,7 @@ function AdminExcelImportSection({
             </div>
           ) : null}
 
+          <p className="admin-muted">Mostrando primeras 25 filas del batch.</p>
           <div className="admin-table-card admin-import-table-card">
             <table className="admin-table admin-import-table">
               <thead>
@@ -628,13 +677,13 @@ function AdminExcelImportSection({
               </thead>
               <tbody>
                 {batchRows.map((row) => (
-                  <tr key={row.id}>
+                  <tr key={row.id} className={row.validation_errors.length > 0 ? "admin-import-row--error" : undefined}>
                     <td>{row.row_number}</td>
                     <td>{row.cn_normalized ?? row.cn_raw ?? '—'}</td>
                     <td><StatusBadge value={row.estado_gft} tone={row.estado_gft === 'incluido' ? 'green' : row.estado_gft === 'pendiente_revision' ? 'amber' : 'neutral'} /></td>
                     <td>{row.estado_editorial ? <StatusBadge value={row.estado_editorial} tone={row.estado_editorial === 'publicado' ? 'blue' : 'amber'} /> : '—'}</td>
                     <td>{row.nemonico_raw ?? '—'}</td>
-                    <td>{formatIssueList(row.validation_errors)}</td>
+                    <td>{row.validation_errors.length > 0 ? formatIssueList(row.validation_errors) : <span className="admin-muted">Sin errores de validación</span>}</td>
                     <td>{formatIssueList(row.validation_warnings)}</td>
                   </tr>
                 ))}
