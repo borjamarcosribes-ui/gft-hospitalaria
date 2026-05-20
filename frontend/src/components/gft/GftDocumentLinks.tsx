@@ -30,12 +30,12 @@ export function GftDocumentLinks({
     <div className="gft-documents" aria-label="Documentación del medicamento">
       {fichaTecnicaUrl ? (
         <a className="gft-document-link" href={fichaTecnicaUrl} target="_blank" rel="noreferrer">
-          Ficha técnica{fichaDate ? <span>{fichaDate}</span> : null}
+          Ficha técnica AEMPS{fichaDate ? <span>{fichaDate}</span> : null}
         </a>
       ) : null}
       {prospectoUrl ? (
         <a className="gft-document-link" href={prospectoUrl} target="_blank" rel="noreferrer">
-          Prospecto{prospectoDate ? <span>{prospectoDate}</span> : null}
+          Prospecto AEMPS{prospectoDate ? <span>{prospectoDate}</span> : null}
         </a>
       ) : null}
     </div>

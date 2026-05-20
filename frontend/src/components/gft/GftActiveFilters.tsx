@@ -3,6 +3,9 @@ interface GftActiveFiltersProps {
   letra: string;
   principioActivoLabel: string;
   atcLabel: string;
+  total: number;
+  showingFrom: number;
+  showingTo: number;
   onClearQ: () => void;
   onClearLetra: () => void;
   onClearPrincipioActivo: () => void;
@@ -27,6 +30,9 @@ export function GftActiveFilters({
   onClearPrincipioActivo,
   onClearAtc,
   onClearAll,
+  total,
+  showingFrom,
+  showingTo,
 }: GftActiveFiltersProps) {
   const chips: FilterChip[] = [
     q ? { key: 'q', label: 'Búsqueda', value: q, onClear: onClearQ } : null,
@@ -37,14 +43,14 @@ export function GftActiveFilters({
     atcLabel ? { key: 'atc', label: 'ATC', value: atcLabel, onClear: onClearAtc } : null,
   ].filter((chip): chip is FilterChip => chip !== null);
 
-  if (chips.length === 0) {
-    return null;
-  }
 
   return (
     <section className="gft-active-filters" aria-label="Filtros activos">
+      <div className="gft-active-filters__summary">
+        <p>Se muestran {showingFrom}-{showingTo} de {total} medicamentos encontrados.</p>
+      </div>
       <div className="gft-active-filters__chips">
-        {chips.map((chip) => (
+        {chips.length > 0 ? chips.map((chip) => (
           <span className="gft-filter-chip" key={chip.key}>
             <span>
               {chip.label}: <strong>{chip.value}</strong>
@@ -53,7 +59,7 @@ export function GftActiveFilters({
               ×
             </button>
           </span>
-        ))}
+        )) : <p className="gft-active-filters__none">Sin filtros activos.</p>}
       </div>
       <button className="gft-button gft-button--secondary" type="button" onClick={onClearAll}>
         Limpiar todos

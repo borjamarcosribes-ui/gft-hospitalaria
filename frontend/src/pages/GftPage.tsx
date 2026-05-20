@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { getPaginationRange } from '../utils/pagination';
 import { GftActiveFilters } from '../components/gft/GftActiveFilters';
 import { GftAtcFilter } from '../components/gft/GftAtcFilter';
 import { GftAtcIndex } from '../components/gft/GftAtcIndex';
@@ -128,6 +129,8 @@ export function GftPage() {
   const principioActivoLabel = useMemo(() => {
     return principiosActivosData?.items.find((item) => item.slug === principioActivo)?.nombre ?? '';
   }, [principiosActivosData, principioActivo]);
+
+  const paginationRange = useMemo(() => getPaginationRange(data?.total ?? 0, data?.limit ?? PAGE_SIZE, data?.offset ?? 0), [data]);
 
   const atcLabel = useMemo(() => {
     const selectedAtc = atcData?.items.find((item) => item.codigo === atc);
@@ -284,6 +287,9 @@ export function GftPage() {
           onClearPrincipioActivo={() => handlePrincipioActivoChange('')}
           onClearAtc={() => handleAtcChange('')}
           onClearAll={handleClearAllFilters}
+          total={data?.total ?? 0}
+          showingFrom={paginationRange.from}
+          showingTo={paginationRange.to}
         />
 
         <GftMedicationList

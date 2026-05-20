@@ -40,7 +40,12 @@ export function GftMedicationList({
   }
 
   if (!data || data.items.length === 0) {
-    return <section className="gft-state">Sin resultados para la búsqueda actual.</section>;
+    return (
+      <section className="gft-state">
+        <strong>No hay medicamentos que coincidan con los filtros actuales.</strong>
+        <p>Prueba a limpiar filtros o revisa la búsqueda por CN, nombre comercial o principio activo.</p>
+      </section>
+    );
   }
 
   return (
