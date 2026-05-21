@@ -98,3 +98,37 @@ Interpretación rápida:
 - Si `sin_nombre` es alto, revisar fallback Excel/CIMA.
 - Si `sin_atc` es alto, revisar mapeo ATC.
 - Si `sin_indicaciones_ficha_tecnica` es alto, revisar sync ficha técnica 4.1.
+
+## 10) Readiness check integral de demo
+
+Usar este check cuando quieras validar en un único paso si la demo GFT está lista para enseñar sin ejecutar acciones destructivas (solo llamadas GET).
+Nota: si quieres que cualquier campo de calidad faltante (además de `sin_nombre`) eleve el resultado a `WARNING`, usa `--strict-quality`.
+
+Comando local básico:
+
+```bash
+PYTHONPATH=. python scripts/gft_demo_readiness_check.py
+```
+
+Comando recomendado para nuestra demo:
+
+```bash
+PYTHONPATH=. python scripts/gft_demo_readiness_check.py \
+  --backend-url http://localhost:8000 \
+  --frontend-url http://localhost:5173 \
+  --admin-api-key demo-local-admin-key \
+  --expected-public-total 1780 \
+  --expected-no-missing-name
+```
+
+Comando con PDF cuando esté mergeado:
+
+```bash
+PYTHONPATH=. python scripts/gft_demo_readiness_check.py \
+  --backend-url http://localhost:8000 \
+  --frontend-url http://localhost:5173 \
+  --admin-api-key demo-local-admin-key \
+  --expected-public-total 1780 \
+  --expected-no-missing-name \
+  --check-pdf
+```
