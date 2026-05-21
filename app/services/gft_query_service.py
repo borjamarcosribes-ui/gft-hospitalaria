@@ -43,6 +43,13 @@ def _parse_vias(vias_json) -> list[str]:
     return out
 
 
+def _non_empty(value) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _parse_atc(atc_json) -> list[dict]:
     parsed = _parse_json_value(atc_json)
     if not isinstance(parsed, list):
@@ -200,16 +207,34 @@ def _build_financiacion_detalle(row) -> dict | None:
 
 
 def _row_to_list_item(row, principios: list[dict]) -> dict:
+    atc = _parse_atc(row["atc_json"])
+    imported_atc = _non_empty(_row_get(row, "codigo_atc_importado"))
+    if not atc and imported_atc:
+        atc_code = imported_atc.upper()
+        atc = [{"codigo": atc_code, "nombre": _non_empty(_row_get(row, "descripcion_atc_importada")), "nivel": _infer_atc_level(atc_code)}]
+
+    vias = _parse_vias(row["vias_administracion_json"])
+    if not vias:
+        imported_via = _non_empty(_row_get(row, "via_administracion_importada"))
+        if imported_via:
+            vias = [imported_via]
+
+    if not principios:
+        imported_principio = _non_empty(_row_get(row, "principio_activo_importado"))
+        if imported_principio:
+            principios = [{"id": None, "slug": imported_principio.lower().replace(" ", "-"), "nombre": imported_principio}]
+
     return {
         "cn": row["cn"],
-        "nombre": row["nombre"],
-        "presentacion": row["presentacion"],
-        "forma_farmaceutica": row["forma_farmaceutica"],
-        "forma_farmaceutica_simplificada": _row_get(row, "forma_farmaceutica_simplificada"),
-        "vias_administracion": _parse_vias(row["vias_administracion_json"]),
-        "atc": _parse_atc(row["atc_json"]),
+        "nombre": _non_empty(row["nombre"]) or _non_empty(_row_get(row, "nombre_comercial_importado")),
+        "presentacion": _non_empty(row["presentacion"]) or _non_empty(_row_get(row, "presentacion_importada")),
+        "forma_farmaceutica": _non_empty(row["forma_farmaceutica"]) or _non_empty(_row_get(row, "forma_farmaceutica_importada")),
+        "forma_farmaceutica_simplificada": _row_get(row, "forma_farmaceutica_simplificada") or _row_get(row, "forma_farmaceutica_importada"),
+        "vias_administracion": vias,
+        "atc": atc,
         "principios_activos": principios,
-        "nemonico": row["nemonico"],
+        "principio_activo_importado": _non_empty(_row_get(row, "principio_activo_importado")),
+        "nemonico": _non_empty(row["nemonico"]) or _non_empty(_row_get(row, "nombre_comercial_importado")),
         "restricciones_hospitalarias": row["restricciones_hospitalarias"],
         "ajuste_insuficiencia_renal": _row_get(row, "ajuste_insuficiencia_renal"),
         "ajuste_insuficiencia_hepatica": _row_get(row, "ajuste_insuficiencia_hepatica"),
@@ -284,6 +309,7 @@ def list_medicamentos(
                 item.get("forma_farmaceutica"),
                 item.get("nemonico"),
                 item.get("restricciones_hospitalarias"),
+                _non_empty(_row_get(item, "principio_activo_importado")),
                 *[p.get("nombre") for p in principles if isinstance(p, Mapping)],
             ]
             haystack = " ".join(str(value).lower() for value in fields if value)
