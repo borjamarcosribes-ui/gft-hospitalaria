@@ -885,28 +885,58 @@
 .gft-atc-index__title {
   color: #17324d;
   font-size: 1.08rem;
-  line-height: 1.25;
 }
 
 .gft-atc-index__subtitle {
   margin-top: 0.25rem;
   color: #52616f;
   font-size: 0.92rem;
-  line-height: 1.45;
 }
 
-.gft-atc-index__groups {
+.gft-atc-index__actions {
   display: grid;
-  gap: 0.75rem;
 }
 
-.gft-atc-index__section {
+.gft-atc-index__tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: grid;
-  gap: 0.5rem;
+  gap: 0.45rem;
+}
+
+.gft-atc-index__children {
+  margin-left: 1.1rem;
+  border-left: 1px solid #d9e2ec;
+  padding-left: 0.7rem;
+}
+
+.gft-atc-index__node,
+.gft-atc-index__row {
   min-width: 0;
 }
 
-.gft-atc-index__section-title,
+.gft-atc-index__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.45rem;
+}
+
+.gft-atc-index__toggle,
+.gft-atc-index__toggle-placeholder {
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 10px;
+}
+
+.gft-atc-index__toggle {
+  border: 1px solid #c9dde9;
+  background: #eef6fb;
+  color: #1f5f8b;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .gft-atc-index__button {
   display: flex;
   align-items: center;
@@ -917,64 +947,47 @@
   border-radius: 12px;
   background: #ffffff;
   color: #17324d;
-  padding: 0.65rem 0.75rem;
+  padding: 0.6rem 0.75rem;
   text-align: left;
   cursor: pointer;
-  transition:
-    border-color 150ms ease,
-    background-color 150ms ease,
-    color 150ms ease,
-    box-shadow 150ms ease;
 }
 
-.gft-atc-index__section-title:hover,
-.gft-atc-index__button:hover {
-  border-color: #8db7d2;
-  background: #eef6fb;
-}
+.gft-atc-index__button:hover { border-color: #8db7d2; background: #eef6fb; }
 
-.gft-atc-index__section-title span:first-child,
-.gft-atc-index__button span:first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.gft-atc-index__section-title {
-  border-color: #c9dde9;
-  background: #eef6fb;
-  color: #1f5f8b;
-  font-weight: 800;
-}
-
-.gft-atc-index__section-title--parent-active {
+.gft-atc-index__button--parent-active {
   border-color: #2f7d6b;
-  box-shadow: inset 4px 0 0 #2f7d6b;
+  box-shadow: inset 3px 0 0 #2f7d6b;
 }
 
-.gft-atc-index__section-title--active,
 .gft-atc-index__button--active,
-.gft-atc-index__button--active:hover,
-.gft-atc-index__section-title--active:hover {
+.gft-atc-index__button--active:hover {
   border-color: #2f7d6b;
   background: #2f7d6b;
   color: #ffffff;
 }
 
-.gft-atc-index__button--all {
+.gft-atc-index__button--all { font-weight: 700; }
+
+.gft-atc-index__label-wrap {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+}
+
+.gft-atc-index__level {
+  flex: 0 0 auto;
+  font-size: 0.76rem;
   font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #52616f;
 }
 
-.gft-atc-index__subgroups {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: 0.45rem;
-  padding-left: 0.75rem;
-}
-
-.gft-atc-index__button {
-  min-height: 2.55rem;
-  font-size: 0.92rem;
+.gft-atc-index__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .gft-atc-index__count {
@@ -989,33 +1002,20 @@
   text-align: center;
 }
 
-.gft-atc-index__button--active .gft-atc-index__count,
-.gft-atc-index__section-title--active .gft-atc-index__count {
-  background: rgba(255, 255, 255, 0.22);
-  color: #ffffff;
-}
+.gft-atc-index__button--active .gft-atc-index__count { background: rgba(255, 255, 255, 0.22); color: #ffffff; }
+
+.gft-atc-index__button--active .gft-atc-index__level { color: rgba(255, 255, 255, 0.9); }
 
 .gft-atc-index__empty {
   margin: 0;
   color: #52616f;
-  line-height: 1.5;
 }
 
 @media (max-width: 760px) {
-  .gft-atc-index {
-    padding: 0.85rem;
-  }
-
-  .gft-atc-index__header {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 0.65rem;
-  }
-
-  .gft-atc-index__subgroups {
-    grid-template-columns: 1fr;
-    padding-left: 0;
-  }
+  .gft-atc-index { padding: 0.85rem; }
+  .gft-atc-index__header { flex-direction: column; }
+  .gft-atc-index__children { margin-left: 0.7rem; padding-left: 0.55rem; }
+  .gft-atc-index__label-wrap { display: grid; gap: 0.2rem; }
 }
 
 .gft-card__subtitle {
