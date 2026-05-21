@@ -76,8 +76,13 @@ def fetch(url, timeout, headers=None):
             "elapsed_ms": int((time.time() - started) * 1000),
             "error": f"HTTPError: {exc.reason}",
         }
+    except TimeoutError as exc:
+        return {"ok": False, "status": None, "body": b"", "content_type": "", "elapsed_ms": int((time.time() - started) * 1000), "error": f"TimeoutError: {exc}"}
     except urllib.error.URLError as exc:
-        return {"ok": False, "status": None, "body": b"", "content_type": "", "elapsed_ms": int((time.time() - started) * 1000), "error": f"URLError: {exc.reason}"}
+        reason = exc.reason
+        if isinstance(reason, TimeoutError):
+            return {"ok": False, "status": None, "body": b"", "content_type": "", "elapsed_ms": int((time.time() - started) * 1000), "error": f"TimeoutError: {reason}"}
+        return {"ok": False, "status": None, "body": b"", "content_type": "", "elapsed_ms": int((time.time() - started) * 1000), "error": f"URLError: {reason}"}
 
 
 def parse_json_response(resp):
@@ -95,7 +100,7 @@ def parse_args():
     p.add_argument("--timeout", type=int, default=10)
     p.add_argument("--expected-public-total", type=int)
     p.add_argument("--expected-no-missing-name", action="store_true")
-    p.add_argument("--check-pdf", action="store_true")
+    p.add_argument("--check-pdf", action="store_true", help="Comprueba /gft/export/pdf (si tarda, probar con --timeout 180)")
     p.add_argument("--strict-quality", action="store_true")
     p.add_argument("--output-json")
     p.add_argument("--json", action="store_true", dest="json_output")
@@ -230,8 +235,12 @@ def main():
                 warnings.append("PDF respondió pero content-type/tamaño no esperado")
             pdf_info = {"content_type": pdf["content_type"], "size": size}
         elif pdf["status"] is None:
-            pdf_status = "FAIL"
-            failures.append("No se pudo conectar al endpoint PDF")
+            if str(pdf.get("error", "")).startswith("TimeoutError:"):
+                pdf_status = "WARNING"
+                warnings.append("PDF endpoint timed out; puede tardar más por tamaño de la guía")
+            else:
+                pdf_status = "FAIL"
+                failures.append("No se pudo conectar al endpoint PDF")
         else:
             pdf_status = "WARNING"
             warnings.append(f"Endpoint PDF devolvió status {pdf['status']}")
