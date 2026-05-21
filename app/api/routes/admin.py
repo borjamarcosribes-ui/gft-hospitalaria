@@ -259,10 +259,13 @@ def _codigo_atc_from_cima(cima: CimaMedicamentoCache | None) -> str | None:
 def _principio_activo_from_sources(
     cima: CimaMedicamentoCache | None,
     principio_names: list[str],
+    principio_importado: str | None = None,
 ) -> str | None:
     from_relation = _join_non_empty(principio_names)
     if from_relation is not None:
         return from_relation
+    if _first_non_empty([principio_importado]) is not None:
+        return _first_non_empty([principio_importado])
     if cima is None:
         return None
     return _join_non_empty(
@@ -282,11 +285,11 @@ def _build_admin_editorial_payload(
         "estado_gft": gft.estado_gft,
         "estado_editorial": gft.estado_editorial,
         "nemonico": gft.nemonico,
-        "nombre_comercial": cima.nombre if cima is not None else None,
-        "principio_activo": _principio_activo_from_sources(cima, principio_names),
-        "forma_farmaceutica": cima.forma_farmaceutica if cima is not None else None,
-        "via_administracion": _via_administracion_from_cima(cima),
-        "codigo_atc": _codigo_atc_from_cima(cima),
+        "nombre_comercial": _first_non_empty([cima.nombre if cima is not None else None, gft.nombre_comercial_importado]),
+        "principio_activo": _principio_activo_from_sources(cima, principio_names, gft.principio_activo_importado),
+        "forma_farmaceutica": _first_non_empty([cima.forma_farmaceutica if cima is not None else None, gft.forma_farmaceutica_importada]),
+        "via_administracion": _first_non_empty([_via_administracion_from_cima(cima), gft.via_administracion_importada]),
+        "codigo_atc": _first_non_empty([_codigo_atc_from_cima(cima), gft.codigo_atc_importado]),
         "restricciones_hospitalarias": gft.restricciones_hospitalarias,
         "ajuste_insuficiencia_renal": gft.ajuste_insuficiencia_renal,
         "ajuste_insuficiencia_hepatica": gft.ajuste_insuficiencia_hepatica,
@@ -616,6 +619,13 @@ def list_gft_medicamentos_editorial(
                     GFTEstadoPresentacion.ajuste_insuficiencia_hepatica.ilike(pattern),
                     GFTEstadoPresentacion.precauciones_embarazo.ilike(pattern),
                     GFTEstadoPresentacion.precauciones_lactancia.ilike(pattern),
+                    GFTEstadoPresentacion.nombre_comercial_importado.ilike(pattern),
+                    GFTEstadoPresentacion.principio_activo_importado.ilike(pattern),
+                    GFTEstadoPresentacion.presentacion_importada.ilike(pattern),
+                    GFTEstadoPresentacion.forma_farmaceutica_importada.ilike(pattern),
+                    GFTEstadoPresentacion.via_administracion_importada.ilike(pattern),
+                    GFTEstadoPresentacion.codigo_atc_importado.ilike(pattern),
+                    GFTEstadoPresentacion.descripcion_atc_importada.ilike(pattern),
                     CimaMedicamentoCache.nombre.ilike(pattern),
                     CimaMedicamentoCache.forma_farmaceutica.ilike(pattern),
                     CimaMedicamentoCache.presentacion.ilike(pattern),

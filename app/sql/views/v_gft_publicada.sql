@@ -2,6 +2,13 @@ CREATE VIEW v_gft_publicada AS
 SELECT
   g.cn,
   g.nemonico,
+  g.nombre_comercial_importado,
+  g.principio_activo_importado,
+  g.presentacion_importada,
+  g.forma_farmaceutica_importada,
+  g.via_administracion_importada,
+  g.codigo_atc_importado,
+  g.descripcion_atc_importada,
   c.nombre,
   c.presentacion,
   c.forma_farmaceutica,
