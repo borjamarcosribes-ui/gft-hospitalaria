@@ -102,6 +102,7 @@ Interpretación rápida:
 ## 10) Readiness check integral de demo
 
 Usar este check cuando quieras validar en un único paso si la demo GFT está lista para enseñar sin ejecutar acciones destructivas (solo llamadas GET).
+Nota: si quieres que cualquier campo de calidad faltante (además de `sin_nombre`) eleve el resultado a `WARNING`, usa `--strict-quality`.
 
 Comando local básico:
 

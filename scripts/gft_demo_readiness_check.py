@@ -96,6 +96,7 @@ def parse_args():
     p.add_argument("--expected-public-total", type=int)
     p.add_argument("--expected-no-missing-name", action="store_true")
     p.add_argument("--check-pdf", action="store_true")
+    p.add_argument("--strict-quality", action="store_true")
     p.add_argument("--output-json")
     p.add_argument("--json", action="store_true", dest="json_output")
     return p.parse_args()
@@ -204,8 +205,13 @@ def main():
         warnings.append(quality_error)
     if args.expected_no_missing_name and quality.get("sin_nombre", 0) > 0:
         warnings.append(f"sin_nombre > 0 ({quality['sin_nombre']})")
-    if any(quality[k] > 0 for k in quality):
-        warnings.append("Calidad pública incompleta (hay campos faltantes)")
+    quality_observations = []
+    for key, value in quality.items():
+        if key != "sin_nombre" and value > 0:
+            quality_observations.append(f"{key}={value}")
+
+    if args.strict_quality and any(quality[k] > 0 for k in quality):
+        warnings.append("Calidad pública incompleta (modo estricto)")
 
     pdf_status = "No comprobado"
     pdf_info = {}
@@ -255,6 +261,7 @@ def main():
         "searches": search_results,
         "atc": {"status": "OK" if atc_ok else "FAIL", "nodes": atc_nodes},
         "pdf": {"status": pdf_status, **pdf_info},
+        "quality_observations": quality_observations,
         "warnings": warnings,
         "failures": failures,
         "final_status": final_status,
@@ -293,6 +300,12 @@ def main():
         print(f"- {'OK' if atc_ok else 'FAIL'}")
         print("\nPDF:")
         print(f"- {pdf_status}")
+        print("\nObservaciones de calidad:")
+        if quality_observations:
+            for obs in quality_observations:
+                print(f"- {obs}")
+        else:
+            print("- Ninguna")
         if warnings:
             print("\nWarnings:")
             for warn in warnings:
