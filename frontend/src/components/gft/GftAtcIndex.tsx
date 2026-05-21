@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { GFTAtcIndexItem } from '../../types/gft';
 
 interface GftAtcIndexProps {
@@ -7,231 +7,237 @@ interface GftAtcIndexProps {
   onSelectAtc: (value: string) => void;
 }
 
-interface NormalizedAtcItem {
+interface AtcNode {
   code: string;
   name: string | null;
-  level: string;
+  level: number;
   count: number;
+  children: AtcNode[];
 }
 
-interface AtcSection {
-  code: string;
-  name: string | null;
-  count: number;
-  children: AtcSubgroup[];
-}
-
-interface AtcSubgroup {
-  code: string;
-  name: string | null;
-  count: number;
-}
+const LEVEL_LABEL: Record<number, string> = {
+  1: 'L1',
+  2: 'L2',
+  3: 'L3',
+  4: 'L4',
+  5: 'L5',
+};
 
 function normalizeCode(code: string): string {
   return code.trim().toUpperCase();
 }
 
-function normalizeLevel(level: string): string {
-  return level.trim().toUpperCase();
-}
+function parseLevel(level: string | null, code: string): number {
+  const raw = (level ?? '').trim().toUpperCase();
+  const direct = Number(raw.replace(/^ATC|^L/, ''));
 
-function isLevel(item: NormalizedAtcItem, level: number): boolean {
-  const normalizedLevel = normalizeLevel(item.level);
-  return normalizedLevel === String(level) || normalizedLevel === `L${level}` || normalizedLevel === `ATC${level}`;
-}
-
-function getSectionCode(item: NormalizedAtcItem, hasExplicitLevel1: boolean): string {
-  if (hasExplicitLevel1 && isLevel(item, 1)) {
-    return item.code;
+  if (Number.isInteger(direct) && direct >= 1 && direct <= 5) {
+    return direct;
   }
 
-  return item.code.slice(0, 1);
+  if (code.length === 1) return 1;
+  if (code.length === 3) return 2;
+  if (code.length === 4) return 3;
+  if (code.length === 5) return 4;
+  return 5;
 }
 
-function getSubgroupCode(item: NormalizedAtcItem, hasExplicitLevel2: boolean): string {
-  if (hasExplicitLevel2 && isLevel(item, 2)) {
-    return item.code;
-  }
-
-  return item.code.slice(0, 3);
+function prefixForLevel(code: string, level: number): string {
+  if (level <= 1) return code.slice(0, 1);
+  if (level === 2) return code.slice(0, 3);
+  if (level === 3) return code.slice(0, 4);
+  if (level === 4) return code.slice(0, 5);
+  return code;
 }
 
-function mergeName(currentName: string | null, nextName: string | null): string | null {
-  return currentName ?? nextName;
-}
+function buildTree(items: GFTAtcIndexItem[]): AtcNode[] {
+  const normalized = items
+    .map((item) => {
+      const code = normalizeCode(item.codigo);
+      const level = parseLevel(item.nivel ?? null, code);
+      return {
+        code,
+        name: item.nombre,
+        level,
+        count: item.count,
+      };
+    })
+    .filter((item) => item.code.length > 0);
 
-function mergeCount(currentCount: number, nextCount: number): number {
-  return Math.max(currentCount, nextCount);
-}
+  const byCode = new Map<string, AtcNode>();
 
-function toNormalizedItems(items: GFTAtcIndexItem[]): NormalizedAtcItem[] {
-  return items
-    .map((item) => ({
-      code: normalizeCode(item.codigo),
-      name: item.nombre,
-      level: item.nivel,
-      count: item.count,
-    }))
-    .filter((item) => item.code);
-}
-
-function deriveSections(items: GFTAtcIndexItem[]): AtcSection[] {
-  const normalizedItems = toNormalizedItems(items);
-  const itemByCode = new Map(normalizedItems.map((item) => [item.code, item]));
-  const hasExplicitLevel1 = normalizedItems.some((item) => isLevel(item, 1));
-  const hasExplicitLevel2 = normalizedItems.some((item) => isLevel(item, 2));
-  const sections = new Map<string, AtcSection>();
-
-  normalizedItems.forEach((item) => {
-    const sectionCode = getSectionCode(item, hasExplicitLevel1);
-
-    if (!sectionCode) {
+  normalized.forEach((item) => {
+    const existing = byCode.get(item.code);
+    if (existing) {
+      existing.name = existing.name ?? item.name;
+      existing.level = Math.min(existing.level, item.level);
+      existing.count = Math.max(existing.count, item.count);
       return;
     }
 
-    const exactSectionItem = itemByCode.get(sectionCode);
-    const section = sections.get(sectionCode) ?? {
-      code: sectionCode,
-      name: exactSectionItem?.name ?? null,
-      count: exactSectionItem?.count ?? 0,
+    byCode.set(item.code, {
+      code: item.code,
+      name: item.name,
+      level: item.level,
+      count: item.count,
       children: [],
-    };
-
-    section.name = mergeName(section.name, exactSectionItem?.name ?? null);
-    section.count = exactSectionItem ? mergeCount(section.count, exactSectionItem.count) : section.count;
-
-    if (item.code !== sectionCode) {
-      section.count = mergeCount(section.count, item.count);
-    }
-
-    sections.set(sectionCode, section);
+    });
   });
 
-  sections.forEach((section) => {
-    const subgroups = new Map<string, AtcSubgroup>();
+  const roots: AtcNode[] = [];
 
-    normalizedItems
-      .filter((item) => item.code.startsWith(section.code) && item.code !== section.code)
-      .forEach((item) => {
-        const subgroupCode = getSubgroupCode(item, hasExplicitLevel2);
+  Array.from(byCode.values())
+    .sort((a, b) => a.code.localeCompare(b.code, 'es'))
+    .forEach((node) => {
+      if (node.level <= 1) {
+        roots.push(node);
+        return;
+      }
 
-        if (!subgroupCode || subgroupCode === section.code) {
-          return;
+      let parent: AtcNode | undefined;
+      for (let level = node.level - 1; level >= 1; level -= 1) {
+        const parentCode = prefixForLevel(node.code, level);
+        const maybeParent = byCode.get(parentCode);
+        if (maybeParent && maybeParent.code !== node.code) {
+          parent = maybeParent;
+          break;
         }
+      }
 
-        const exactSubgroupItem = itemByCode.get(subgroupCode);
-        const subgroup = subgroups.get(subgroupCode) ?? {
-          code: subgroupCode,
-          name: exactSubgroupItem?.name ?? null,
-          count: exactSubgroupItem?.count ?? 0,
-        };
+      if (parent) {
+        parent.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
 
-        subgroup.name = mergeName(subgroup.name, exactSubgroupItem?.name ?? null);
-        subgroup.count = exactSubgroupItem ? mergeCount(subgroup.count, exactSubgroupItem.count) : subgroup.count;
-
-        if (item.code !== subgroupCode) {
-          subgroup.count = mergeCount(subgroup.count, item.count);
-        }
-
-        subgroups.set(subgroupCode, subgroup);
-      });
-
-    section.children = Array.from(subgroups.values()).sort((first, second) => first.code.localeCompare(second.code, 'es'));
-  });
-
-  return Array.from(sections.values()).sort((first, second) => first.code.localeCompare(second.code, 'es'));
-}
-
-function getTotalCount(items: GFTAtcIndexItem[]): number {
-  const normalizedItems = toNormalizedItems(items);
-  const level1Total = normalizedItems.filter((item) => isLevel(item, 1)).reduce((total, item) => total + item.count, 0);
-
-  if (level1Total > 0) {
-    return level1Total;
+  function sortChildren(nodes: AtcNode[]) {
+    nodes.sort((a, b) => a.code.localeCompare(b.code, 'es'));
+    nodes.forEach((node) => {
+      if (node.children.length > 0) {
+        sortChildren(node.children);
+      }
+    });
   }
 
-  return deriveSections(items).reduce((total, section) => total + section.count, 0);
+  sortChildren(roots);
+  return roots;
 }
 
-function formatLabel(code: string, name: string | null): string {
-  return name ? `${code} — ${name}` : code;
+function formatNodeLabel(node: AtcNode): string {
+  return node.name ? `${node.code} — ${node.name}` : node.code;
+}
+
+function collectDefaultExpandedCodes(nodes: AtcNode[], selectedAtc: string): Set<string> {
+  const expanded = new Set<string>();
+
+  function walk(node: AtcNode, ancestors: string[]) {
+    if (selectedAtc && selectedAtc.startsWith(node.code)) {
+      ancestors.forEach((ancestor) => expanded.add(ancestor));
+      if (node.children.length > 0) {
+        expanded.add(node.code);
+      }
+    }
+
+    node.children.forEach((child) => walk(child, [...ancestors, node.code]));
+  }
+
+  nodes.forEach((node) => walk(node, []));
+  return expanded;
 }
 
 export function GftAtcIndex({ items, selectedAtc, onSelectAtc }: GftAtcIndexProps) {
-  const sections = useMemo(() => deriveSections(items), [items]);
-  const totalMedicationCount = useMemo(() => getTotalCount(items), [items]);
+  const tree = useMemo(() => buildTree(items), [items]);
+  const totalMedicationCount = useMemo(() => tree.reduce((sum, node) => sum + node.count, 0), [tree]);
+  const defaultExpanded = useMemo(() => collectDefaultExpandedCodes(tree, selectedAtc), [tree, selectedAtc]);
+  const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set());
+
+  const mergedExpanded = useMemo(() => {
+    const merged = new Set(expandedCodes);
+    defaultExpanded.forEach((code) => merged.add(code));
+    return merged;
+  }, [expandedCodes, defaultExpanded]);
+
+  function toggleExpand(code: string) {
+    setExpandedCodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }
+
+  function renderNodes(nodes: AtcNode[]): JSX.Element {
+    return (
+      <ul className="gft-atc-index__tree" role="tree">
+        {nodes.map((node) => {
+          const isActive = selectedAtc === node.code;
+          const isAncestorOfActive = Boolean(selectedAtc) && selectedAtc !== node.code && selectedAtc.startsWith(node.code);
+          const isExpanded = mergedExpanded.has(node.code);
+          const hasChildren = node.children.length > 0;
+
+          return (
+            <li key={node.code} className="gft-atc-index__node" role="treeitem" aria-expanded={hasChildren ? isExpanded : undefined}>
+              <div className="gft-atc-index__row">
+                {hasChildren ? (
+                  <button
+                    type="button"
+                    className="gft-atc-index__toggle"
+                    aria-label={`${isExpanded ? 'Contraer' : 'Expandir'} ${node.code}`}
+                    onClick={() => toggleExpand(node.code)}
+                  >
+                    {isExpanded ? '−' : '+'}
+                  </button>
+                ) : (
+                  <span className="gft-atc-index__toggle-placeholder" aria-hidden="true" />
+                )}
+                <button
+                  type="button"
+                  className={`gft-atc-index__button${isActive ? ' gft-atc-index__button--active' : ''}${isAncestorOfActive ? ' gft-atc-index__button--parent-active' : ''}`}
+                  aria-pressed={isActive}
+                  onClick={() => onSelectAtc(node.code)}
+                >
+                  <span className="gft-atc-index__label-wrap">
+                    <span className="gft-atc-index__level">{LEVEL_LABEL[node.level] ?? `L${node.level}`}</span>
+                    <span className="gft-atc-index__label">{formatNodeLabel(node)}</span>
+                  </span>
+                  <span className="gft-atc-index__count">{node.count}</span>
+                </button>
+              </div>
+              {hasChildren && isExpanded ? <div className="gft-atc-index__children">{renderNodes(node.children)}</div> : null}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
 
   return (
     <section className="gft-atc-index" aria-labelledby="gft-atc-index-title">
       <div className="gft-atc-index__header">
         <div>
-          <h2 className="gft-atc-index__title" id="gft-atc-index-title">
-            Índice ATC
-          </h2>
-          <p className="gft-atc-index__subtitle">Navegación por grupos terapéuticos</p>
+          <h2 className="gft-atc-index__title" id="gft-atc-index-title">Índice ATC</h2>
+          <p className="gft-atc-index__subtitle">Navegación jerárquica por niveles L1-L5</p>
         </div>
-        <span className="gft-atc-index__count" aria-label={`${totalMedicationCount} medicamentos en el índice ATC`}>
-          {totalMedicationCount}
-        </span>
+        <span className="gft-atc-index__count" aria-label={`${totalMedicationCount} medicamentos en el índice ATC`}>{totalMedicationCount}</span>
       </div>
 
-      <button
-        type="button"
-        className={`gft-atc-index__button gft-atc-index__button--all${selectedAtc ? '' : ' gft-atc-index__button--active'}`}
-        aria-pressed={!selectedAtc}
-        onClick={() => onSelectAtc('')}
-      >
-        <span>Todos los grupos</span>
-        <span className="gft-atc-index__count">{totalMedicationCount}</span>
-      </button>
+      <div className="gft-atc-index__actions">
+        <button
+          type="button"
+          className={`gft-atc-index__button gft-atc-index__button--all${selectedAtc ? '' : ' gft-atc-index__button--active'}`}
+          aria-pressed={!selectedAtc}
+          onClick={() => onSelectAtc('')}
+        >
+          <span className="gft-atc-index__label-wrap">
+            <span className="gft-atc-index__level">Filtro</span>
+            <span className="gft-atc-index__label">Limpiar ATC (todos los grupos)</span>
+          </span>
+          <span className="gft-atc-index__count">{totalMedicationCount}</span>
+        </button>
+      </div>
 
-      {sections.length > 0 ? (
-        <div className="gft-atc-index__groups">
-          {sections.map((section) => {
-            const isSectionActive = selectedAtc === section.code;
-            const hasActiveChild = Boolean(selectedAtc) && selectedAtc !== section.code && selectedAtc.startsWith(section.code);
-
-            return (
-              <div className="gft-atc-index__section" key={section.code}>
-                <button
-                  type="button"
-                  className={`gft-atc-index__section-title${isSectionActive ? ' gft-atc-index__section-title--active' : ''}${
-                    hasActiveChild ? ' gft-atc-index__section-title--parent-active' : ''
-                  }`}
-                  aria-pressed={isSectionActive}
-                  onClick={() => onSelectAtc(section.code)}
-                >
-                  <span>{formatLabel(section.code, section.name)}</span>
-                  <span className="gft-atc-index__count">{section.count}</span>
-                </button>
-
-                {section.children.length > 0 ? (
-                  <div className="gft-atc-index__subgroups" aria-label={`Subgrupos de ${section.code}`}>
-                    {section.children.map((child) => {
-                      const isChildActive = selectedAtc === child.code;
-
-                      return (
-                        <button
-                          type="button"
-                          className={`gft-atc-index__button${isChildActive ? ' gft-atc-index__button--active' : ''}`}
-                          aria-pressed={isChildActive}
-                          key={child.code}
-                          onClick={() => onSelectAtc(child.code)}
-                        >
-                          <span>{formatLabel(child.code, child.name)}</span>
-                          <span className="gft-atc-index__count">{child.count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="gft-atc-index__empty">No hay grupos ATC disponibles en el índice global.</p>
-      )}
+      {tree.length > 0 ? renderNodes(tree) : <p className="gft-atc-index__empty">No hay grupos ATC disponibles en el índice global.</p>}
     </section>
   );
 }
