@@ -1,210 +1,102 @@
 from html import escape
 
-from app.services.gft_pdf_export_service import (
-    EXPORT_TITLE,
-    GFTPDFATCGroup,
-    GFTPDFExportData,
-    GFTPDFMedication,
-)
+from app.services.gft_pdf_export_service import EXPORT_TITLE, GFTPDFATCGroup, GFTPDFExportData, GFTPDFMedication
 
-
-_SUBTITLE = "Exportación completa de medicamentos publicados"
+_SUBTITLE_COMPACT = "Exportación compacta de medicamentos publicados"
+_SUBTITLE_FULL = "Exportación completa de medicamentos publicados"
 
 
 def _e(value: object) -> str:
     return escape(str(value), quote=True)
 
 
-def _export_groups(export_data: GFTPDFExportData) -> list[GFTPDFATCGroup]:
-    return getattr(export_data, "atc_groups", export_data.groups)
-
-
 def _format_generation_date(export_data: GFTPDFExportData) -> str:
     return export_data.generated_at.astimezone().strftime("%d/%m/%Y %H:%M UTC")
 
 
-def _group_label(group: GFTPDFATCGroup) -> str:
-    return f"{group.codigo} · {group.nombre}"
-
-
-def _render_index_group(group: GFTPDFATCGroup, depth: int = 0) -> list[str]:
-    css_class = "index-group index-group-child" if depth else "index-group"
-    lines = [
-        f'<li class="{css_class}">'
-        f'<span class="atc-code">{_e(group.codigo)}</span> '
-        f'<span class="atc-name">{_e(group.nombre)}</span> '
-        f'<span class="atc-level">{_e(group.nivel)}</span> '
-        f'<span class="atc-count">{_e(group.count)} medicamentos</span>'
-    ]
-    if group.children:
-        lines.append('<ul class="index-list index-list-child">')
-        for child in group.children:
-            lines.extend(_render_index_group(child, depth + 1))
-        lines.append("</ul>")
-    lines.append("</li>")
-    return lines
-
-
-def _render_medication_field(label: str, value: str) -> str:
-    return (
-        '<div class="medication-field">'
-        f'<dt>{_e(label)}</dt>'
-        f'<dd>{_e(value)}</dd>'
-        "</div>"
-    )
-
-
-def _render_medication(medication: GFTPDFMedication) -> str:
-    fields = [
-        ("Principio activo", medication.principio_activo),
-        ("Forma farmacéutica", medication.forma_farmaceutica),
-        ("Vía de administración", medication.via_administracion),
-        ("CN", medication.cn),
-        ("Código ATC", medication.codigo_atc),
-        ("Descripción ATC", medication.descripcion_atc),
-        ("Indicaciones en ficha técnica", medication.indicaciones_ficha_tecnica),
-        ("Restricciones hospitalarias", medication.restricciones_hospitalarias),
-        ("Ajuste por insuficiencia renal", medication.ajuste_insuficiencia_renal),
-        ("Ajuste por insuficiencia hepática", medication.ajuste_insuficiencia_hepatica),
-        ("Precauciones en embarazo", medication.precauciones_embarazo),
-        ("Precauciones en lactancia", medication.precauciones_lactancia),
-        ("Observaciones", medication.observaciones_publicables),
-        ("Situación de financiación BIFIMED", medication.situacion_financiacion_bifimed),
-        ("URL ficha técnica", medication.url_ficha_tecnica),
-        ("URL prospecto", medication.url_prospecto),
-    ]
-    rendered_fields = "\n".join(_render_medication_field(label, value) for label, value in fields)
-    return (
-        '<article class="medication-card">\n'
-        f'<h3>{_e(medication.nombre_comercial)}</h3>\n'
-        '<dl class="medication-grid">\n'
-        f"{rendered_fields}\n"
-        "</dl>\n"
-        "</article>"
-    )
-
-
-def _render_medication_group(group: GFTPDFATCGroup, depth: int = 0) -> list[str]:
-    heading_level = "h2" if depth == 0 else "h3"
-    section_class = "atc-section" if depth == 0 else "atc-section atc-section-child"
-    lines = [
-        f'<section class="{section_class}">',
-        f'<{heading_level}>{_e(_group_label(group))}</{heading_level}>',
-        f'<p class="group-meta">{_e(group.nivel)} · {_e(group.count)} medicamentos publicados</p>',
-    ]
-    for medication in group.medicamentos:
-        lines.append(_render_medication(medication))
-    for child in group.children:
-        lines.extend(_render_medication_group(child, depth + 1))
-    lines.append("</section>")
-    return lines
-
-
-def render_gft_pdf_html(export_data: GFTPDFExportData) -> str:
-    groups = _export_groups(export_data)
-    index_lines: list[str] = []
-    body_lines: list[str] = []
+def _iter_groups(groups: list[GFTPDFATCGroup]):
     for group in groups:
-        index_lines.extend(_render_index_group(group))
-        body_lines.extend(_render_medication_group(group))
+        yield group, 0
+        for child in group.children:
+            yield child, 1
 
-    index_html = (
-        "\n".join(index_lines) if index_lines else '<li class="empty-state">No hay grupos ATC publicados.</li>'
-    )
-    body_html = (
-        "\n".join(body_lines) if body_lines else '<p class="empty-state">No hay medicamentos publicados.</p>'
+
+def _render_compact_row(medication: GFTPDFMedication) -> str:
+    def show(value: str) -> str:
+        return _e(value) if value and value.strip() and value.strip().lower() != "no informado" else ""
+
+    return (
+        "<tr>"
+        f"<td>{show(medication.cn)}</td>"
+        f"<td>{show(medication.nombre_comercial)}</td>"
+        f"<td>{show(medication.principio_activo)}</td>"
+        f"<td>{show(medication.forma_farmaceutica)}</td>"
+        f"<td>{show(medication.via_administracion)}</td>"
+        f"<td>{show(medication.codigo_atc)}</td>"
+        f"<td>{show(medication.situacion_financiacion_bifimed)}</td>"
+        f"<td>{show(medication.url_ficha_tecnica)}</td>"
+        f"<td>{show(medication.url_prospecto)}</td>"
+        "</tr>"
     )
 
+
+def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "compact") -> str:
+    if mode not in {"compact", "full"}:
+        raise ValueError("Invalid mode. Allowed values: compact, full.")
+
+    subtitle = _SUBTITLE_COMPACT if mode == "compact" else _SUBTITLE_FULL
+    sections: list[str] = []
+    for group, depth in _iter_groups(export_data.groups):
+        heading = "h2" if depth == 0 else "h3"
+        lines = [
+            "<section>",
+            f"<{heading}>{_e(group.codigo)} · {_e(group.nombre)} ({_e(group.count)})</{heading}>",
+        ]
+        if mode == "compact":
+            lines.extend(
+                [
+                    '<table><thead><tr><th>CN</th><th>Nombre comercial</th><th>Principio activo</th>'
+                    "<th>Forma farmacéutica</th><th>Vía administración</th><th>Código ATC</th>"
+                    "<th>Financiación BIFIMED</th><th>URL ficha técnica</th><th>URL prospecto</th></tr></thead><tbody>",
+                    *[_render_compact_row(m) for m in group.medicamentos],
+                    "</tbody></table>",
+                ]
+            )
+        else:
+            for med in group.medicamentos:
+                lines.append(f"<article><h4>{_e(med.nombre_comercial)} ({_e(med.cn)})</h4>")
+                lines.append(
+                    "<p>"
+                    f"Principio activo: {_e(med.principio_activo)} · Forma: {_e(med.forma_farmaceutica)} · Vía: {_e(med.via_administracion)} · "
+                    f"ATC: {_e(med.codigo_atc)} · Financiación: {_e(med.situacion_financiacion_bifimed)}"
+                    "</p>"
+                )
+                lines.append(
+                    f"<p>Indicaciones: {_e(med.indicaciones_ficha_tecnica)} · Restricciones: {_e(med.restricciones_hospitalarias)} · "
+                    f"Renal: {_e(med.ajuste_insuficiencia_renal)} · Hepática: {_e(med.ajuste_insuficiencia_hepatica)} · "
+                    f"Embarazo: {_e(med.precauciones_embarazo)} · Lactancia: {_e(med.precauciones_lactancia)} · "
+                    f"Observaciones: {_e(med.observaciones_publicables)}</p>"
+                )
+                lines.append("</article>")
+        lines.append("</section>")
+        sections.append("\n".join(lines))
+
+    body_html = "\n".join(sections) if sections else "<p>No hay medicamentos publicados.</p>"
     return f"""<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <title>{_e(EXPORT_TITLE)}</title>
-  <style>
-    @page {{ margin: 18mm; }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0;
-      color: #243447;
-      background: #ffffff;
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 12px;
-      line-height: 1.55;
-    }}
-    h1, h2, h3 {{ color: #0f4c81; line-height: 1.25; margin: 0 0 0.5rem; }}
-    h1 {{ font-size: 30px; }}
-    h2 {{ border-bottom: 2px solid #b8d8ea; font-size: 20px; padding-bottom: 0.35rem; }}
-    h3 {{ font-size: 15px; }}
-    .cover {{
-      min-height: 45vh;
-      padding: 3rem 2rem;
-      background: #edf6fa;
-      border: 1px solid #cfe5ef;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      page-break-after: always;
-    }}
-    .subtitle {{ color: #4f6477; font-size: 16px; margin: 0 0 2rem; }}
-    .total-box {{
-      align-self: flex-start;
-      background: #ffffff;
-      border-left: 5px solid #2b7fab;
-      padding: 1rem 1.25rem;
-    }}
-    .total-number {{ display: block; color: #0f4c81; font-size: 26px; font-weight: 700; }}
-    .document-section {{ margin: 0 0 2rem; page-break-before: always; }}
-    .index-list {{ list-style: none; margin: 0; padding: 0; }}
-    .index-list-child {{ margin-top: 0.35rem; padding-left: 1rem; }}
-    .index-group {{ margin: 0 0 0.55rem; padding: 0.35rem 0; }}
-    .index-group-child {{ border-left: 3px solid #d9eaf2; padding-left: 0.75rem; }}
-    .atc-code {{ font-weight: 700; color: #0f4c81; }}
-    .atc-level, .atc-count {{ color: #5b6b7a; font-size: 11px; margin-left: 0.4rem; }}
-    .atc-section {{ margin: 0 0 1.5rem; }}
-    .atc-section-child {{ margin-left: 0.25rem; }}
-    .group-meta {{ color: #5b6b7a; margin: 0 0 0.75rem; }}
-    .medication-card {{
-      border: 1px solid #d7e3ea;
-      border-left: 5px solid #79aeca;
-      border-radius: 4px;
-      margin: 0 0 1rem;
-      padding: 0.9rem 1rem;
-      page-break-inside: avoid;
-      break-inside: avoid;
-      background: #ffffff;
-    }}
-    .medication-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem 1rem; margin: 0; }}
-    .medication-field {{ page-break-inside: avoid; }}
-    dt {{ color: #526273; font-size: 10px; font-weight: 700; text-transform: uppercase; }}
-    dd {{ margin: 0.1rem 0 0; white-space: pre-wrap; }}
-    .empty-state {{ color: #5b6b7a; font-style: italic; }}
-    @media print {{
-      body {{ font-size: 11px; }}
-      .cover {{ min-height: 60vh; }}
-    }}
-  </style>
-</head>
-<body>
-  <section class="cover">
-    <h1>{_e(export_data.title)}</h1>
-    <p class="subtitle">{_e(_SUBTITLE)}</p>
-    <div class="total-box">
-      <span>Total de medicamentos publicados</span>
-      <span class="total-number">{_e(export_data.total_medicamentos)}</span>
-    </div>
-    <p><strong>Fecha de generación:</strong> {_e(_format_generation_date(export_data))}</p>
-  </section>
-  <main>
-    <section class="document-section" aria-labelledby="indice-atc">
-      <h2 id="indice-atc">Índice ATC</h2>
-      <ul class="index-list">
-{index_html}
-      </ul>
-    </section>
-    <section class="document-section" aria-labelledby="cuerpo-medicamentos">
-      <h2 id="cuerpo-medicamentos">Cuerpo de medicamentos</h2>
+<html lang="es"><head><meta charset="utf-8"><title>{_e(EXPORT_TITLE)}</title>
+<style>
+@page {{ margin: 10mm; }}
+body {{ font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; }}
+h1,h2,h3 {{ margin: 0.25rem 0; color: #0f4c81; }}
+table {{ width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 0.5rem; }}
+th,td {{ border: 1px solid #cfd8e3; padding: 2px 3px; vertical-align: top; word-break: break-word; }}
+th {{ background: #eef3f8; font-size: 9px; }}
+p {{ margin: 0.2rem 0; }}
+section {{ margin-bottom: 0.4rem; }}
+</style></head><body>
+<h1>{_e(export_data.title)}</h1>
+<p>{_e(subtitle)}</p>
+<p><strong>Fecha de generación:</strong> {_e(_format_generation_date(export_data))}</p>
+<p><strong>Total de medicamentos publicados:</strong> {_e(export_data.total_medicamentos)}</p>
 {body_html}
-    </section>
-  </main>
-</body>
-</html>"""
+</body></html>"""
