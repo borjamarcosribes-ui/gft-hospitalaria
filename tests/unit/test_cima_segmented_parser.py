@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import pytest
 
 from app.services.cima_segmented_parser import (
     parse_section_content_json,
@@ -46,6 +47,24 @@ def test_parse_section_content_json_error_returns_none():
 
 def test_parse_section_content_json_other_requested_section_returns_none():
     assert parse_section_content_json(load_json("content_4_1.json"), requested_section="4.2") is None
+
+
+@pytest.mark.parametrize(
+    ("section", "title"),
+    [
+        ("4.2", "Posología y forma de administración"),
+        ("4.3", "Contraindicaciones"),
+        ("4.4", "Advertencias y precauciones especiales de empleo"),
+        ("4.6", "Fertilidad, embarazo y lactancia"),
+    ],
+)
+def test_parse_section_content_json_clinical_sections(section: str, title: str):
+    result = parse_section_content_json(load_json("content_clinical_sections.json"), requested_section=section)
+
+    assert result is not None
+    assert result["seccion"] == section
+    assert result["titulo"] == title
+    assert "<div><p>" in result["contenido_html"]
 
 
 def test_parse_section_text_normalizes_spaces_line_breaks_and_nbsp():
