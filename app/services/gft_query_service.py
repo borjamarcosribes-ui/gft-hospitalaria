@@ -234,7 +234,7 @@ def _row_to_list_item(row, principios: list[dict]) -> dict:
         "atc": atc,
         "principios_activos": principios,
         "principio_activo_importado": _non_empty(_row_get(row, "principio_activo_importado")),
-        "nemonico": _non_empty(row["nemonico"]) or _non_empty(_row_get(row, "nombre_comercial_importado")),
+        "nemonico": _non_empty(row["nemonico"]),
         "restricciones_hospitalarias": row["restricciones_hospitalarias"],
         "ajuste_insuficiencia_renal": _row_get(row, "ajuste_insuficiencia_renal"),
         "ajuste_insuficiencia_hepatica": _row_get(row, "ajuste_insuficiencia_hepatica"),

@@ -75,6 +75,16 @@ def apply_import_batch(db: Session, batch_id: UUID) -> dict | None:
         target.nemonico = row.nemonico_raw
         target.nombre_comercial_importado = _pick_imported(
             row.raw_payload,
+            "AEMPS nombre medicamento",
+            "Nombre medicamento AEMPS",
+            "Catálogo descripción",
+            "Catalogo descripción",
+            "Catálogo descripcion",
+            "Catalogo descripcion",
+            "Catálogo descripción larga",
+            "Catalogo descripción larga",
+            "Descripción preferente",
+            "Descripcion preferente",
             "Nombre comercial",
             "nombre comercial",
             "Nombre",
@@ -82,12 +92,22 @@ def apply_import_batch(db: Session, batch_id: UUID) -> dict | None:
         )
         target.principio_activo_importado = _pick_imported(
             row.raw_payload,
+            "Principio activo AEMPS",
+            "AEMPS principio activo",
+            "AEMPS DCSA nombre",
+            "DCSA nombre",
+            "DCP nombre",
+            "DCPF nombre",
             "Principio activo",
             "principio activo",
             "Principios activos",
         )
         target.presentacion_importada = _pick_imported(
             row.raw_payload,
+            "AEMPS presentación",
+            "AEMPS presentacion",
+            "Presentación AEMPS",
+            "Presentacion AEMPS",
             "Presentación",
             "presentación",
             "Presentacion",
@@ -95,6 +115,8 @@ def apply_import_batch(db: Session, batch_id: UUID) -> dict | None:
         )
         target.forma_farmaceutica_importada = _pick_imported(
             row.raw_payload,
+            "Forma farmacéutica simplificada",
+            "Forma farmaceutica simplificada",
             "Forma farmacéutica",
             "forma farmacéutica",
             "Forma farmaceutica",
@@ -102,6 +124,8 @@ def apply_import_batch(db: Session, batch_id: UUID) -> dict | None:
         )
         target.via_administracion_importada = _pick_imported(
             row.raw_payload,
+            "Vía de administración",
+            "Via de administracion",
             "Vía administración",
             "vía administración",
             "Via administración",
