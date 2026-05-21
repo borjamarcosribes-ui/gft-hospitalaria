@@ -73,3 +73,28 @@ PYTHONPATH=. python scripts/gft_demo_smoke_check.py \
 - Comprobar calidad sin CIMA/BIFIMED/FT 4.1.
 - Sincronizar enriquecimientos si procede.
 - Publicar solo medicamentos seleccionados.
+
+## 9) Auditoría de calidad pública visible
+
+Ejecutar este script después de publicar o actualizar una carga GFT para verificar si la calidad visible de la API pública es enseñable.
+
+Comando local:
+
+```bash
+PYTHONPATH=. python scripts/gft_public_quality_audit.py --backend-url http://localhost:8000
+```
+
+Comando con salidas a fichero:
+
+```bash
+PYTHONPATH=. python scripts/gft_public_quality_audit.py \
+  --backend-url http://localhost:8000 \
+  --output-json reports/gft_public_quality_audit.json \
+  --output-csv reports/gft_public_quality_issues.csv
+```
+
+Interpretación rápida:
+
+- Si `sin_nombre` es alto, revisar fallback Excel/CIMA.
+- Si `sin_atc` es alto, revisar mapeo ATC.
+- Si `sin_indicaciones_ficha_tecnica` es alto, revisar sync ficha técnica 4.1.
