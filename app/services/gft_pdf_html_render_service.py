@@ -19,6 +19,10 @@ def _export_groups(export_data: GFTPDFExportData) -> list[GFTPDFATCGroup]:
     return getattr(export_data, "atc_groups", export_data.groups)
 
 
+def _format_generation_date(export_data: GFTPDFExportData) -> str:
+    return export_data.generated_at.astimezone().strftime("%d/%m/%Y %H:%M UTC")
+
+
 def _group_label(group: GFTPDFATCGroup) -> str:
     return f"{group.codigo} · {group.nombre}"
 
@@ -188,6 +192,7 @@ def render_gft_pdf_html(export_data: GFTPDFExportData) -> str:
       <span>Total de medicamentos publicados</span>
       <span class="total-number">{_e(export_data.total_medicamentos)}</span>
     </div>
+    <p><strong>Fecha de generación:</strong> {_e(_format_generation_date(export_data))}</p>
   </section>
   <main>
     <section class="document-section" aria-labelledby="indice-atc">

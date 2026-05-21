@@ -89,6 +89,8 @@ def test_render_gft_pdf_html_includes_cover_index_and_medication_body():
     assert "Cuerpo de medicamentos" in html
     assert "Total de medicamentos publicados" in html
     assert '<span class="total-number">1</span>' in html
+    assert "Fecha de generación:" in html
+    assert "02/01/2026 03:04 UTC" in html
 
 
 def test_render_gft_pdf_html_renders_atc_groups_and_medications():

@@ -237,16 +237,10 @@ export function GftPage() {
       <GftInstitutionalHeader />
 
       <main className="gft-main">
-        <section className="gft-panel gft-search-panel" aria-label="Búsqueda y exportación de medicamentos">
+        <section className="gft-panel gft-search-panel" aria-label="Búsqueda de medicamentos">
           <div className="gft-search-panel__content">
             <GftSearchBar value={q} loading={loading} onSearch={handleSearch} onClear={handleClearQ} />
             <p className="gft-search-panel__hint">La búsqueda se aplica automáticamente al escribir 3 o más caracteres. También puedes pulsar Buscar.</p>
-            <aside className="gft-export" aria-label="Exportación de la GFT publicada">
-              <a className="gft-button gft-button--export" href={pdfExportUrl}>
-                Exportar PDF
-              </a>
-              <p>Descarga la guía completa publicada.</p>
-            </aside>
           </div>
         </section>
 
@@ -291,6 +285,18 @@ export function GftPage() {
           showingFrom={paginationRange.from}
           showingTo={paginationRange.to}
         />
+
+        <section className="gft-panel gft-tools-panel" aria-label="Herramientas de la guía">
+          <div className="gft-tools-panel__content">
+            <div className="gft-tools-panel__copy">
+              <h2>Herramientas de la guía</h2>
+              <p>Descarga la guía completa publicada en PDF, generada desde la misma base de datos que alimenta esta web.</p>
+            </div>
+            <a className="gft-button gft-button--export" href={pdfExportUrl}>
+              Exportar PDF
+            </a>
+          </div>
+        </section>
 
         <GftMedicationList
           data={data}

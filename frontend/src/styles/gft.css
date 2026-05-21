@@ -69,7 +69,7 @@
 
 .gft-search-panel__content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 1fr;
   gap: 1rem;
   align-items: start;
 }
@@ -78,21 +78,6 @@
   min-width: 0;
   display: grid;
   gap: 0.7rem;
-}
-
-.gft-export {
-  display: grid;
-  justify-items: end;
-  gap: 0.45rem;
-  max-width: 15rem;
-}
-
-.gft-export p {
-  margin: 0;
-  color: #52616f;
-  font-size: 0.88rem;
-  line-height: 1.4;
-  text-align: right;
 }
 
 .gft-search__label {
@@ -188,6 +173,36 @@
   border-color: #2f7d6b;
   background: #edf8f3;
   color: #17324d;
+}
+
+.gft-tools-panel {
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.gft-tools-panel__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.gft-tools-panel__copy h2,
+.gft-tools-panel__copy p {
+  margin: 0;
+}
+
+.gft-tools-panel__copy h2 {
+  color: #17324d;
+  font-size: 1rem;
+}
+
+.gft-tools-panel__copy p {
+  margin-top: 0.35rem;
+  color: #52616f;
+  font-size: 0.92rem;
+  line-height: 1.5;
 }
 
 .gft-button--secondary {
@@ -393,7 +408,6 @@
     width: min(100% - 1rem, 1120px);
   }
 
-  .gft-search-panel__content,
   .gft-card__details {
     grid-template-columns: 1fr;
   }
@@ -408,13 +422,13 @@
     width: 100%;
   }
 
-  .gft-export {
-    justify-items: stretch;
-    max-width: none;
+  .gft-tools-panel__content {
+    align-items: stretch;
+    flex-direction: column;
   }
 
-  .gft-export p {
-    text-align: left;
+  .gft-tools-panel .gft-button {
+    width: 100%;
   }
 
   .gft-results__summary,
