@@ -250,3 +250,7 @@ export interface ApplyImportBatchResponse {
   skipped_pending: number;
   skipped_missing_estado_editorial: number;
 }
+
+export interface GftClinicalPipelineResponse { audit: Record<string, unknown>; sync_plan: Record<string, unknown>; summary_plan: Record<string, unknown>; recommendation: Record<string, unknown>; safety: Record<string, unknown>; }
+
+export interface GetGftClinicalPipelineParams { limit?: number; examples?: number; only_missing?: boolean; sections?: string[]; }
