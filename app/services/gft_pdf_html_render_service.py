@@ -5,7 +5,7 @@ from app.services.gft_pdf_export_service import EXPORT_TITLE, GFTPDFATCGroup, GF
 _SUBTITLE_TABLE = "Exportación técnica tabular de medicamentos publicados"
 _SUBTITLE_NARRATIVE = "Guía narrativa de medicamentos publicados ordenada por ATC"
 _SUBTITLE_FULL = "Exportación completa de medicamentos publicados"
-_AUTO_NOT_FOUND = "No localizado automáticamente."
+_AUTO_NOT_FOUND = "No localizado automáticamente"
 
 
 def _e(value: object) -> str:
@@ -96,7 +96,11 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") 
                     "<p>"
                     f"{lead}{_e(med.nombre_comercial)} (CN {_e(med.cn)}). "
                     f"Principio activo: {_e(med.principio_activo)}. "
+                    f"Nemónico: {_e(med.nemonico)}. "
                     f"ATC: {_e(med.codigo_atc)}. "
+                    f"Forma farmacéutica: {_e(med.forma_farmaceutica)}. "
+                    f"Vía: {_e(med.via_administracion)}. "
+                    f"Financiación: {_e(med.situacion_financiacion_bifimed)}. "
                     f"Indicaciones: {_e(_truncate(indicaciones, 700))}. "
                     f"Ajuste IR: {_e(_truncate(renal, 400))}. "
                     f"Ajuste IH: {_e(_truncate(hepatica, 400))}. "

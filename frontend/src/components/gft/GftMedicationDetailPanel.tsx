@@ -98,18 +98,20 @@ function GftClinicalUseInfo({ detail }: { detail: GFTMedicamentoDetail }) {
           <p><strong>Lactancia:</strong> {formatValue(detail.resumen_clinico_auto.lactancia)}</p>
         </div>
       ) : (
-        <p>Resumen clínico no generado todavía.</p>
+        <p>Resumen clínico automático no disponible. Se muestran campos estructurados publicados.</p>
       )}
     </section>
   );
 }
 
-function GftFinanciacionDetail({ financiacion }: { financiacion: GFTFinanciacionDetalle }) {
+function GftFinanciacionDetail({ financiacion, cn }: { financiacion: GFTFinanciacionDetalle; cn: string }) {
   return (
     <section className="gft-detail__section">
-      <h3>Financiación detalle</h3>
+      <h3>Financiación</h3>
       <dl className="gft-detail__grid gft-detail__grid--compact">
-        <DetailRow label="Situación financiación" value={financiacion.situacion_financiacion} />
+                <DetailRow label="CN" value={cn} />
+        <DetailRow label="Situación BIFIMED" value={financiacion.situacion_financiacion} />
+        <DetailRow label="Última sincronización" value={formatDate(financiacion.last_synced_at ?? null)} />
         <DetailRow
           label="Condiciones restringidas"
           value={financiacion.condiciones_financiacion_restringidas}
@@ -191,25 +193,25 @@ export function GftMedicationDetailPanel({ cn, detail, loading, error, onClose }
           <section className="gft-detail__section">
             <h3>Identificación</h3>
             <dl className="gft-detail__grid">
-              <DetailRow label="Nombre" value={detail.nombre} />
+              <DetailRow label="Nombre comercial" value={detail.nombre} />
               <DetailRow label="CN" value={detail.cn} />
               <DetailRow label="Presentación" value={detail.presentacion} />
               <DetailRow label="Principios activos" value={joinPrincipios(detail.principios_activos)} />
               <DetailRow label="Forma farmacéutica" value={detail.forma_farmaceutica} />
               <DetailRow label="Forma farmacéutica simplificada" value={detail.forma_farmaceutica_simplificada} />
               <DetailRow label="Vías de administración" value={joinVias(detail.vias_administracion)} />
-              <DetailRow label="ATC" value={joinAtc(detail.atc)} />
+              <DetailRow label="Código ATC" value={joinAtc(detail.atc)} />
               <DetailRow label="Nemónico" value={detail.nemonico} />
-              <DetailRow label="Situación financiación" value={detail.situacion_financiacion} />
+              <DetailRow label="Descripción ATC" value={detail.atc[0]?.nombre} />
             </dl>
           </section>
 
           <GftClinicalUseInfo detail={detail} />
 
-          {detail.financiacion_detalle ? <GftFinanciacionDetail financiacion={detail.financiacion_detalle} /> : null}
+          <GftFinanciacionDetail financiacion={detail.financiacion_detalle ?? { situacion_financiacion: detail.situacion_financiacion, condiciones_financiacion_restringidas: null, condiciones_especiales_financiacion: null, estado_nomenclator: null, aportacion_usuario: null, subgrupo_atc: null }} cn={detail.cn} />
 
           <section className="gft-detail__section">
-            <h3>Ficha técnica y prospecto</h3>
+            <h3>Trazabilidad</h3>
             <GftDocumentLinks
               fichaTecnicaUrl={detail.url_ficha_tecnica}
               prospectoUrl={detail.url_prospecto}
