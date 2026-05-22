@@ -50,6 +50,22 @@ def _truncate(value: str, max_chars: int) -> str:
     return (cut if cut else v[: max_chars - 1].rstrip()) + "…"
 
 
+def _has_informed_value(value: object) -> bool:
+    if value is None:
+        return False
+    text = str(value).strip()
+    return bool(text) and text.lower() != "no informado"
+
+
+def _optional_sentence(label: str, value: object, *, max_chars: int | None = None) -> str:
+    if not _has_informed_value(value):
+        return ""
+    text = str(value).strip()
+    if max_chars is not None:
+        text = _truncate(text, max_chars)
+    return f"{label}: {_e(text)}. "
+
+
 def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") -> str:
     mode = "table" if mode == "compact" else mode
     if mode not in {"narrative", "table", "full"}:
@@ -83,30 +99,30 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") 
                 embarazo = summary.get("embarazo") or med.precauciones_embarazo or _AUTO_NOT_FOUND
                 lactancia = summary.get("lactancia") or med.precauciones_lactancia or _AUTO_NOT_FOUND
                 restricciones = med.restricciones_hospitalarias or "No informado"
-                lead = f"<strong>{_e(med.nemonico)}</strong> — " if med.nemonico.strip().lower() != "no informado" else ""
+                lead = f"<strong>{_e(med.nemonico)}</strong> — " if _has_informed_value(med.nemonico) else ""
                 links = []
-                if med.url_ficha_tecnica.strip().lower() != "no informado":
-                    links.append(f"Ficha técnica: {_e(med.url_ficha_tecnica)}.")
-                if med.url_prospecto.strip().lower() != "no informado":
-                    links.append(f"Prospecto: {_e(med.url_prospecto)}.")
+                if _has_informed_value(med.url_ficha_tecnica):
+                    links.append(f"Ficha técnica: {_e(str(med.url_ficha_tecnica).strip())}.")
+                if _has_informed_value(med.url_prospecto):
+                    links.append(f"Prospecto: {_e(str(med.url_prospecto).strip())}.")
                 observaciones = ""
-                if mode == "full" and med.observaciones_publicables.strip().lower() != "no informado":
-                    observaciones = f" Observaciones: {_e(_truncate(med.observaciones_publicables, 400))}."
+                if mode == "full" and _has_informed_value(med.observaciones_publicables):
+                    observaciones = f"Observaciones: {_e(_truncate(str(med.observaciones_publicables).strip(), 400))}. "
                 lines.append(
                     "<p>"
                     f"{lead}{_e(med.nombre_comercial)} (CN {_e(med.cn)}). "
                     f"Principio activo: {_e(med.principio_activo)}. "
-                    f"Nemónico: {_e(med.nemonico)}. "
-                    f"ATC: {_e(med.codigo_atc)}. "
-                    f"Forma farmacéutica: {_e(med.forma_farmaceutica)}. "
-                    f"Vía: {_e(med.via_administracion)}. "
-                    f"Financiación: {_e(med.situacion_financiacion_bifimed)}. "
-                    f"Indicaciones: {_e(_truncate(indicaciones, 700))}. "
-                    f"Ajuste IR: {_e(_truncate(renal, 400))}. "
-                    f"Ajuste IH: {_e(_truncate(hepatica, 400))}. "
-                    f"Embarazo: {_e(_truncate(embarazo, 400))}. "
-                    f"Lactancia: {_e(_truncate(lactancia, 400))}. "
-                    f"Restricciones hospitalarias: {_e(_truncate(restricciones, 400))}. "
+                    f"{_optional_sentence('Nemónico', med.nemonico)}"
+                    f"{_optional_sentence('ATC', med.codigo_atc)}"
+                    f"{_optional_sentence('Forma farmacéutica', med.forma_farmaceutica)}"
+                    f"{_optional_sentence('Vía', med.via_administracion)}"
+                    f"{_optional_sentence('Financiación', med.situacion_financiacion_bifimed)}"
+                    f"{_optional_sentence('Indicaciones', indicaciones, max_chars=700)}"
+                    f"{_optional_sentence('Ajuste IR', renal, max_chars=400)}"
+                    f"{_optional_sentence('Ajuste IH', hepatica, max_chars=400)}"
+                    f"{_optional_sentence('Embarazo', embarazo, max_chars=400)}"
+                    f"{_optional_sentence('Lactancia', lactancia, max_chars=400)}"
+                    f"{_optional_sentence('Restricciones hospitalarias', restricciones, max_chars=400)}"
                     f"{observaciones}"
                     f"{' '.join(links)}"
                     "</p>"
