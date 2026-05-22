@@ -27,14 +27,16 @@ def test_gft_export_pdf_endpoint_uses_existing_export_html_pdf_chain(client, mon
     export_data = object()
     html = "<!doctype html><html><body>same-chain</body></html>"
 
-    def fake_build(db):
+    def fake_build(db, mode="compact"):
         calls.append("build_gft_pdf_export_data")
         assert db is not None
+        assert mode == "compact"
         return export_data
 
-    def fake_render(data):
+    def fake_render(data, mode="compact"):
         calls.append("render_gft_pdf_html")
         assert data is export_data
+        assert mode == "compact"
         return html
 
     def fake_pdf_bytes(received_html):
@@ -110,7 +112,20 @@ def test_gft_export_pdf_endpoint_returns_valid_empty_pdf(client, db_session, mon
     assert response.status_code == 200
     assert response.content.startswith(b"%PDF")
     assert "No hay medicamentos publicados." in captured["html"]
-    assert '<span class="total-number">0</span>' in captured["html"]
+    assert "Total de medicamentos publicados:</strong> 0" in captured["html"]
+
+
+def test_gft_export_pdf_rejects_invalid_mode(client):
+    response = client.get("/gft/export/pdf?mode=invalid")
+    assert response.status_code == 400
+
+
+def test_gft_export_html_accepts_full_mode(client, db_session):
+    _insert_medicamento(db_session, "830001", nombre="Medicamento FULL")
+    _create_view(db_session)
+    response = client.get("/gft/export/html?mode=full")
+    assert response.status_code == 200
+    assert "Exportación completa de medicamentos publicados" in response.text
 
 
 def test_gft_export_pdf_html_passed_to_engine_does_not_expose_internal_fields(client, db_session, monkeypatch):

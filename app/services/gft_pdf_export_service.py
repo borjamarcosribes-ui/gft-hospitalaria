@@ -21,16 +21,16 @@ class GFTPDFMedication:
     cn: str
     codigo_atc: str
     descripcion_atc: str
-    indicaciones_ficha_tecnica: str
-    ajuste_insuficiencia_renal: str
-    ajuste_insuficiencia_hepatica: str
-    precauciones_embarazo: str
-    precauciones_lactancia: str
-    restricciones_hospitalarias: str
-    observaciones_publicables: str
     situacion_financiacion_bifimed: str
     url_ficha_tecnica: str
     url_prospecto: str
+    indicaciones_ficha_tecnica: str = ""
+    ajuste_insuficiencia_renal: str = ""
+    ajuste_insuficiencia_hepatica: str = ""
+    precauciones_embarazo: str = ""
+    precauciones_lactancia: str = ""
+    restricciones_hospitalarias: str = ""
+    observaciones_publicables: str = ""
 
 
 @dataclass
@@ -90,7 +90,9 @@ def _atc_group_data(atc_items: list[dict]) -> tuple[dict[str, str], dict[str, st
     return l1, None
 
 
-def _row_to_medication(row, principios: list[dict]) -> tuple[GFTPDFMedication, dict[str, str], dict[str, str] | None]:
+def _row_to_medication(
+    row, principios: list[dict], mode: str
+) -> tuple[GFTPDFMedication, dict[str, str], dict[str, str] | None]:
     atc_items = _parse_atc(row["atc_json"])
     primary_atc = _primary_atc(atc_items)
     l1_data, l2_data = _atc_group_data(atc_items)
@@ -100,6 +102,7 @@ def _row_to_medication(row, principios: list[dict]) -> tuple[GFTPDFMedication, d
     )
     via_administracion = _join_public_text(_parse_vias(row["vias_administracion_json"]))
 
+    include_long_fields = mode == "full"
     medication = GFTPDFMedication(
         nombre_comercial=_public_text(row["nombre"]),
         principio_activo=principio_activo,
@@ -109,13 +112,13 @@ def _row_to_medication(row, principios: list[dict]) -> tuple[GFTPDFMedication, d
         cn=_public_text(row["cn"]),
         codigo_atc=_public_text(primary_atc.get("codigo")),
         descripcion_atc=_public_text(primary_atc.get("nombre")),
-        indicaciones_ficha_tecnica=_public_text(_row_get(row, "indicaciones_ficha_tecnica")),
-        ajuste_insuficiencia_renal=_public_text(_row_get(row, "ajuste_insuficiencia_renal")),
-        ajuste_insuficiencia_hepatica=_public_text(_row_get(row, "ajuste_insuficiencia_hepatica")),
-        precauciones_embarazo=_public_text(_row_get(row, "precauciones_embarazo")),
-        precauciones_lactancia=_public_text(_row_get(row, "precauciones_lactancia")),
-        restricciones_hospitalarias=_public_text(row["restricciones_hospitalarias"]),
-        observaciones_publicables=_public_text(_row_get(row, "observaciones_publicables")),
+        indicaciones_ficha_tecnica=_public_text(_row_get(row, "indicaciones_ficha_tecnica")) if include_long_fields else "",
+        ajuste_insuficiencia_renal=_public_text(_row_get(row, "ajuste_insuficiencia_renal")) if include_long_fields else "",
+        ajuste_insuficiencia_hepatica=_public_text(_row_get(row, "ajuste_insuficiencia_hepatica")) if include_long_fields else "",
+        precauciones_embarazo=_public_text(_row_get(row, "precauciones_embarazo")) if include_long_fields else "",
+        precauciones_lactancia=_public_text(_row_get(row, "precauciones_lactancia")) if include_long_fields else "",
+        restricciones_hospitalarias=_public_text(row["restricciones_hospitalarias"]) if include_long_fields else "",
+        observaciones_publicables=_public_text(_row_get(row, "observaciones_publicables")) if include_long_fields else "",
         situacion_financiacion_bifimed=_public_text(_row_get(row, "situacion_financiacion")),
         url_ficha_tecnica=_public_text(row["url_ficha_tecnica"]),
         url_prospecto=_public_text(row["url_prospecto"]),
@@ -164,7 +167,9 @@ def _finalize_counts(group: GFTPDFATCGroup) -> int:
     return group.count
 
 
-def build_gft_pdf_export_data(db: Session) -> GFTPDFExportData:
+def build_gft_pdf_export_data(db: Session, mode: str = "compact") -> GFTPDFExportData:
+    if mode not in {"compact", "full"}:
+        raise ValueError("Invalid mode. Allowed values: compact, full.")
     rows = db.execute(text("SELECT * FROM v_gft_publicada")).mappings().all()
     cns = [str(row["cn"] or "").strip() for row in rows if str(row["cn"] or "").strip()]
     principios_by_cn = _get_principios_for_cns(db, cns)
@@ -172,7 +177,7 @@ def build_gft_pdf_export_data(db: Session) -> GFTPDFExportData:
     export_rows = []
     for row in rows:
         cn = str(row["cn"] or "").strip()
-        export_rows.append(_row_to_medication(row, principios_by_cn.get(cn, [])))
+        export_rows.append(_row_to_medication(row, principios_by_cn.get(cn, []), mode=mode))
 
     export_rows.sort(key=_medication_sort_key)
 

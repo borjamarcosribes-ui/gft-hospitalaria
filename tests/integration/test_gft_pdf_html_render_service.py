@@ -84,11 +84,9 @@ def test_render_gft_pdf_html_includes_cover_index_and_medication_body():
     html = render_gft_pdf_html(_export_data())
 
     assert "Guía Farmacoterapéutica Hospitalaria" in html
-    assert "Exportación completa de medicamentos publicados" in html
-    assert "Índice ATC" in html
-    assert "Cuerpo de medicamentos" in html
+    assert "Exportación compacta de medicamentos publicados" in html
     assert "Total de medicamentos publicados" in html
-    assert '<span class="total-number">1</span>' in html
+    assert "Total de medicamentos publicados:</strong> 1" in html
     assert "Fecha de generación:" in html
     assert "02/01/2026 03:04 UTC" in html
 
@@ -105,14 +103,6 @@ def test_render_gft_pdf_html_renders_atc_groups_and_medications():
     assert "Vía oral" in html
     assert "123456" in html
     assert "N02BE01" in html
-    assert "Anilidas" in html
-    assert "Dolor y fiebre" in html
-    assert "Uso hospitalario" in html
-    assert "Observación publicable de prueba" in html
-    assert "Ajustar si procede" in html
-    assert "Precaución en insuficiencia hepática" in html
-    assert "Valorar beneficio/riesgo" in html
-    assert "Compatible con vigilancia" in html
     assert "Financiado" in html
     assert "https://example.test/ficha/123456" in html
     assert "https://example.test/prospecto/123456" in html
@@ -123,7 +113,22 @@ def test_render_gft_pdf_html_preserves_no_informado_values():
         _export_data(_medication(forma_farmaceutica="No informado", url_ficha_tecnica="No informado"))
     )
 
-    assert html.count("No informado") >= 2
+    assert "No informado" not in html
+
+
+def test_render_gft_pdf_html_full_mode_includes_long_fields():
+    html = render_gft_pdf_html(_export_data(), mode="full")
+    assert "Exportación completa de medicamentos publicados" in html
+    assert "Dolor y fiebre" in html
+    assert "Uso hospitalario" in html
+
+
+def test_render_gft_pdf_html_compact_skips_empty_parent_tables():
+    html = render_gft_pdf_html(_export_data())
+
+    assert "Sistema nervioso" in html
+    assert "Analgésicos" in html
+    assert html.count("<table>") == 1
 
 
 def test_render_gft_pdf_html_escapes_malicious_html_content():

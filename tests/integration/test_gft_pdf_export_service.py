@@ -262,11 +262,11 @@ def test_gft_pdf_export_uses_no_informado_for_empty_fields(db_session):
     assert medication.nemonico == "No informado"
     assert medication.codigo_atc == "No informado"
     assert medication.descripcion_atc == "No informado"
-    assert medication.ajuste_insuficiencia_renal == "No informado"
-    assert medication.ajuste_insuficiencia_hepatica == "No informado"
-    assert medication.precauciones_embarazo == "No informado"
-    assert medication.precauciones_lactancia == "No informado"
-    assert medication.restricciones_hospitalarias == "No informado"
+    assert medication.ajuste_insuficiencia_renal == ""
+    assert medication.ajuste_insuficiencia_hepatica == ""
+    assert medication.precauciones_embarazo == ""
+    assert medication.precauciones_lactancia == ""
+    assert medication.restricciones_hospitalarias == ""
     assert medication.situacion_financiacion_bifimed == "No informado"
     assert medication.url_ficha_tecnica == "No informado"
 
@@ -276,9 +276,19 @@ def test_gft_pdf_export_includes_indicaciones_ficha_tecnica(db_session):
     _add_indicaciones_cache(db_session, "400001", "Indicación pública para PDF")
     _create_view(db_session)
 
-    medication = _all_medicamentos(build_gft_pdf_export_data(db_session))[0]
+    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="full"))[0]
 
     assert medication.indicaciones_ficha_tecnica == "Indicación pública para PDF"
+
+
+def test_gft_pdf_export_compact_omits_long_fields(db_session):
+    _insert_medicamento(db_session, "400002")
+    _add_indicaciones_cache(db_session, "400002", "Indicación pública para PDF")
+    _create_view(db_session)
+
+    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="compact"))[0]
+    assert medication.indicaciones_ficha_tecnica == ""
+    assert medication.ajuste_insuficiencia_renal == ""
 
 
 def test_gft_pdf_export_serializable_structure_excludes_internal_technical_fields(db_session):
