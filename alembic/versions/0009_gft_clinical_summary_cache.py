@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "0009_gft_clinical_summary_cache"
-down_revision = "0008_gft_imported_fallback_fields"
+down_revision = "0008_gft_imported_fallback"
 branch_labels = None
 depends_on = None
 
