@@ -22,18 +22,18 @@ router = APIRouter(prefix="/gft", tags=["gft"])
 
 
 @router.get("/export/html")
-def gft_export_html(mode: str = Query(default="compact"), db: Session = Depends(get_db)):
-    if mode not in {"compact", "full"}:
-        raise HTTPException(status_code=400, detail="Invalid mode. Allowed values: compact, full.")
+def gft_export_html(mode: str = Query(default="narrative"), db: Session = Depends(get_db)):
+    if mode not in {"narrative", "table", "full"}:
+        raise HTTPException(status_code=400, detail="Invalid mode. Allowed values: narrative, table, full.")
     export_data = build_gft_pdf_export_data(db, mode=mode)
     html = render_gft_pdf_html(export_data, mode=mode)
     return Response(content=html, media_type="text/html; charset=utf-8")
 
 
 @router.get("/export/pdf")
-def gft_export_pdf(mode: str = Query(default="compact"), db: Session = Depends(get_db)):
-    if mode not in {"compact", "full"}:
-        raise HTTPException(status_code=400, detail="Invalid mode. Allowed values: compact, full.")
+def gft_export_pdf(mode: str = Query(default="narrative"), db: Session = Depends(get_db)):
+    if mode not in {"narrative", "table", "full"}:
+        raise HTTPException(status_code=400, detail="Invalid mode. Allowed values: narrative, table, full.")
     export_data = build_gft_pdf_export_data(db, mode=mode)
     html = render_gft_pdf_html(export_data, mode=mode)
     try:

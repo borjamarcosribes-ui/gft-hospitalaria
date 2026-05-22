@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.services.gft_query_service import _get_principios_for_cns, _parse_atc, _parse_vias, _row_get
 
 NO_INFORMADO = "No informado"
+NO_LOCALIZADO_AUTO = "No localizado automáticamente."
 EXPORT_TITLE = "Guía Farmacoterapéutica Hospitalaria"
 
 
@@ -31,6 +32,7 @@ class GFTPDFMedication:
     precauciones_lactancia: str = ""
     restricciones_hospitalarias: str = ""
     observaciones_publicables: str = ""
+    resumen_clinico_auto: dict[str, Any] | None = None
 
 
 @dataclass
@@ -102,7 +104,11 @@ def _row_to_medication(
     )
     via_administracion = _join_public_text(_parse_vias(row["vias_administracion_json"]))
 
-    include_long_fields = mode == "full"
+    clinical_summary = _row_get(row, "resumen_clinico_auto")
+    if not isinstance(clinical_summary, dict):
+        clinical_summary = None
+
+    include_long_fields = mode in {"full", "narrative"}
     medication = GFTPDFMedication(
         nombre_comercial=_public_text(row["nombre"]),
         principio_activo=principio_activo,
@@ -119,6 +125,7 @@ def _row_to_medication(
         precauciones_lactancia=_public_text(_row_get(row, "precauciones_lactancia")) if include_long_fields else "",
         restricciones_hospitalarias=_public_text(row["restricciones_hospitalarias"]) if include_long_fields else "",
         observaciones_publicables=_public_text(_row_get(row, "observaciones_publicables")) if include_long_fields else "",
+        resumen_clinico_auto=clinical_summary,
         situacion_financiacion_bifimed=_public_text(_row_get(row, "situacion_financiacion")),
         url_ficha_tecnica=_public_text(row["url_ficha_tecnica"]),
         url_prospecto=_public_text(row["url_prospecto"]),
@@ -167,9 +174,9 @@ def _finalize_counts(group: GFTPDFATCGroup) -> int:
     return group.count
 
 
-def build_gft_pdf_export_data(db: Session, mode: str = "compact") -> GFTPDFExportData:
-    if mode not in {"compact", "full"}:
-        raise ValueError("Invalid mode. Allowed values: compact, full.")
+def build_gft_pdf_export_data(db: Session, mode: str = "narrative") -> GFTPDFExportData:
+    if mode not in {"narrative", "table", "full"}:
+        raise ValueError("Invalid mode. Allowed values: narrative, table, full.")
     rows = db.execute(text("SELECT * FROM v_gft_publicada")).mappings().all()
     cns = [str(row["cn"] or "").strip() for row in rows if str(row["cn"] or "").strip()]
     principios_by_cn = _get_principios_for_cns(db, cns)

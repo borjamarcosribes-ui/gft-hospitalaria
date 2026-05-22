@@ -150,5 +150,13 @@ Comando rápido sin PDF:
 PYTHONPATH=. python scripts/gft_export_benchmark.py --backend-url http://localhost:8000 --skip-pdf
 ```
 
+## Modos de exportación pública
+
+- `/gft/export/pdf` y `/gft/export/html` generan por defecto la guía narrativa hospitalaria (bloques por medicamento y orden ATC).
+- Para revisión técnica, se conserva `?mode=table` con formato tabular.
+- `?mode=full` sigue disponible para no romper compatibilidad.
+- La exportación usa la misma base de datos publicada que la web.
+- Los campos clínicos narrativos priorizan `resumen_clinico_auto` y, si no existe, campos editoriales/ficha técnica disponibles.
+
 Interpretación rápida:
 - Si HTML está OK y PDF cae en timeout, el problema está en el renderizado PDF (no en los datos publicados).
