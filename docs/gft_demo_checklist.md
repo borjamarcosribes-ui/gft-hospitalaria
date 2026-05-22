@@ -132,3 +132,23 @@ PYTHONPATH=. python scripts/gft_demo_readiness_check.py \
   --expected-no-missing-name \
   --check-pdf
 ```
+
+
+## Benchmark no destructivo de exportaciones GFT (HTML/PDF)
+
+Úsalo antes de demos o validaciones de rendimiento cuando necesites comprobar rápidamente tiempos, tamaño y estado HTTP de las exportaciones públicas, sin modificar datos.
+
+Comando base:
+
+```bash
+PYTHONPATH=. python scripts/gft_export_benchmark.py --backend-url http://localhost:8000
+```
+
+Comando rápido sin PDF:
+
+```bash
+PYTHONPATH=. python scripts/gft_export_benchmark.py --backend-url http://localhost:8000 --skip-pdf
+```
+
+Interpretación rápida:
+- Si HTML está OK y PDF cae en timeout, el problema está en el renderizado PDF (no en los datos publicados).
