@@ -202,8 +202,10 @@ def _build_financiacion_detalle(row) -> dict | None:
         "estado_nomenclator": _row_get(row, "estado_nomenclator"),
         "aportacion_usuario": _row_get(row, "aportacion_usuario"),
         "subgrupo_atc": _row_get(row, "subgrupo_atc"),
-        "last_synced_at": _row_get(row, "bifimed_last_synced_at"),
     }
+    last_synced_at = _row_get(row, "bifimed_last_synced_at")
+    if last_synced_at is not None:
+        detalle["last_synced_at"] = last_synced_at
     if not any(value is not None for value in detalle.values()):
         return None
     return detalle
@@ -282,15 +284,17 @@ def _row_to_detail(
     item["observaciones_publicables"] = _row_get(row, "observaciones_publicables")
     item["documentos"] = _parse_documentos(row["documentos_json"])
     if bifimed_row is not None:
-        item["financiacion_detalle"] = {
+        detalle = {
             "situacion_financiacion": bifimed_row.situacion_financiacion,
             "condiciones_financiacion_restringidas": bifimed_row.condiciones_financiacion_restringidas,
             "condiciones_especiales_financiacion": bifimed_row.condiciones_especiales_financiacion,
             "estado_nomenclator": bifimed_row.estado_nomenclator,
             "aportacion_usuario": bifimed_row.aportacion_usuario,
             "subgrupo_atc": bifimed_row.subgrupo_atc,
-            "last_synced_at": bifimed_row.last_synced_at,
         }
+        if bifimed_row.last_synced_at is not None:
+            detalle["last_synced_at"] = bifimed_row.last_synced_at
+        item["financiacion_detalle"] = detalle
     else:
         item["financiacion_detalle"] = _build_financiacion_detalle(row)
     item["resumen_clinico_auto"] = _build_clinical_summary_payload(summary_row)
