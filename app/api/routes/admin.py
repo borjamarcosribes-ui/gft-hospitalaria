@@ -20,6 +20,8 @@ from app.services.gft_editorial_service import (
     GFTEditorialValidationError,
     update_gft_editorial_fields,
 )
+
+from app.services.gft_clinical_pipeline_service import ClinicalPipelineParams, build_clinical_pipeline_dry_run
 from app.services.gft_state_service import (
     GFTStateValidationError,
     update_gft_publication_state,
@@ -786,3 +788,17 @@ def update_gft_medicamento_editorial(
         raise HTTPException(status_code=404, detail="Medicamento GFT no encontrado")
 
     return result
+
+
+@router.get("/gft/clinical/pipeline-status")
+def admin_gft_clinical_pipeline_status(
+    limit: int | None = None,
+    examples: int = 20,
+    sections: str | None = None,
+    only_missing: bool = True,
+    _: None = Depends(require_admin_api_key),
+    db: Session = Depends(get_db),
+):
+    requested_sections = tuple((sections or "4.1,4.2,4.3,4.4,4.6").replace(" ", "").split(","))
+    params = ClinicalPipelineParams(limit=limit, examples=examples, sections=requested_sections, only_missing=only_missing)
+    return build_clinical_pipeline_dry_run(db, params)

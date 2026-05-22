@@ -16,6 +16,8 @@ import type {
   ImportExcelOptions,
   ImportRowStaging,
   ListGftEditorialMedicamentosParams,
+  GetGftClinicalPipelineParams,
+  GftClinicalPipelineResponse,
 } from '../types/admin';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -233,4 +235,14 @@ export function getImportBatchRows(
 
 export function applyImportBatch(apiKey: string, batchId: string): Promise<ApplyImportBatchResponse> {
   return postAdminJson<ApplyImportBatchResponse>(`/imports/${encodeURIComponent(batchId)}/apply`, apiKey);
+}
+
+
+export function getGftClinicalPipelineStatus(apiKey: string, params: GetGftClinicalPipelineParams): Promise<GftClinicalPipelineResponse> {
+  const url = buildUrl('/admin/gft/clinical/pipeline-status');
+  if (params.limit !== undefined) url.searchParams.set('limit', String(params.limit));
+  if (params.examples !== undefined) url.searchParams.set('examples', String(params.examples));
+  if (params.only_missing !== undefined) url.searchParams.set('only_missing', String(params.only_missing));
+  if (params.sections?.length) url.searchParams.set('sections', params.sections.join(','));
+  return fetchAdminJson<GftClinicalPipelineResponse>(url, apiKey);
 }
