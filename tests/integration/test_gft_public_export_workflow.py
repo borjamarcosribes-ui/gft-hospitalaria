@@ -314,13 +314,12 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
     assert PUBLIC_CN in html
     assert PUBLIC_ACTIVE_INGREDIENT in html
     assert PUBLIC_ATC_CODE in html
-    assert PUBLIC_INDICATIONS not in html
-    assert PUBLIC_RESTRICTIONS not in html
-    assert PUBLIC_RENAL_ADJUSTMENT not in html
-    assert PUBLIC_HEPATIC_ADJUSTMENT not in html
-    assert PUBLIC_PREGNANCY_WARNING not in html
-    assert PUBLIC_LACTATION_WARNING not in html
-    assert PUBLIC_OBSERVATIONS not in html
+    assert PUBLIC_INDICATIONS in html
+    assert PUBLIC_RESTRICTIONS in html
+    assert PUBLIC_RENAL_ADJUSTMENT in html
+    assert PUBLIC_HEPATIC_ADJUSTMENT in html
+    assert PUBLIC_PREGNANCY_WARNING in html
+    assert PUBLIC_LACTATION_WARNING in html
     assert INTERNAL_OBSERVATIONS not in html
     assert EXCLUDED_CN not in html
     assert EXCLUDED_NAME not in html
@@ -361,13 +360,12 @@ def test_public_gft_html_and_pdf_exports_use_same_published_source(client, db_se
     assert PUBLIC_CN in pdf_html
     assert PUBLIC_ACTIVE_INGREDIENT in pdf_html
     assert PUBLIC_ATC_CODE in pdf_html
-    assert PUBLIC_INDICATIONS not in pdf_html
-    assert PUBLIC_RESTRICTIONS not in pdf_html
-    assert PUBLIC_RENAL_ADJUSTMENT not in pdf_html
-    assert PUBLIC_HEPATIC_ADJUSTMENT not in pdf_html
-    assert PUBLIC_PREGNANCY_WARNING not in pdf_html
-    assert PUBLIC_LACTATION_WARNING not in pdf_html
-    assert PUBLIC_OBSERVATIONS not in pdf_html
+    assert PUBLIC_INDICATIONS in pdf_html
+    assert PUBLIC_RESTRICTIONS in pdf_html
+    assert PUBLIC_RENAL_ADJUSTMENT in pdf_html
+    assert PUBLIC_HEPATIC_ADJUSTMENT in pdf_html
+    assert PUBLIC_PREGNANCY_WARNING in pdf_html
+    assert PUBLIC_LACTATION_WARNING in pdf_html
     assert INTERNAL_OBSERVATIONS not in pdf_html
     assert EXCLUDED_CN not in pdf_html
     assert EXCLUDED_NAME not in pdf_html

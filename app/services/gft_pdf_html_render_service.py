@@ -4,6 +4,7 @@ from app.services.gft_pdf_export_service import EXPORT_TITLE, GFTPDFATCGroup, GF
 
 _SUBTITLE_TABLE = "Exportación técnica tabular de medicamentos publicados"
 _SUBTITLE_NARRATIVE = "Guía narrativa de medicamentos publicados ordenada por ATC"
+_SUBTITLE_FULL = "Exportación completa de medicamentos publicados"
 _AUTO_NOT_FOUND = "No localizado automáticamente."
 
 
@@ -50,10 +51,11 @@ def _truncate(value: str, max_chars: int) -> str:
 
 
 def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") -> str:
+    mode = "table" if mode == "compact" else mode
     if mode not in {"narrative", "table", "full"}:
-        raise ValueError("Invalid mode. Allowed values: narrative, table, full.")
+        raise ValueError("Invalid mode. Allowed values: narrative, table, full, compact.")
 
-    subtitle = _SUBTITLE_TABLE if mode == "table" else _SUBTITLE_NARRATIVE
+    subtitle = _SUBTITLE_TABLE if mode == "table" else (_SUBTITLE_FULL if mode == "full" else _SUBTITLE_NARRATIVE)
     sections: list[str] = []
     for group, depth in _iter_groups(export_data.groups):
         heading = "h2" if depth == 0 else "h3"
@@ -81,9 +83,15 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") 
                 embarazo = summary.get("embarazo") or med.precauciones_embarazo or _AUTO_NOT_FOUND
                 lactancia = summary.get("lactancia") or med.precauciones_lactancia or _AUTO_NOT_FOUND
                 restricciones = med.restricciones_hospitalarias or "No informado"
+                lead = f"<strong>{_e(med.nemonico)}</strong> — " if med.nemonico.strip().lower() != "no informado" else ""
+                links = []
+                if med.url_ficha_tecnica.strip().lower() != "no informado":
+                    links.append(f"Ficha técnica: {_e(med.url_ficha_tecnica)}.")
+                if med.url_prospecto.strip().lower() != "no informado":
+                    links.append(f"Prospecto: {_e(med.url_prospecto)}.")
                 lines.append(
                     "<p>"
-                    f"<strong>{_e(med.nemonico)}</strong> — {_e(med.nombre_comercial)} (CN {_e(med.cn)}). "
+                    f"{lead}{_e(med.nombre_comercial)} (CN {_e(med.cn)}). "
                     f"Principio activo: {_e(med.principio_activo)}. "
                     f"ATC: {_e(med.codigo_atc)}. "
                     f"Indicaciones: {_e(_truncate(indicaciones, 700))}. "
@@ -92,7 +100,7 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") 
                     f"Embarazo: {_e(_truncate(embarazo, 400))}. "
                     f"Lactancia: {_e(_truncate(lactancia, 400))}. "
                     f"Restricciones hospitalarias: {_e(_truncate(restricciones, 400))}. "
-                    f"Ficha técnica: {_e(med.url_ficha_tecnica)}. Prospecto: {_e(med.url_prospecto)}."
+                    f"{' '.join(links)}"
                     "</p>"
                 )
         lines.append("</section>")
