@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.models.bifimed_cache import BifimedCache
+from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
 from app.models.principio_activo import PrincipioActivo
 from app.services.normalization_service import normalize_cn
@@ -201,9 +203,31 @@ def _build_financiacion_detalle(row) -> dict | None:
         "aportacion_usuario": _row_get(row, "aportacion_usuario"),
         "subgrupo_atc": _row_get(row, "subgrupo_atc"),
     }
+    last_synced_at = _row_get(row, "bifimed_last_synced_at")
+    if last_synced_at is not None:
+        detalle["last_synced_at"] = last_synced_at
     if not any(value is not None for value in detalle.values()):
         return None
     return detalle
+
+
+def _build_clinical_summary_payload(summary_row: GftClinicalSummaryCache | None) -> dict | None:
+    if summary_row is None:
+        return None
+    return {
+        "source_status": summary_row.source_status,
+        "generated_at": summary_row.generated_at,
+        "indicaciones": summary_row.resumen_indicaciones,
+        "posologia": summary_row.resumen_posologia,
+        "ajuste_renal": summary_row.resumen_ajuste_renal,
+        "ajuste_hepatico": summary_row.resumen_ajuste_hepatico,
+        "contraindicaciones": summary_row.resumen_contraindicaciones,
+        "advertencias": summary_row.resumen_advertencias,
+        "embarazo": summary_row.resumen_embarazo,
+        "lactancia": summary_row.resumen_lactancia,
+        "fuentes": summary_row.resumen_fuente_json or {},
+        "warnings": summary_row.warnings_json or [],
+    }
 
 
 def _row_to_list_item(row, principios: list[dict]) -> dict:
@@ -249,11 +273,31 @@ def _row_to_list_item(row, principios: list[dict]) -> dict:
     }
 
 
-def _row_to_detail(row, principios: list[dict]) -> dict:
+def _row_to_detail(
+    row,
+    principios: list[dict],
+    *,
+    summary_row: GftClinicalSummaryCache | None = None,
+    bifimed_row: BifimedCache | None = None,
+) -> dict:
     item = _row_to_list_item(row, principios)
     item["observaciones_publicables"] = _row_get(row, "observaciones_publicables")
     item["documentos"] = _parse_documentos(row["documentos_json"])
-    item["financiacion_detalle"] = _build_financiacion_detalle(row)
+    if bifimed_row is not None:
+        detalle = {
+            "situacion_financiacion": bifimed_row.situacion_financiacion,
+            "condiciones_financiacion_restringidas": bifimed_row.condiciones_financiacion_restringidas,
+            "condiciones_especiales_financiacion": bifimed_row.condiciones_especiales_financiacion,
+            "estado_nomenclator": bifimed_row.estado_nomenclator,
+            "aportacion_usuario": bifimed_row.aportacion_usuario,
+            "subgrupo_atc": bifimed_row.subgrupo_atc,
+        }
+        if bifimed_row.last_synced_at is not None:
+            detalle["last_synced_at"] = bifimed_row.last_synced_at
+        item["financiacion_detalle"] = detalle
+    else:
+        item["financiacion_detalle"] = _build_financiacion_detalle(row)
+    item["resumen_clinico_auto"] = _build_clinical_summary_payload(summary_row)
     return item
 
 
@@ -485,4 +529,6 @@ def get_medicamento_by_cn(db: Session, cn: str) -> dict | None:
         return None
 
     principios = _get_principios_for_cns(db, [cn_norm]).get(cn_norm, [])
-    return _row_to_detail(row, principios)
+    summary_row = db.get(GftClinicalSummaryCache, cn_norm)
+    bifimed_row = db.get(BifimedCache, cn_norm)
+    return _row_to_detail(row, principios, summary_row=summary_row, bifimed_row=bifimed_row)

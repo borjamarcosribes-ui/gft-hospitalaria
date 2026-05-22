@@ -85,6 +85,21 @@ function GftClinicalUseInfo({ detail }: { detail: GFTMedicamentoDetail }) {
         <DetailRow label="Precauciones embarazo" value={detail.precauciones_embarazo} />
         <DetailRow label="Precauciones lactancia" value={detail.precauciones_lactancia} />
       </dl>
+      {detail.resumen_clinico_auto ? (
+        <div className="gft-detail__text-block">
+          <h4>Resumen automático basado en ficha técnica AEMPS</h4>
+          <p><strong>Indicaciones:</strong> {formatValue(detail.resumen_clinico_auto.indicaciones)}</p>
+          <p><strong>Posología:</strong> {formatValue(detail.resumen_clinico_auto.posologia)}</p>
+          <p><strong>Ajuste renal:</strong> {formatValue(detail.resumen_clinico_auto.ajuste_renal)}</p>
+          <p><strong>Ajuste hepático:</strong> {formatValue(detail.resumen_clinico_auto.ajuste_hepatico)}</p>
+          <p><strong>Contraindicaciones:</strong> {formatValue(detail.resumen_clinico_auto.contraindicaciones)}</p>
+          <p><strong>Advertencias:</strong> {formatValue(detail.resumen_clinico_auto.advertencias)}</p>
+          <p><strong>Embarazo:</strong> {formatValue(detail.resumen_clinico_auto.embarazo)}</p>
+          <p><strong>Lactancia:</strong> {formatValue(detail.resumen_clinico_auto.lactancia)}</p>
+        </div>
+      ) : (
+        <p>Resumen clínico no generado todavía.</p>
+      )}
     </section>
   );
 }

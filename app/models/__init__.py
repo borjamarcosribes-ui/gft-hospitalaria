@@ -4,6 +4,7 @@ from .gft_estado_presentacion import GFTEstadoPresentacion
 from .cima_medicamento_cache import CimaMedicamentoCache
 from .cima_ficha_tecnica_cache import CimaFichaTecnicaCache
 from .bifimed_cache import BifimedCache
+from .gft_clinical_summary_cache import GftClinicalSummaryCache
 from .principio_activo import PrincipioActivo
 from .principio_activo_alias import PrincipioActivoAlias
 from .medicamento_principio_activo import MedicamentoPrincipioActivo

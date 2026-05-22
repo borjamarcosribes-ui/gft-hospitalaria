@@ -50,12 +50,28 @@ export interface GFTFinanciacionDetalle {
   estado_nomenclator: string | null;
   aportacion_usuario: string | null;
   subgrupo_atc: string | null;
+  last_synced_at?: string | null;
+}
+export interface GFTResumenClinicoAuto {
+  source_status: string;
+  generated_at: string | null;
+  indicaciones: string | null;
+  posologia: string | null;
+  ajuste_renal: string | null;
+  ajuste_hepatico: string | null;
+  contraindicaciones: string | null;
+  advertencias: string | null;
+  embarazo: string | null;
+  lactancia: string | null;
+  fuentes: Record<string, string[]>;
+  warnings: string[];
 }
 
 export interface GFTMedicamentoDetail extends GFTMedicamentoListItem {
   observaciones_publicables: string | null;
   documentos: GFTDocumentoCimaRef[];
   financiacion_detalle: GFTFinanciacionDetalle | null;
+  resumen_clinico_auto?: GFTResumenClinicoAuto | null;
 }
 
 export interface GFTListResponse {

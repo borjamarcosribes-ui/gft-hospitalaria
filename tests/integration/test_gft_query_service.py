@@ -1,4 +1,5 @@
 from datetime import date
+from datetime import datetime
 import uuid
 
 from sqlalchemy import text
@@ -159,6 +160,32 @@ def test_get_medicamento_by_cn_includes_financiacion_detalle_when_available(db_s
         "aportacion_usuario": "Reducida",
         "subgrupo_atc": "N02BE",
     }
+
+
+def test_get_medicamento_by_cn_includes_bifimed_last_synced_at_when_available(db_session):
+    _insert_base_medicamento(db_session, "111115", publicado=True)
+    synced_at = datetime(2026, 5, 22, 10, 30)
+    db_session.add(
+        BifimedCache(
+            cn="111115",
+            situacion_financiacion="Financiado",
+            condiciones_financiacion_restringidas="Uso controlado",
+            condiciones_especiales_financiacion="Visado",
+            estado_nomenclator="Alta",
+            aportacion_usuario="Normal",
+            subgrupo_atc="N02BE",
+            last_synced_at=synced_at,
+            sync_status="ok",
+        )
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    result = get_medicamento_by_cn(db_session, "111115")
+
+    assert result is not None
+    assert result["financiacion_detalle"] is not None
+    assert result["financiacion_detalle"]["last_synced_at"] == synced_at
 
 
 def test_get_medicamento_by_cn_documents_are_typed_shape(db_session):
