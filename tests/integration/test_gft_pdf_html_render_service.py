@@ -84,7 +84,7 @@ def test_render_gft_pdf_html_includes_cover_index_and_medication_body():
     html = render_gft_pdf_html(_export_data())
 
     assert "Guía Farmacoterapéutica Hospitalaria" in html
-    assert "Exportación compacta de medicamentos publicados" in html
+    assert "Guía narrativa de medicamentos publicados ordenada por ATC" in html
     assert "Total de medicamentos publicados" in html
     assert "Total de medicamentos publicados:</strong> 1" in html
     assert "Fecha de generación:" in html
@@ -99,11 +99,11 @@ def test_render_gft_pdf_html_renders_atc_groups_and_medications():
     assert "N02" in html
     assert "Paracetamol Hospitalario" in html
     assert "Paracetamol" in html
-    assert "Comprimido" in html
-    assert "Vía oral" in html
     assert "123456" in html
     assert "N02BE01" in html
-    assert "Financiado" in html
+    assert "Dolor y fiebre" in html
+    assert "Ajustar si procede" in html
+    assert "Precaución en insuficiencia hepática" in html
     assert "https://example.test/ficha/123456" in html
     assert "https://example.test/prospecto/123456" in html
 
@@ -123,12 +123,19 @@ def test_render_gft_pdf_html_full_mode_includes_long_fields():
     assert "Uso hospitalario" in html
 
 
-def test_render_gft_pdf_html_compact_skips_empty_parent_tables():
-    html = render_gft_pdf_html(_export_data())
+def test_render_gft_pdf_html_table_mode_skips_empty_parent_tables():
+    html = render_gft_pdf_html(_export_data(), mode="table")
 
     assert "Sistema nervioso" in html
     assert "Analgésicos" in html
     assert html.count("<table>") == 1
+    assert "Guía narrativa de medicamentos publicados ordenada por ATC" not in html
+    assert "Comprimido" in html
+
+
+def test_render_gft_pdf_html_narrative_has_no_table():
+    html = render_gft_pdf_html(_export_data())
+    assert "<table>" not in html
 
 
 def test_render_gft_pdf_html_escapes_malicious_html_content():
@@ -157,3 +164,15 @@ def test_render_gft_pdf_html_is_deterministic_for_same_export_data():
     export_data = _export_data()
 
     assert render_gft_pdf_html(export_data) == render_gft_pdf_html(export_data)
+
+
+def test_render_gft_pdf_html_narrative_uses_auto_summary_values():
+    html = render_gft_pdf_html(
+        _export_data(
+            _medication(
+                resumen_clinico_auto={"ajuste_renal": "Ajuste renal automático"},
+                ajuste_insuficiencia_renal="Ajuste renal editorial",
+            )
+        )
+    )
+    assert "Ajuste renal automático" in html

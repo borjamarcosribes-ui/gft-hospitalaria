@@ -2,8 +2,10 @@ from html import escape
 
 from app.services.gft_pdf_export_service import EXPORT_TITLE, GFTPDFATCGroup, GFTPDFExportData, GFTPDFMedication
 
-_SUBTITLE_COMPACT = "Exportación compacta de medicamentos publicados"
+_SUBTITLE_TABLE = "Exportación técnica tabular de medicamentos publicados"
+_SUBTITLE_NARRATIVE = "Guía narrativa de medicamentos publicados ordenada por ATC"
 _SUBTITLE_FULL = "Exportación completa de medicamentos publicados"
+_AUTO_NOT_FOUND = "No localizado automáticamente."
 
 
 def _e(value: object) -> str:
@@ -40,11 +42,20 @@ def _render_compact_row(medication: GFTPDFMedication) -> str:
     )
 
 
-def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "compact") -> str:
-    if mode not in {"compact", "full"}:
-        raise ValueError("Invalid mode. Allowed values: compact, full.")
+def _truncate(value: str, max_chars: int) -> str:
+    v = value.strip()
+    if len(v) <= max_chars:
+        return v
+    cut = v[: max_chars - 1].rsplit(". ", 1)[0].strip()
+    return (cut if cut else v[: max_chars - 1].rstrip()) + "…"
 
-    subtitle = _SUBTITLE_COMPACT if mode == "compact" else _SUBTITLE_FULL
+
+def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") -> str:
+    mode = "table" if mode == "compact" else mode
+    if mode not in {"narrative", "table", "full"}:
+        raise ValueError("Invalid mode. Allowed values: narrative, table, full, compact.")
+
+    subtitle = _SUBTITLE_TABLE if mode == "table" else (_SUBTITLE_FULL if mode == "full" else _SUBTITLE_NARRATIVE)
     sections: list[str] = []
     for group, depth in _iter_groups(export_data.groups):
         heading = "h2" if depth == 0 else "h3"
@@ -52,7 +63,7 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "compact") ->
             "<section>",
             f"<{heading}>{_e(group.codigo)} · {_e(group.nombre)} ({_e(group.count)})</{heading}>",
         ]
-        if mode == "compact":
+        if mode == "table":
             if group.medicamentos:
                 lines.extend(
                     [
@@ -65,20 +76,37 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "compact") ->
                 )
         else:
             for med in group.medicamentos:
-                lines.append(f"<article><h4>{_e(med.nombre_comercial)} ({_e(med.cn)})</h4>")
+                summary = med.resumen_clinico_auto or {}
+                indicaciones = summary.get("indicaciones") or med.indicaciones_ficha_tecnica or "No informado"
+                renal = summary.get("ajuste_renal") or med.ajuste_insuficiencia_renal or _AUTO_NOT_FOUND
+                hepatica = summary.get("ajuste_hepatico") or med.ajuste_insuficiencia_hepatica or _AUTO_NOT_FOUND
+                embarazo = summary.get("embarazo") or med.precauciones_embarazo or _AUTO_NOT_FOUND
+                lactancia = summary.get("lactancia") or med.precauciones_lactancia or _AUTO_NOT_FOUND
+                restricciones = med.restricciones_hospitalarias or "No informado"
+                lead = f"<strong>{_e(med.nemonico)}</strong> — " if med.nemonico.strip().lower() != "no informado" else ""
+                links = []
+                if med.url_ficha_tecnica.strip().lower() != "no informado":
+                    links.append(f"Ficha técnica: {_e(med.url_ficha_tecnica)}.")
+                if med.url_prospecto.strip().lower() != "no informado":
+                    links.append(f"Prospecto: {_e(med.url_prospecto)}.")
+                observaciones = ""
+                if mode == "full" and med.observaciones_publicables.strip().lower() != "no informado":
+                    observaciones = f" Observaciones: {_e(_truncate(med.observaciones_publicables, 400))}."
                 lines.append(
                     "<p>"
-                    f"Principio activo: {_e(med.principio_activo)} · Forma: {_e(med.forma_farmaceutica)} · Vía: {_e(med.via_administracion)} · "
-                    f"ATC: {_e(med.codigo_atc)} · Financiación: {_e(med.situacion_financiacion_bifimed)}"
+                    f"{lead}{_e(med.nombre_comercial)} (CN {_e(med.cn)}). "
+                    f"Principio activo: {_e(med.principio_activo)}. "
+                    f"ATC: {_e(med.codigo_atc)}. "
+                    f"Indicaciones: {_e(_truncate(indicaciones, 700))}. "
+                    f"Ajuste IR: {_e(_truncate(renal, 400))}. "
+                    f"Ajuste IH: {_e(_truncate(hepatica, 400))}. "
+                    f"Embarazo: {_e(_truncate(embarazo, 400))}. "
+                    f"Lactancia: {_e(_truncate(lactancia, 400))}. "
+                    f"Restricciones hospitalarias: {_e(_truncate(restricciones, 400))}. "
+                    f"{observaciones}"
+                    f"{' '.join(links)}"
                     "</p>"
                 )
-                lines.append(
-                    f"<p>Indicaciones: {_e(med.indicaciones_ficha_tecnica)} · Restricciones: {_e(med.restricciones_hospitalarias)} · "
-                    f"Renal: {_e(med.ajuste_insuficiencia_renal)} · Hepática: {_e(med.ajuste_insuficiencia_hepatica)} · "
-                    f"Embarazo: {_e(med.precauciones_embarazo)} · Lactancia: {_e(med.precauciones_lactancia)} · "
-                    f"Observaciones: {_e(med.observaciones_publicables)}</p>"
-                )
-                lines.append("</article>")
         lines.append("</section>")
         sections.append("\n".join(lines))
 
@@ -99,5 +127,6 @@ section {{ margin-bottom: 0.4rem; }}
 <p>{_e(subtitle)}</p>
 <p><strong>Fecha de generación:</strong> {_e(_format_generation_date(export_data))}</p>
 <p><strong>Total de medicamentos publicados:</strong> {_e(export_data.total_medicamentos)}</p>
+<p><em>Documento generado desde la misma base de datos que alimenta la GFT web.</em></p>
 {body_html}
 </body></html>"""

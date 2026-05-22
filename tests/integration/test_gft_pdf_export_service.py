@@ -7,6 +7,7 @@ from app.models.bifimed_cache import BifimedCache
 from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
+from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
 from app.models.principio_activo import PrincipioActivo
 from app.services.gft_pdf_export_service import build_gft_pdf_export_data
@@ -262,11 +263,11 @@ def test_gft_pdf_export_uses_no_informado_for_empty_fields(db_session):
     assert medication.nemonico == "No informado"
     assert medication.codigo_atc == "No informado"
     assert medication.descripcion_atc == "No informado"
-    assert medication.ajuste_insuficiencia_renal == ""
-    assert medication.ajuste_insuficiencia_hepatica == ""
-    assert medication.precauciones_embarazo == ""
-    assert medication.precauciones_lactancia == ""
-    assert medication.restricciones_hospitalarias == ""
+    assert medication.ajuste_insuficiencia_renal == "No informado"
+    assert medication.ajuste_insuficiencia_hepatica == "No informado"
+    assert medication.precauciones_embarazo == "No informado"
+    assert medication.precauciones_lactancia == "No informado"
+    assert medication.restricciones_hospitalarias == "No informado"
     assert medication.situacion_financiacion_bifimed == "No informado"
     assert medication.url_ficha_tecnica == "No informado"
 
@@ -281,14 +282,35 @@ def test_gft_pdf_export_includes_indicaciones_ficha_tecnica(db_session):
     assert medication.indicaciones_ficha_tecnica == "Indicación pública para PDF"
 
 
-def test_gft_pdf_export_compact_omits_long_fields(db_session):
+def test_gft_pdf_export_table_omits_long_fields(db_session):
     _insert_medicamento(db_session, "400002")
     _add_indicaciones_cache(db_session, "400002", "Indicación pública para PDF")
     _create_view(db_session)
 
-    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="compact"))[0]
+    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="table"))[0]
     assert medication.indicaciones_ficha_tecnica == ""
     assert medication.ajuste_insuficiencia_renal == ""
+
+
+def test_gft_pdf_export_loads_resumen_clinico_from_cache(db_session):
+    _insert_medicamento(db_session, "400003")
+    db_session.add(
+        GftClinicalSummaryCache(
+            cn="400003",
+            source_status="ok",
+            resumen_ajuste_renal="Ajuste renal automático",
+            resumen_ajuste_hepatico="Ajuste hepático automático",
+            resumen_embarazo="Embarazo automático",
+            resumen_lactancia="Lactancia automática",
+        )
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="narrative"))[0]
+    assert medication.resumen_clinico_auto is not None
+    assert medication.resumen_clinico_auto["ajuste_renal"] == "Ajuste renal automático"
+    assert medication.resumen_clinico_auto["ajuste_hepatico"] == "Ajuste hepático automático"
 
 
 def test_gft_pdf_export_serializable_structure_excludes_internal_technical_fields(db_session):
