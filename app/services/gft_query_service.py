@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.models.bifimed_cache import BifimedCache
+from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
 from app.models.principio_activo import PrincipioActivo
 from app.services.normalization_service import normalize_cn
@@ -207,6 +209,25 @@ def _build_financiacion_detalle(row) -> dict | None:
     return detalle
 
 
+def _build_clinical_summary_payload(summary_row: GftClinicalSummaryCache | None) -> dict | None:
+    if summary_row is None:
+        return None
+    return {
+        "source_status": summary_row.source_status,
+        "generated_at": summary_row.generated_at,
+        "indicaciones": summary_row.resumen_indicaciones,
+        "posologia": summary_row.resumen_posologia,
+        "ajuste_renal": summary_row.resumen_ajuste_renal,
+        "ajuste_hepatico": summary_row.resumen_ajuste_hepatico,
+        "contraindicaciones": summary_row.resumen_contraindicaciones,
+        "advertencias": summary_row.resumen_advertencias,
+        "embarazo": summary_row.resumen_embarazo,
+        "lactancia": summary_row.resumen_lactancia,
+        "fuentes": summary_row.resumen_fuente_json or {},
+        "warnings": summary_row.warnings_json or [],
+    }
+
+
 def _row_to_list_item(row, principios: list[dict]) -> dict:
     atc = _parse_atc(row["atc_json"])
     imported_atc = _non_empty(_row_get(row, "codigo_atc_importado"))
@@ -250,25 +271,29 @@ def _row_to_list_item(row, principios: list[dict]) -> dict:
     }
 
 
-def _row_to_detail(row, principios: list[dict]) -> dict:
+def _row_to_detail(
+    row,
+    principios: list[dict],
+    *,
+    summary_row: GftClinicalSummaryCache | None = None,
+    bifimed_row: BifimedCache | None = None,
+) -> dict:
     item = _row_to_list_item(row, principios)
     item["observaciones_publicables"] = _row_get(row, "observaciones_publicables")
     item["documentos"] = _parse_documentos(row["documentos_json"])
-    item["financiacion_detalle"] = _build_financiacion_detalle(row)
-    item["resumen_clinico_auto"] = {
-        "source_status": _row_get(row, "clinical_source_status"),
-        "generated_at": _row_get(row, "clinical_generated_at"),
-        "indicaciones": _row_get(row, "resumen_indicaciones"),
-        "posologia": _row_get(row, "resumen_posologia"),
-        "ajuste_renal": _row_get(row, "resumen_ajuste_renal"),
-        "ajuste_hepatico": _row_get(row, "resumen_ajuste_hepatico"),
-        "contraindicaciones": _row_get(row, "resumen_contraindicaciones"),
-        "advertencias": _row_get(row, "resumen_advertencias"),
-        "embarazo": _row_get(row, "resumen_embarazo"),
-        "lactancia": _row_get(row, "resumen_lactancia"),
-        "fuentes": _parse_json_value(_row_get(row, "resumen_fuente_json")) or {},
-        "warnings": _parse_json_value(_row_get(row, "clinical_warnings_json")) or [],
-    } if _row_get(row, "clinical_source_status") is not None else None
+    if bifimed_row is not None:
+        item["financiacion_detalle"] = {
+            "situacion_financiacion": bifimed_row.situacion_financiacion,
+            "condiciones_financiacion_restringidas": bifimed_row.condiciones_financiacion_restringidas,
+            "condiciones_especiales_financiacion": bifimed_row.condiciones_especiales_financiacion,
+            "estado_nomenclator": bifimed_row.estado_nomenclator,
+            "aportacion_usuario": bifimed_row.aportacion_usuario,
+            "subgrupo_atc": bifimed_row.subgrupo_atc,
+            "last_synced_at": bifimed_row.last_synced_at,
+        }
+    else:
+        item["financiacion_detalle"] = _build_financiacion_detalle(row)
+    item["resumen_clinico_auto"] = _build_clinical_summary_payload(summary_row)
     return item
 
 
@@ -500,4 +525,6 @@ def get_medicamento_by_cn(db: Session, cn: str) -> dict | None:
         return None
 
     principios = _get_principios_for_cns(db, [cn_norm]).get(cn_norm, [])
-    return _row_to_detail(row, principios)
+    summary_row = db.get(GftClinicalSummaryCache, cn_norm)
+    bifimed_row = db.get(BifimedCache, cn_norm)
+    return _row_to_detail(row, principios, summary_row=summary_row, bifimed_row=bifimed_row)
