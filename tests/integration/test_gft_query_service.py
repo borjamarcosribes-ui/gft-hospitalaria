@@ -1,5 +1,5 @@
 from datetime import date
-from datetime import datetime, timezone
+from datetime import datetime
 import uuid
 
 from sqlalchemy import text
@@ -164,7 +164,7 @@ def test_get_medicamento_by_cn_includes_financiacion_detalle_when_available(db_s
 
 def test_get_medicamento_by_cn_includes_bifimed_last_synced_at_when_available(db_session):
     _insert_base_medicamento(db_session, "111115", publicado=True)
-    synced_at = datetime(2026, 5, 22, 10, 30, tzinfo=timezone.utc)
+    synced_at = datetime(2026, 5, 22, 10, 30)
     db_session.add(
         BifimedCache(
             cn="111115",
