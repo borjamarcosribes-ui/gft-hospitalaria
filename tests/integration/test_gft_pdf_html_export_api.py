@@ -30,7 +30,11 @@ def test_gft_export_html_endpoint_returns_printable_html(client, db_session):
     assert '<html lang="es">' in html
     assert "Guía Farmacoterapéutica Hospitalaria" in html
     assert "Medicamento publicado" in html
-    assert "Indicación pública desde ficha técnica" in html
+    assert "Indicación pública desde ficha técnica" not in html
+
+    full_response = client.get("/gft/export/html?mode=full")
+    assert full_response.status_code == 200
+    assert "Indicación pública desde ficha técnica" in full_response.text
 
 
 def test_gft_export_html_only_includes_published_medicamentos(client, db_session):
@@ -98,5 +102,6 @@ def test_gft_export_html_returns_valid_empty_document(client, db_session):
     assert "<!doctype html>" in html
     assert '<html lang="es">' in html
     assert "Guía Farmacoterapéutica Hospitalaria" in html
-    assert '<span class="total-number">0</span>' in html
+    assert "Total de medicamentos publicados" in html
+    assert "Total de medicamentos publicados:</strong> 0" in html
     assert "No hay medicamentos publicados." in html
