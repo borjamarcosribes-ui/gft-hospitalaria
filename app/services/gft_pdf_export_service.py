@@ -21,6 +21,9 @@ class GFTPDFMedication:
     cn: str
     codigo_atc: str
     descripcion_atc: str
+    situacion_financiacion_bifimed: str
+    url_ficha_tecnica: str
+    url_prospecto: str
     indicaciones_ficha_tecnica: str = ""
     ajuste_insuficiencia_renal: str = ""
     ajuste_insuficiencia_hepatica: str = ""
@@ -28,9 +31,6 @@ class GFTPDFMedication:
     precauciones_lactancia: str = ""
     restricciones_hospitalarias: str = ""
     observaciones_publicables: str = ""
-    situacion_financiacion_bifimed: str
-    url_ficha_tecnica: str
-    url_prospecto: str
 
 
 @dataclass

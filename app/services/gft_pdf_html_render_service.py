@@ -53,15 +53,16 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "compact") ->
             f"<{heading}>{_e(group.codigo)} · {_e(group.nombre)} ({_e(group.count)})</{heading}>",
         ]
         if mode == "compact":
-            lines.extend(
-                [
-                    '<table><thead><tr><th>CN</th><th>Nombre comercial</th><th>Principio activo</th>'
-                    "<th>Forma farmacéutica</th><th>Vía administración</th><th>Código ATC</th>"
-                    "<th>Financiación BIFIMED</th><th>URL ficha técnica</th><th>URL prospecto</th></tr></thead><tbody>",
-                    *[_render_compact_row(m) for m in group.medicamentos],
-                    "</tbody></table>",
-                ]
-            )
+            if group.medicamentos:
+                lines.extend(
+                    [
+                        '<table><thead><tr><th>CN</th><th>Nombre comercial</th><th>Principio activo</th>'
+                        "<th>Forma farmacéutica</th><th>Vía administración</th><th>Código ATC</th>"
+                        "<th>Financiación BIFIMED</th><th>URL ficha técnica</th><th>URL prospecto</th></tr></thead><tbody>",
+                        *[_render_compact_row(m) for m in group.medicamentos],
+                        "</tbody></table>",
+                    ]
+                )
         else:
             for med in group.medicamentos:
                 lines.append(f"<article><h4>{_e(med.nombre_comercial)} ({_e(med.cn)})</h4>")
