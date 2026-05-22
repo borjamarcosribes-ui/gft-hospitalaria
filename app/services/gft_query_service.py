@@ -200,6 +200,7 @@ def _build_financiacion_detalle(row) -> dict | None:
         "estado_nomenclator": _row_get(row, "estado_nomenclator"),
         "aportacion_usuario": _row_get(row, "aportacion_usuario"),
         "subgrupo_atc": _row_get(row, "subgrupo_atc"),
+        "last_synced_at": _row_get(row, "bifimed_last_synced_at"),
     }
     if not any(value is not None for value in detalle.values()):
         return None
@@ -254,6 +255,20 @@ def _row_to_detail(row, principios: list[dict]) -> dict:
     item["observaciones_publicables"] = _row_get(row, "observaciones_publicables")
     item["documentos"] = _parse_documentos(row["documentos_json"])
     item["financiacion_detalle"] = _build_financiacion_detalle(row)
+    item["resumen_clinico_auto"] = {
+        "source_status": _row_get(row, "clinical_source_status"),
+        "generated_at": _row_get(row, "clinical_generated_at"),
+        "indicaciones": _row_get(row, "resumen_indicaciones"),
+        "posologia": _row_get(row, "resumen_posologia"),
+        "ajuste_renal": _row_get(row, "resumen_ajuste_renal"),
+        "ajuste_hepatico": _row_get(row, "resumen_ajuste_hepatico"),
+        "contraindicaciones": _row_get(row, "resumen_contraindicaciones"),
+        "advertencias": _row_get(row, "resumen_advertencias"),
+        "embarazo": _row_get(row, "resumen_embarazo"),
+        "lactancia": _row_get(row, "resumen_lactancia"),
+        "fuentes": _parse_json_value(_row_get(row, "resumen_fuente_json")) or {},
+        "warnings": _parse_json_value(_row_get(row, "clinical_warnings_json")) or [],
+    } if _row_get(row, "clinical_source_status") is not None else None
     return item
 
 
