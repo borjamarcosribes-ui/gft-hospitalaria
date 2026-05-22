@@ -123,6 +123,14 @@ def test_render_gft_pdf_html_full_mode_includes_long_fields():
     assert "Uso hospitalario" in html
 
 
+def test_render_gft_pdf_html_compact_skips_empty_parent_tables():
+    html = render_gft_pdf_html(_export_data())
+
+    assert "Sistema nervioso" in html
+    assert "Analgésicos" in html
+    assert html.count("<table>") == 1
+
+
 def test_render_gft_pdf_html_escapes_malicious_html_content():
     html = render_gft_pdf_html(
         _export_data(
