@@ -99,11 +99,11 @@ def test_render_gft_pdf_html_renders_atc_groups_and_medications():
     assert "N02" in html
     assert "Paracetamol Hospitalario" in html
     assert "Paracetamol" in html
-    assert "Comprimido" in html
-    assert "Vía oral" in html
     assert "123456" in html
     assert "N02BE01" in html
-    assert "Financiado" in html
+    assert "Dolor y fiebre" in html
+    assert "Ajustar si procede" in html
+    assert "Precaución en insuficiencia hepática" in html
     assert "https://example.test/ficha/123456" in html
     assert "https://example.test/prospecto/123456" in html
 
@@ -130,6 +130,7 @@ def test_render_gft_pdf_html_table_mode_skips_empty_parent_tables():
     assert "Analgésicos" in html
     assert html.count("<table>") == 1
     assert "Guía narrativa de medicamentos publicados ordenada por ATC" not in html
+    assert "Comprimido" in html
 
 
 def test_render_gft_pdf_html_narrative_has_no_table():

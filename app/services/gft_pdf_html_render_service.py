@@ -89,6 +89,9 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") 
                     links.append(f"Ficha técnica: {_e(med.url_ficha_tecnica)}.")
                 if med.url_prospecto.strip().lower() != "no informado":
                     links.append(f"Prospecto: {_e(med.url_prospecto)}.")
+                observaciones = ""
+                if mode == "full" and med.observaciones_publicables.strip().lower() != "no informado":
+                    observaciones = f" Observaciones: {_e(_truncate(med.observaciones_publicables, 400))}."
                 lines.append(
                     "<p>"
                     f"{lead}{_e(med.nombre_comercial)} (CN {_e(med.cn)}). "
@@ -100,6 +103,7 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") 
                     f"Embarazo: {_e(_truncate(embarazo, 400))}. "
                     f"Lactancia: {_e(_truncate(lactancia, 400))}. "
                     f"Restricciones hospitalarias: {_e(_truncate(restricciones, 400))}. "
+                    f"{observaciones}"
                     f"{' '.join(links)}"
                     "</p>"
                 )
