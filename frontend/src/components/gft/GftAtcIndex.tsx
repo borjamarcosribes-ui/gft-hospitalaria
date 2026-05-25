@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { GFTAtcIndexItem } from '../../types/gft';
 
@@ -152,6 +152,11 @@ export function GftAtcIndex({ items, selectedAtc, onSelectAtc }: GftAtcIndexProp
   const totalMedicationCount = useMemo(() => tree.reduce((sum, node) => sum + node.count, 0), [tree]);
   const defaultExpanded = useMemo(() => collectDefaultExpandedCodes(tree, selectedAtc), [tree, selectedAtc]);
   const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set());
+  const [isPanelOpen, setIsPanelOpen] = useState(Boolean(selectedAtc));
+
+  useEffect(() => {
+    if (selectedAtc) setIsPanelOpen(true);
+  }, [selectedAtc]);
 
   const mergedExpanded = useMemo(() => {
     const merged = new Set(expandedCodes);
@@ -220,25 +225,38 @@ export function GftAtcIndex({ items, selectedAtc, onSelectAtc }: GftAtcIndexProp
           <h2 className="gft-atc-index__title" id="gft-atc-index-title">Índice ATC</h2>
           <p className="gft-atc-index__subtitle">Navegación jerárquica por niveles L1-L5</p>
         </div>
-        <span className="gft-atc-index__count" aria-label={`${totalMedicationCount} medicamentos en el índice ATC`}>{totalMedicationCount}</span>
-      </div>
-
-      <div className="gft-atc-index__actions">
         <button
           type="button"
-          className={`gft-atc-index__button gft-atc-index__button--all${selectedAtc ? '' : ' gft-atc-index__button--active'}`}
-          aria-pressed={!selectedAtc}
-          onClick={() => onSelectAtc('')}
+          className="gft-atc-index__toggle"
+          aria-expanded={isPanelOpen}
+          aria-controls="gft-atc-index-panel"
+          onClick={() => setIsPanelOpen((prev) => !prev)}
         >
-          <span className="gft-atc-index__label-wrap">
-            <span className="gft-atc-index__level">Filtro</span>
-            <span className="gft-atc-index__label">Limpiar ATC (todos los grupos)</span>
-          </span>
-          <span className="gft-atc-index__count">{totalMedicationCount}</span>
+          <span className="gft-atc-index__count" aria-label={`${totalMedicationCount} medicamentos en el índice ATC`}>{totalMedicationCount}</span>
+          <span className="gft-atc-index__level">{isPanelOpen ? 'Ocultar' : 'Mostrar'}</span>
         </button>
       </div>
 
-      {tree.length > 0 ? renderNodes(tree) : <p className="gft-atc-index__empty">No hay grupos ATC disponibles en el índice global.</p>}
+      {isPanelOpen ? (
+        <div id="gft-atc-index-panel">
+          <div className="gft-atc-index__actions">
+            <button
+              type="button"
+              className={`gft-atc-index__button gft-atc-index__button--all${selectedAtc ? '' : ' gft-atc-index__button--active'}`}
+              aria-pressed={!selectedAtc}
+              onClick={() => onSelectAtc('')}
+            >
+              <span className="gft-atc-index__label-wrap">
+                <span className="gft-atc-index__level">Filtro</span>
+                <span className="gft-atc-index__label">Limpiar ATC (todos los grupos)</span>
+              </span>
+              <span className="gft-atc-index__count">{totalMedicationCount}</span>
+            </button>
+          </div>
+
+          {tree.length > 0 ? renderNodes(tree) : <p className="gft-atc-index__empty">No hay grupos ATC disponibles en el índice global.</p>}
+        </div>
+      ) : null}
     </section>
   );
 }

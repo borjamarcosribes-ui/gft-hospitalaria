@@ -114,6 +114,12 @@ function GftClinicalUseInfo({ detail }: { detail: GFTMedicamentoDetail }) {
   return (
     <section className="gft-detail__section gft-detail__section--clinical">
       <h3>Información clínica de uso en guía</h3>
+      {firstNonEmpty(detail.resumen_clinico_auto?.resumen_general) ? (
+        <details className="gft-detail__text-block" open>
+          <summary>Resumen clínico automático</summary>
+          <p>{cleanClinicalText('Resumen clínico automático', detail.resumen_clinico_auto?.resumen_general) ?? ''}</p>
+        </details>
+      ) : null}
       <FieldDisclosure label="Indicaciones" value={firstNonEmpty(detail.resumen_clinico_auto?.indicaciones, detail.indicaciones_ficha_tecnica)} fallback="No localizado automáticamente." />
       <FieldDisclosure label="Posología" value={firstNonEmpty(detail.resumen_clinico_auto?.posologia)} fallback="No localizado automáticamente." />
       <FieldDisclosure label="Ajuste insuficiencia renal" value={firstNonEmpty(detail.resumen_clinico_auto?.ajuste_renal, detail.ajuste_insuficiencia_renal)} fallback="No localizado automáticamente." />

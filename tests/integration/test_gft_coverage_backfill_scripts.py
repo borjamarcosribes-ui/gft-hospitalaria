@@ -34,7 +34,7 @@ def test_linkage_audit_excludes_missing_source_from_useful_counts(monkeypatch, d
     db_session.add(GFTEstadoPresentacion(cn='310001', estado_gft='incluido', estado_editorial='publicado'))
     db_session.add(GFTEstadoPresentacion(cn='310002', estado_gft='incluido', estado_editorial='publicado'))
     db_session.add(GftClinicalSummaryCache(cn='310001', source_status='missing_source', resumen_ajuste_renal='No localizado automáticamente', resumen_ajuste_hepatico='No informado'))
-    db_session.add(GftClinicalSummaryCache(cn='310002', source_status='ok', resumen_ajuste_renal='Ajustar por FG', resumen_ajuste_hepatico='Sin ajuste', resumen_embarazo='Evitar', resumen_lactancia='Precaución'))
+    db_session.add(GftClinicalSummaryCache(cn='310002', source_status='ok', resumen_general='Resumen útil', resumen_ajuste_renal='Ajustar por FG', resumen_ajuste_hepatico='Sin ajuste', resumen_embarazo='Evitar', resumen_lactancia='Precaución'))
     db_session.commit(); _create_view(db_session)
 
     monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
@@ -44,6 +44,7 @@ def test_linkage_audit_excludes_missing_source_from_useful_counts(monkeypatch, d
         assert mod.main(['--scope', 'published', '--json']) == 0
     out = json.loads(b.getvalue())
     assert out['summaries']['con_resumen'] == 1
+    assert out['summaries']['con_resumen_general'] == 1
     assert out['summaries']['con_ajuste_renal'] == 1
     assert out['summaries']['con_ajuste_hepatico'] == 1
     assert out['summaries']['con_embarazo'] == 1

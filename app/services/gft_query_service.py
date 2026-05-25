@@ -278,6 +278,7 @@ def _build_clinical_summary_payload(summary_row: GftClinicalSummaryCache | None)
     return {
         "source_status": summary_row.source_status,
         "generated_at": summary_row.generated_at,
+        "resumen_general": summary_row.resumen_general,
         "indicaciones": summary_row.resumen_indicaciones,
         "posologia": summary_row.resumen_posologia,
         "ajuste_renal": summary_row.resumen_ajuste_renal,

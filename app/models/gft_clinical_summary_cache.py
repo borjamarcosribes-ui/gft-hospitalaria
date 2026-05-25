@@ -14,6 +14,7 @@ class GftClinicalSummaryCache(Base):
     generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source_sections_json: Mapped[list[str] | None] = mapped_column(JSON)
     source_hash: Mapped[str | None] = mapped_column(String(64))
+    resumen_general: Mapped[str | None] = mapped_column(Text)
     resumen_indicaciones: Mapped[str | None] = mapped_column(Text)
     resumen_posologia: Mapped[str | None] = mapped_column(Text)
     resumen_ajuste_renal: Mapped[str | None] = mapped_column(Text)

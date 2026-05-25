@@ -55,6 +55,7 @@ export interface GFTFinanciacionDetalle {
 export interface GFTResumenClinicoAuto {
   source_status: string;
   generated_at: string | null;
+  resumen_general: string | null;
   indicaciones: string | null;
   posologia: string | null;
   ajuste_renal: string | null;

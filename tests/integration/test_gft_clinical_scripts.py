@@ -93,7 +93,9 @@ def test_summary_script_uses_public_frontier_and_skips_not_public(monkeypatch, d
 
     rc = mod.main(['--confirm-write', '--candidate-mode', 'summary_ready', '--limit', '10'])
     assert rc == 0
-    assert db_session.get(GftClinicalSummaryCache, '200001') is not None
+    row = db_session.get(GftClinicalSummaryCache, '200001')
+    assert row is not None
+    assert row.resumen_general is not None
     assert db_session.get(GftClinicalSummaryCache, '200999') is None
 
     rc = mod.main(['--confirm-write', '--cn', '200999'])
@@ -132,3 +134,20 @@ def test_summary_missing_source_not_written_by_default_and_optional_write(monkey
     row = db_session.get(GftClinicalSummaryCache, '220001')
     assert row is not None
     assert row.source_status == 'missing_source'
+
+
+def test_summary_script_force_updates_resumen_general(monkeypatch, db_session):
+    from scripts import generate_gft_clinical_summaries as mod
+
+    _seed_pub(db_session, '230001')
+    db_session.add(CimaMedicamentoCache(cn='230001', nregistro='NR230001', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='230001', nregistro='NR230001', tipo_documento=1, seccion='4.1', titulo='4.1', sync_status='ok', contenido_texto='Indicado para test clínico'))
+    db_session.add(GftClinicalSummaryCache(cn='230001', source_status='ok', resumen_general='Antiguo resumen'))
+    db_session.commit(); _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    assert mod.main(['--confirm-write', '--cn', '230001', '--force']) == 0
+    row = db_session.get(GftClinicalSummaryCache, '230001')
+    assert row is not None
+    assert row.resumen_general is not None
+    assert row.resumen_general != 'Antiguo resumen'
