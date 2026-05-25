@@ -53,6 +53,41 @@ def _non_empty(value) -> str | None:
     return text or None
 
 
+def _normalize_atc_code(codigo: str | None) -> str:
+    if codigo is None:
+        return ""
+    return "".join(str(codigo).strip().upper().split())
+
+
+def _extract_atc_items_from_row(row) -> list[dict]:
+    parsed_atc = _parse_atc(_row_get(row, "atc_json"))
+    normalized_items: list[dict] = []
+    for item in parsed_atc:
+        code = _normalize_atc_code(str(item.get("codigo") or ""))
+        if not code:
+            continue
+        normalized_items.append(
+            {
+                "codigo": code,
+                "nombre": _non_empty(item.get("nombre")),
+                "nivel": _non_empty(item.get("nivel")) or _infer_atc_level(code),
+            }
+        )
+    if normalized_items:
+        return normalized_items
+
+    imported_code = _normalize_atc_code(_non_empty(_row_get(row, "codigo_atc_importado")))
+    if not imported_code:
+        return []
+    return [
+        {
+            "codigo": imported_code,
+            "nombre": _non_empty(_row_get(row, "descripcion_atc_importada")),
+            "nivel": _infer_atc_level(imported_code),
+        }
+    ]
+
+
 
 
 def _normalize_document_secc(value) -> str | None:
@@ -257,11 +292,7 @@ def _build_clinical_summary_payload(summary_row: GftClinicalSummaryCache | None)
 
 
 def _row_to_list_item(row, principios: list[dict]) -> dict:
-    atc = _parse_atc(row["atc_json"])
-    imported_atc = _non_empty(_row_get(row, "codigo_atc_importado"))
-    if not atc and imported_atc:
-        atc_code = imported_atc.upper()
-        atc = [{"codigo": atc_code, "nombre": _non_empty(_row_get(row, "descripcion_atc_importada")), "nivel": _infer_atc_level(atc_code)}]
+    atc = _extract_atc_items_from_row(row)
 
     vias = _parse_vias(row["vias_administracion_json"])
     if not vias:
@@ -366,7 +397,7 @@ def list_medicamentos(
     letra_norm = (letra or "").strip().lower()[:1]
     principio_raw = (principio_activo or "").strip()
     principio_slug_norm = principio_raw.lower()
-    atc_norm = (atc or "").strip().upper()
+    atc_norm = _normalize_atc_code(atc)
 
     filtered_items = ordered_items
     if q_norm:
@@ -412,7 +443,7 @@ def list_medicamentos(
             item
             for item in filtered_items
             if any(
-                str(atc_item.get("codigo") or "").strip().upper().startswith(atc_norm)
+                _normalize_atc_code(str(atc_item.get("codigo") or "")).startswith(atc_norm)
                 for atc_item in item.get("atc", [])
                 if isinstance(atc_item, Mapping)
             )
@@ -498,7 +529,7 @@ def list_atc_index(db: Session) -> dict:
     rows = db.execute(
         text(
             """
-            SELECT cn, atc_json
+            SELECT cn, atc_json, codigo_atc_importado, descripcion_atc_importada
             FROM v_gft_publicada
             """
         )
@@ -511,8 +542,8 @@ def list_atc_index(db: Session) -> dict:
             continue
 
         seen_for_cn: set[str] = set()
-        for atc_item in _parse_atc(row["atc_json"]):
-            raw_code = str(atc_item.get("codigo") or "").strip().upper()
+        for atc_item in _extract_atc_items_from_row(row):
+            raw_code = _normalize_atc_code(str(atc_item.get("codigo") or ""))
             if not raw_code:
                 continue
 

@@ -33,6 +33,8 @@ def _create_view(db_session):
               c.forma_farmaceutica_simplificada,
               c.vias_administracion_json,
               c.atc_json,
+              g.codigo_atc_importado,
+              g.descripcion_atc_importada,
               c.principios_activos_json,
               c.documentos_json,
               c.url_ficha_tecnica,
@@ -602,6 +604,52 @@ def test_list_atc_index_ignores_invalid_or_missing_atc(db_session):
     result = list_atc_index(db_session)
 
     assert result == {"items": []}
+
+
+def test_list_atc_index_uses_imported_fallback_and_expands_levels(db_session):
+    _insert_base_medicamento(db_session, "873101", publicado=True)
+    _set_atc_json(db_session, "873101", None)
+    db_session.execute(
+        text(
+            """
+            UPDATE gft_estado_presentacion
+            SET codigo_atc_importado=' c09aa05 ', descripcion_atc_importada='C09AA05 - Inhibidores de la ECA'
+            WHERE cn='873101'
+            """
+        )
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    result = list_atc_index(db_session)
+    items_by_code = {item["codigo"]: item for item in result["items"]}
+    for codigo in ("C", "C09", "C09A", "C09AA", "C09AA05"):
+        assert codigo in items_by_code
+    assert items_by_code["C09AA05"]["nombre"] == "C09AA05 - Inhibidores de la ECA"
+
+
+def test_list_medicamentos_atc_filter_uses_imported_fallback(db_session):
+    _insert_base_medicamento(db_session, "873201", publicado=True)
+    _set_atc_json(db_session, "873201", None)
+    db_session.execute(
+        text(
+            """
+            UPDATE gft_estado_presentacion
+            SET codigo_atc_importado='C09AA05', descripcion_atc_importada='Ramipril'
+            WHERE cn='873201'
+            """
+        )
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    l1 = list_medicamentos(db_session, atc="C")
+    l5 = list_medicamentos(db_session, atc="C09AA05")
+
+    assert l1["total"] == 1
+    assert l1["items"][0]["cn"] == "873201"
+    assert l5["total"] == 1
+    assert l5["items"][0]["cn"] == "873201"
 
 
 def _add_principio_relacion(db_session, cn: str, nombre: str, slug: str | None = None):
