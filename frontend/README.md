@@ -20,17 +20,17 @@ npm install
 npm run dev
 ```
 
-El servidor de desarrollo de Vite incluye un proxy para `/gft` hacia `http://localhost:8000`.
+El servidor de desarrollo de Vite incluye un proxy hacia `http://localhost:8000` para `/gft`, `/admin`, `/imports`, `/cima`, `/bifimed` y `/health`, evitando CORS en Codespaces y local.
 
 ## Configuración de API
 
 Puedes configurar la URL base de la API con la variable de entorno:
 
 ```bash
-VITE_API_BASE_URL=http://localhost:8000
+VITE_API_BASE_URL=
 ```
 
-Si `VITE_API_BASE_URL` no está definida, el frontend usa una cadena vacía (`""`) para permitir proxy de desarrollo o despliegue en el mismo origen.
+En desarrollo se recomienda dejar `VITE_API_BASE_URL` vacío para que el frontend use rutas relativas y el proxy de Vite. Si defines una URL absoluta, el frontend llamará directamente a ese origen.
 
 ## Build
 
