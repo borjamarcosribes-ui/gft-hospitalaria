@@ -10,6 +10,7 @@ from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.services.gft_clinical_summary_service import build_clinical_summary
 from app.services.gft_clinical_pipeline_service import TARGET_SECTIONS
+from app.services.gft_cn_universe_service import get_cn_universe
 
 
 def parse_args(argv=None):
@@ -22,6 +23,7 @@ def parse_args(argv=None):
     p.add_argument('--only-missing', action='store_true')
     p.add_argument('--examples', type=int, default=20)
     p.add_argument('--candidate-mode', default='first', choices=['first', 'summary_ready'])
+    p.add_argument('--scope', default='published', choices=['published','included','state','imported','all_known'])
     p.add_argument('--cn', action='append', default=[])
     return p.parse_args(argv)
 
@@ -51,18 +53,15 @@ def main(argv=None) -> int:
     if args.confirm_write and args.limit is None and not args.cn:
         raise SystemExit('Para escritura real indique --limit o --cn.')
     with SessionLocal() as db:
-        published_cns = _published_cns(db)
-        published_set = set(published_cns)
+        scope_cns = get_cn_universe(db, args.scope)
+        scope_set = set(scope_cns)
         skipped_not_public = 0
         if args.cn:
-            base_cns = []
-            for cn in args.cn:
-                if cn in published_set:
-                    base_cns.append(cn)
-                else:
-                    skipped_not_public += 1
+            requested_cns = get_cn_universe(db, "explicit", args.cn)
+            base_cns = [cn for cn in requested_cns if cn in scope_set]
+            skipped_not_public = len(requested_cns) - len(base_cns)
         else:
-            candidates = published_cns
+            candidates = scope_cns
             if args.candidate_mode == 'summary_ready':
                 candidates = _summary_ready_cns(db, candidates)
             if args.limit is not None:
