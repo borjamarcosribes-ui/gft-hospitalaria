@@ -65,41 +65,29 @@ function DetailRow({ label, value }: { label: string; value: string | number | n
 }
 
 function ClinicalTextBlock({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div className="gft-detail__text-block">
-      <h4>{label}</h4>
-      <p>{formatValue(value)}</p>
-    </div>
-  );
+  if (!value || !value.trim()) return null;
+  return (<div className="gft-detail__text-block"><h4>{label}</h4><p>{value}</p></div>);
+}
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) { if (value && value.trim()) return value.trim(); }
+  return null;
 }
 
 function GftClinicalUseInfo({ detail }: { detail: GFTMedicamentoDetail }) {
   return (
     <section className="gft-detail__section gft-detail__section--clinical">
       <h3>Información clínica de uso en guía</h3>
-      <ClinicalTextBlock label="Indicaciones en ficha técnica" value={detail.indicaciones_ficha_tecnica} />
-      <dl className="gft-detail__grid gft-detail__clinical-grid">
-        <DetailRow label="Restricciones hospitalarias" value={detail.restricciones_hospitalarias} />
-        <DetailRow label="Ajuste insuficiencia renal" value={detail.ajuste_insuficiencia_renal} />
-        <DetailRow label="Ajuste insuficiencia hepática" value={detail.ajuste_insuficiencia_hepatica} />
-        <DetailRow label="Precauciones embarazo" value={detail.precauciones_embarazo} />
-        <DetailRow label="Precauciones lactancia" value={detail.precauciones_lactancia} />
-      </dl>
-      {detail.resumen_clinico_auto ? (
-        <div className="gft-detail__text-block">
-          <h4>Resumen automático basado en ficha técnica AEMPS</h4>
-          <p><strong>Indicaciones:</strong> {formatValue(detail.resumen_clinico_auto.indicaciones)}</p>
-          <p><strong>Posología:</strong> {formatValue(detail.resumen_clinico_auto.posologia)}</p>
-          <p><strong>Ajuste renal:</strong> {formatValue(detail.resumen_clinico_auto.ajuste_renal)}</p>
-          <p><strong>Ajuste hepático:</strong> {formatValue(detail.resumen_clinico_auto.ajuste_hepatico)}</p>
-          <p><strong>Contraindicaciones:</strong> {formatValue(detail.resumen_clinico_auto.contraindicaciones)}</p>
-          <p><strong>Advertencias:</strong> {formatValue(detail.resumen_clinico_auto.advertencias)}</p>
-          <p><strong>Embarazo:</strong> {formatValue(detail.resumen_clinico_auto.embarazo)}</p>
-          <p><strong>Lactancia:</strong> {formatValue(detail.resumen_clinico_auto.lactancia)}</p>
-        </div>
-      ) : (
-        <p>Resumen clínico automático no disponible. Se muestran campos estructurados publicados.</p>
-      )}
+      <ClinicalTextBlock label="Indicaciones" value={firstNonEmpty(detail.resumen_clinico_auto?.indicaciones, detail.indicaciones_ficha_tecnica, "No informado")} />
+      <ClinicalTextBlock label="Posología" value={firstNonEmpty(detail.resumen_clinico_auto?.posologia, "No localizado automáticamente")} />
+      <ClinicalTextBlock label="Ajuste renal" value={firstNonEmpty(detail.resumen_clinico_auto?.ajuste_renal, detail.ajuste_insuficiencia_renal, "No localizado automáticamente")} />
+      <ClinicalTextBlock label="Ajuste hepático" value={firstNonEmpty(detail.resumen_clinico_auto?.ajuste_hepatico, detail.ajuste_insuficiencia_hepatica, "No localizado automáticamente")} />
+      <ClinicalTextBlock label="Contraindicaciones" value={firstNonEmpty(detail.resumen_clinico_auto?.contraindicaciones, "No localizado automáticamente")} />
+      <ClinicalTextBlock label="Advertencias/precauciones" value={firstNonEmpty(detail.resumen_clinico_auto?.advertencias, "No localizado automáticamente")} />
+      <ClinicalTextBlock label="Embarazo" value={firstNonEmpty(detail.resumen_clinico_auto?.embarazo, detail.precauciones_embarazo, "No localizado automáticamente")} />
+      <ClinicalTextBlock label="Lactancia" value={firstNonEmpty(detail.resumen_clinico_auto?.lactancia, detail.precauciones_lactancia, "No localizado automáticamente")} />
+      <ClinicalTextBlock label="Restricciones hospitalarias" value={firstNonEmpty(detail.restricciones_hospitalarias, "No informado")} />
+      <p>{detail.resumen_clinico_auto?.source_status === "ok" ? "Resumen clínico automático generado desde ficha técnica CIMA." : detail.resumen_clinico_auto?.source_status === "partial" ? "Resumen clínico automático parcial." : "Resumen clínico automático no disponible."}</p>
     </section>
   );
 }
@@ -107,16 +95,16 @@ function GftClinicalUseInfo({ detail }: { detail: GFTMedicamentoDetail }) {
 function GftFinanciacionDetail({ financiacion, cn }: { financiacion: GFTFinanciacionDetalle; cn: string }) {
   return (
     <section className="gft-detail__section">
-      <h3>Financiación</h3>
+      <h3>Financiación BIFIMED</h3>
       <dl className="gft-detail__grid gft-detail__grid--compact">
                 <DetailRow label="CN" value={cn} />
-        <DetailRow label="Situación BIFIMED" value={financiacion.situacion_financiacion} />
+        <DetailRow label="Situación" value={(financiacion.situacion_financiacion?.trim().toLowerCase() === "si" || financiacion.situacion_financiacion?.trim().toLowerCase() === "sí") ? "Financiado" : financiacion.situacion_financiacion} />
         <DetailRow label="Última sincronización" value={formatDate(financiacion.last_synced_at ?? null)} />
         <DetailRow
           label="Condiciones restringidas"
-          value={financiacion.condiciones_financiacion_restringidas}
+          value={firstNonEmpty(financiacion.condiciones_financiacion_restringidas, ((financiacion.situacion_financiacion?.trim().toLowerCase()==="si"||financiacion.situacion_financiacion?.trim().toLowerCase()==="sí") ? "No constan condiciones restringidas en BIFIMED." : "No informado."))}
         />
-        <DetailRow label="Condiciones especiales" value={financiacion.condiciones_especiales_financiacion} />
+        <DetailRow label="Condiciones especiales" value={firstNonEmpty(financiacion.condiciones_especiales_financiacion, ((financiacion.situacion_financiacion?.trim().toLowerCase()==="si"||financiacion.situacion_financiacion?.trim().toLowerCase()==="sí") ? "No constan condiciones especiales en BIFIMED." : "No informado."))} />
         <DetailRow label="Estado Nomenclátor" value={financiacion.estado_nomenclator} />
         <DetailRow label="Aportación usuario" value={financiacion.aportacion_usuario} />
         <DetailRow label="Subgrupo ATC" value={financiacion.subgrupo_atc} />
@@ -208,7 +196,7 @@ export function GftMedicationDetailPanel({ cn, detail, loading, error, onClose }
 
           <GftClinicalUseInfo detail={detail} />
 
-          <GftFinanciacionDetail financiacion={detail.financiacion_detalle ?? { situacion_financiacion: detail.situacion_financiacion, condiciones_financiacion_restringidas: null, condiciones_especiales_financiacion: null, estado_nomenclator: null, aportacion_usuario: null, subgrupo_atc: null }} cn={detail.cn} />
+          {detail.financiacion_detalle ? (<GftFinanciacionDetail financiacion={detail.financiacion_detalle} cn={detail.cn} />) : (<section className="gft-detail__section"><h3>Financiación BIFIMED</h3><p>No se dispone de detalle BIFIMED para este CN.</p></section>)}
 
           <section className="gft-detail__section">
             <h3>Trazabilidad</h3>
