@@ -75,18 +75,18 @@ npm --prefix frontend run dev
 
 Normalmente Vite mostrará la URL local del frontend, por ejemplo `http://localhost:5173`.
 
-### Nota para Codespaces (ruta visual `/admin/gft`)
+### Nota para Codespaces (proxy frontend -> backend)
 
-En desarrollo (incluyendo Codespaces), Vite usa un **proxy específico** para endpoints admin (`/admin/health` y `/admin/gft/medicamentos`) para evitar fallos intermitentes de `Failed to fetch` cuando `VITE_API_BASE_URL` no se aplica o el navegador conserva caché.
-
-No configures un proxy global `/admin`, porque rompería la ruta SPA visual `/admin/gft` al capturarla como si fuera backend.
-
-`VITE_API_BASE_URL` puede seguir usándose (por ejemplo, apuntando al backend publicado en el puerto `8000`), pero el proxy específico de endpoints admin añade robustez en dev:
+En desarrollo (incluyendo Codespaces), arranca Vite con el proxy activo y deja `VITE_API_BASE_URL` vacío para evitar llamadas cross-origin entre los puertos `5173` y `8000`.
 
 ```bash
-export VITE_API_BASE_URL="https://verbose-space-cod-r4vx56r7wqx72x5jv-8000.app.github.dev"
-npm --prefix frontend run dev -- --host 0.0.0.0
+cat > frontend/.env.local <<EOF
+VITE_API_BASE_URL=
+EOF
+npm --prefix frontend run dev -- --host 0.0.0.0 --port 5173
 ```
+
+Con esta configuración el navegador llama al propio frontend (`/gft`, `/admin`, `/imports`, `/cima`, `/bifimed`, `/health`) y Vite reenvía internamente a `http://localhost:8000`, evitando fallos frágiles de túnel/CORS en Codespaces.
 
 
 ## URLs a abrir

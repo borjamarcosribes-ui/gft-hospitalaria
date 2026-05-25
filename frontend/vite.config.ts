@@ -1,17 +1,36 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const backendTarget = 'http://localhost:8000';
+
+function buildProxyConfig() {
+  return {
+    target: backendTarget,
+    changeOrigin: true,
+  };
+}
+
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: '0.0.0.0',
+    port: 5173,
     proxy: {
-      '/gft': 'http://localhost:8000',
-      '/imports': 'http://localhost:8000',
-      '/cima': 'http://localhost:8000',
-      '/bifimed': 'http://localhost:8000',
-      '/health': 'http://localhost:8000',
-      '/admin/health': 'http://localhost:8000',
-      '/admin/gft/medicamentos': 'http://localhost:8000',
+      '/gft': buildProxyConfig(),
+      '/imports': buildProxyConfig(),
+      '/cima': buildProxyConfig(),
+      '/bifimed': buildProxyConfig(),
+      '/health': buildProxyConfig(),
+      '/admin': {
+        ...buildProxyConfig(),
+        bypass(req) {
+          const acceptHeader = req.headers.accept ?? '';
+          if (acceptHeader.includes('text/html')) {
+            return '/index.html';
+          }
+          return undefined;
+        },
+      },
     },
   },
 });
