@@ -20,6 +20,19 @@ Define universos CN (`published`, `included`, `state`, `imported`, `all_known`) 
 ## Secciones + resúmenes
 - `PYTHONPATH=. python scripts/run_gft_clinical_backfill.py --dry-run --scope all_known --batch-size 50 --max-batches 1 --sections 4.1 4.2 4.3 4.4 4.6 --only-missing --json`
 
+### Reglas de `source_status`
+- `ok` / `partial`: resumen clínico útil para métricas de cobertura.
+- `missing_source`: no cuenta como resumen útil y no debe incrementar `con_resumen` ni campos clínicos derivados.
+- Por defecto, el backfill **no escribe** filas `missing_source` en `gft_clinical_summary_cache`.
+- Si se necesita persistir intentos sin fuente, usar `scripts/generate_gft_clinical_summaries.py --write-missing-source` explícitamente.
+
+Si existen filas históricas `missing_source`, se pueden limpiar con:
+
+```sql
+DELETE FROM gft_clinical_summary_cache
+WHERE source_status = 'missing_source';
+```
+
 ## Orquestador global
 - Dry-run: `PYTHONPATH=. python scripts/run_gft_linkage_backfill.py --dry-run --scope all_known --batch-size 50 --max-batches 1 --only-missing --json`
 - Write controlado: same with `--confirm-write`.

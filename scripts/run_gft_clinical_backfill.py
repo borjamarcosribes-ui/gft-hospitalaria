@@ -32,15 +32,15 @@ def main(argv=None):
     audit_args=['--json','--examples',str(a.examples),'--scope',a.scope,'--sections',*a.sections]+sum([['--cn',cn] for cn in a.cn],[]); cov_before=_parse_json_output(audit_mod.main,audit_args)
     if a.dry_run:
         sync_plan={} if a.skip_sections else _parse_json_output(sync_mod.main,['--dry-run','--sections',*a.sections,'--only-missing','--limit',str(a.batch_size*a.max_batches),'--json','--scope',a.scope]+sum([['--cn',cn] for cn in a.cn],[]))
-        sum_plan={} if a.skip_summaries else _parse_json_output(sum_mod.main,['--dry-run','--only-missing','--limit',str(a.batch_size*a.max_batches),'--json','--scope',a.scope]+sum([['--cn',cn] for cn in a.cn],[]))
+        sum_plan={} if a.skip_summaries else _parse_json_output(sum_mod.main,['--dry-run','--only-missing','--candidate-mode','summary_ready','--limit',str(a.batch_size*a.max_batches),'--json','--scope',a.scope]+sum([['--cn',cn] for cn in a.cn],[]))
         out={'dry_run':True,'batch_size':a.batch_size,'max_batches':a.max_batches,'sections':a.sections,'sync_plan':sync_plan,'summary_plan':sum_plan,'coverage_before':cov_before,'coverage_after_estimate':cov_before}
     else:
         batches=[]
         for i in range(a.max_batches):
             limit=a.batch_size
             sync_args=['--confirm-write','--sections',*a.sections,'--only-missing','--limit',str(limit),'--json','--scope',a.scope]
-            sum_args=['--confirm-write','--only-missing','--limit',str(limit),'--json','--scope',a.scope]
-            if a.cn: sync_args=['--confirm-write','--sections',*a.sections,'--only-missing','--json']+sum([['--cn',cn] for cn in a.cn],[]); sum_args=['--confirm-write','--only-missing','--json']+sum([['--cn',cn] for cn in a.cn],[])
+            sum_args=['--confirm-write','--only-missing','--candidate-mode','summary_ready','--limit',str(limit),'--json','--scope',a.scope]
+            if a.cn: sync_args=['--confirm-write','--sections',*a.sections,'--only-missing','--json']+sum([['--cn',cn] for cn in a.cn],[]); sum_args=['--confirm-write','--only-missing','--candidate-mode','summary_ready','--json']+sum([['--cn',cn] for cn in a.cn],[])
             if a.force_summary: sum_args.append('--force')
             s={} if a.skip_sections else _parse_json_output(sync_mod.main,sync_args); m={} if a.skip_summaries else _parse_json_output(sum_mod.main,sum_args)
             batches.append({'batch_number':i+1,'sync':{'processed_cn':s.get('processed_cn',0),'processed_operations':s.get('processed_operations',0),'by_status':s.get('by_status',{})},'summaries':{'processed':m.get('processed',0),'written':m.get('written',0),'skipped_existing':m.get('skipped_existing',0),'missing_source':m.get('by_source_status',{}).get('missing',0),'by_source_status':m.get('by_source_status',{}),'examples_written':m.get('examples',[])}})

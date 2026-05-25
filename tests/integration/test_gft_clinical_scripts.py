@@ -112,3 +112,23 @@ def test_summary_script_confirm_write_requires_limit_or_cn(db_session):
         assert False
     except SystemExit as exc:
         assert 'indique --limit o --cn' in str(exc)
+
+
+def test_summary_missing_source_not_written_by_default_and_optional_write(monkeypatch, db_session):
+    from scripts import generate_gft_clinical_summaries as mod
+
+    _seed_pub(db_session, '220001')
+    db_session.add(CimaMedicamentoCache(cn='220001', nregistro='NR220001', sync_status='ok'))
+    db_session.commit()
+    _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    rc = mod.main(['--confirm-write', '--cn', '220001'])
+    assert rc == 0
+    assert db_session.get(GftClinicalSummaryCache, '220001') is None
+
+    rc = mod.main(['--confirm-write', '--cn', '220001', '--write-missing-source'])
+    assert rc == 0
+    row = db_session.get(GftClinicalSummaryCache, '220001')
+    assert row is not None
+    assert row.source_status == 'missing_source'
