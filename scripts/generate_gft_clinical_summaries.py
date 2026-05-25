@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse, json
 from collections import Counter
 from datetime import datetime, timezone
+from sqlalchemy import text
 from app.core.database import SessionLocal
 from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
@@ -25,6 +26,24 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
+def _published_cns(db) -> list[str]:
+    rows = db.execute(text("SELECT cn FROM v_gft_publicada ORDER BY cn")).mappings().all()
+    return [str(r["cn"]) for r in rows]
+
+
+def _summary_ready_cns(db, cns: list[str]) -> list[str]:
+    out: list[str] = []
+    for cn in cns:
+        found = db.query(CimaFichaTecnicaCache.cn).filter(
+            CimaFichaTecnicaCache.cn == cn,
+            CimaFichaTecnicaCache.sync_status == 'ok',
+            CimaFichaTecnicaCache.seccion.in_(TARGET_SECTIONS),
+        ).first()
+        if found:
+            out.append(cn)
+    return out
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     if not args.dry_run and not args.confirm_write:
@@ -32,7 +51,24 @@ def main(argv=None) -> int:
     if args.confirm_write and args.limit is None and not args.cn:
         raise SystemExit('Para escritura real indique --limit o --cn.')
     with SessionLocal() as db:
-        base_cns = args.cn or [r.cn for r in db.query(CimaMedicamentoCache.cn).order_by(CimaMedicamentoCache.cn).limit(args.limit or 999999).all()]
+        published_cns = _published_cns(db)
+        published_set = set(published_cns)
+        skipped_not_public = 0
+        if args.cn:
+            base_cns = []
+            for cn in args.cn:
+                if cn in published_set:
+                    base_cns.append(cn)
+                else:
+                    skipped_not_public += 1
+        else:
+            candidates = published_cns
+            if args.candidate_mode == 'summary_ready':
+                candidates = _summary_ready_cns(db, candidates)
+            if args.limit is not None:
+                candidates = candidates[: max(0, args.limit)]
+            base_cns = candidates
+
         processed = written = skipped_existing = 0
         by_source = Counter()
         examples = []
@@ -73,7 +109,7 @@ def main(argv=None) -> int:
         if not args.dry_run:
             db.commit()
 
-    out = {'dry_run': args.dry_run, 'confirm_write': args.confirm_write, 'candidate_mode': args.candidate_mode, 'processed': processed, 'written': written, 'would_generate': processed if args.dry_run else None, 'skipped_existing': skipped_existing, 'by_source_status': dict(by_source), 'examples': examples}
+    out = {'dry_run': args.dry_run, 'confirm_write': args.confirm_write, 'candidate_mode': args.candidate_mode, 'processed': processed, 'written': written, 'would_generate': processed if args.dry_run else None, 'skipped_existing': skipped_existing, 'skipped_not_public': skipped_not_public, 'by_source_status': dict(by_source), 'examples': examples}
     print(json.dumps(out, ensure_ascii=False, indent=2 if args.json_output else None))
     return 0
 
