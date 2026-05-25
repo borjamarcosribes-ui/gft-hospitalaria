@@ -345,14 +345,14 @@ def test_full_gft_import_workflow_from_excel_to_public_gft(client, db_session, m
     assert detail_payload["observaciones_publicables"] is None
     assert "observaciones_internas" not in detail_payload
     assert "observaciones_internas_publicables" not in detail_payload
-    assert detail_payload["financiacion_detalle"] == {
-        "situacion_financiacion": "Si",
-        "condiciones_financiacion_restringidas": "Visado",
-        "condiciones_especiales_financiacion": "Financiación especial test",
-        "estado_nomenclator": "ALTA",
-        "aportacion_usuario": "NORMAL",
-        "subgrupo_atc": "N02BE01 - Paracetamol",
-    }
+    financiacion = detail_payload["financiacion_detalle"]
+    assert financiacion["situacion_financiacion"] == "Si"
+    assert financiacion["condiciones_financiacion_restringidas"] == "Visado"
+    assert financiacion["condiciones_especiales_financiacion"] == "Financiación especial test"
+    assert financiacion["estado_nomenclator"] == "ALTA"
+    assert financiacion["aportacion_usuario"] == "NORMAL"
+    assert financiacion["subgrupo_atc"] == "N02BE01 - Paracetamol"
+    assert financiacion["last_synced_at"] is not None
     assert any(item["codigo"] == "N02BE01" for item in detail_payload["atc"])
     assert "Vía oral" in detail_payload["vias_administracion"]
     assert {doc["url"] for doc in detail_payload["documentos"]} == {

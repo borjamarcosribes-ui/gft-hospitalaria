@@ -335,14 +335,14 @@ def test_gft_get_medicamento_detail_includes_financiacion_detalle(client, db_ses
     assert response.status_code == 200
     body = response.json()
     assert body["situacion_financiacion"] == "Financiado"
-    assert body["financiacion_detalle"] == {
-        "situacion_financiacion": "Financiado",
-        "condiciones_financiacion_restringidas": "Diagnóstico hospitalario",
-        "condiciones_especiales_financiacion": "Visado",
-        "estado_nomenclator": "Alta",
-        "aportacion_usuario": "Reducida",
-        "subgrupo_atc": "N02BE",
-    }
+    financiacion = body["financiacion_detalle"]
+    assert financiacion["situacion_financiacion"] == "Financiado"
+    assert financiacion["condiciones_financiacion_restringidas"] == "Diagnóstico hospitalario"
+    assert financiacion["condiciones_especiales_financiacion"] == "Visado"
+    assert financiacion["estado_nomenclator"] == "Alta"
+    assert financiacion["aportacion_usuario"] == "Reducida"
+    assert financiacion["subgrupo_atc"] == "N02BE"
+    assert "last_synced_at" in financiacion
 
 
 def test_gft_get_medicamento_detail_404(client, db_session):

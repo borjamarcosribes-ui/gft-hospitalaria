@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -56,6 +56,22 @@ class GFTFinanciacionDetalle(BaseModel):
     estado_nomenclator: str | None = None
     aportacion_usuario: str | None = None
     subgrupo_atc: str | None = None
+    last_synced_at: datetime | None = None
+
+
+class GFTClinicalSummaryAuto(BaseModel):
+    source_status: str | None = None
+    generated_at: datetime | None = None
+    indicaciones: str | None = None
+    posologia: str | None = None
+    ajuste_renal: str | None = None
+    ajuste_hepatico: str | None = None
+    contraindicaciones: str | None = None
+    advertencias: str | None = None
+    embarazo: str | None = None
+    lactancia: str | None = None
+    fuentes: dict | list | None = None
+    warnings: list | dict | None = None
 
 
 class GFTMedicamentoListItem(BaseModel):
@@ -85,6 +101,7 @@ class GFTMedicamentoDetail(GFTMedicamentoListItem):
     observaciones_publicables: str | None = None
     documentos: list[GFTDocumentoCimaRef] = Field(default_factory=list)
     financiacion_detalle: GFTFinanciacionDetalle | None = None
+    resumen_clinico_auto: GFTClinicalSummaryAuto | None = None
 
 
 class GFTListResponse(BaseModel):

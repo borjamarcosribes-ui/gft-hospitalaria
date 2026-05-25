@@ -7,6 +7,7 @@ from sqlalchemy import text
 from app.models.bifimed_cache import BifimedCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
+from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
 from app.models.principio_activo import PrincipioActivo
 from app.services.gft_query_service import (
@@ -755,3 +756,23 @@ def test_list_principios_activos_index_empty_when_no_publicados(db_session):
     result = list_principios_activos_index(db_session)
 
     assert result == {"items": []}
+
+
+def test_get_medicamento_by_cn_normalizes_documentos_for_schema(db_session):
+    _insert_base_medicamento(db_session, "715527", publicado=True)
+    medicamento = db_session.get(CimaMedicamentoCache, "715527")
+    medicamento.documentos_json = [{"tipo": 1, "secc": True, "fecha": 1707180283000, "url": "https://example.com/a"}]
+    db_session.commit()
+    _create_view(db_session)
+    result = get_medicamento_by_cn(db_session, "715527")
+    assert result["documentos"][0]["secc"] == "true"
+    assert isinstance(result["documentos"][0]["fecha"], str)
+
+
+def test_get_medicamento_by_cn_includes_resumen_clinico_auto(db_session):
+    _insert_base_medicamento(db_session, "999001", publicado=True)
+    db_session.add(GftClinicalSummaryCache(cn="999001", source_status="ok", resumen_indicaciones="I", warnings_json=[]))
+    db_session.commit()
+    _create_view(db_session)
+    result = get_medicamento_by_cn(db_session, "999001")
+    assert result["resumen_clinico_auto"]["source_status"] == "ok"
