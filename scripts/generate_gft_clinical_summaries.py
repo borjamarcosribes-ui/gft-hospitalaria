@@ -53,12 +53,15 @@ def main(argv=None) -> int:
     if args.confirm_write and args.limit is None and not args.cn:
         raise SystemExit('Para escritura real indique --limit o --cn.')
     with SessionLocal() as db:
-        published_cns = get_cn_universe(db, args.scope, args.cn)
+        scope_cns = get_cn_universe(db, args.scope)
+        scope_set = set(scope_cns)
         skipped_not_public = 0
         if args.cn:
-            base_cns = published_cns
+            requested_cns = get_cn_universe(db, "explicit", args.cn)
+            base_cns = [cn for cn in requested_cns if cn in scope_set]
+            skipped_not_public = len(requested_cns) - len(base_cns)
         else:
-            candidates = published_cns
+            candidates = scope_cns
             if args.candidate_mode == 'summary_ready':
                 candidates = _summary_ready_cns(db, candidates)
             if args.limit is not None:

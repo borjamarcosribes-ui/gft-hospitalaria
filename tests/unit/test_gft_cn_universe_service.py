@@ -3,8 +3,8 @@ from app.services.gft_cn_universe_service import get_cn_universe
 
 
 def _seed(db):
-    db.execute(text("INSERT INTO gft_estado_presentacion (cn, estado_gft) VALUES ('0001','incluido'),('2','excluido')"))
-    db.execute(text("INSERT INTO import_row_staging (id,batch_id,row_number,cn_normalized,estado_gft,validation_errors,validation_warnings,raw_payload,created_at) VALUES (gen_random_uuid(), gen_random_uuid(),1,'0003','incluido','[]'::json,'[]'::json,'{}'::json,now()), (gen_random_uuid(), gen_random_uuid(),2,' 0004 ','incluido','[]'::json,'[]'::json,'{}'::json,now())"))
+    db.execute(text("INSERT INTO gft_estado_presentacion (cn, estado_gft, estado_editorial) VALUES ('0001','incluido','publicado'),('2','excluido','borrador')"))
+    db.execute(text("INSERT INTO import_row_staging (id,batch_id,row_number,cn_normalized,estado_gft,validation_errors,validation_warnings,raw_payload,created_at) VALUES ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000011',1,'0003','incluido','[]','[]','{}',CURRENT_TIMESTAMP), ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000012',2,' 0004 ','incluido','[]','[]','{}',CURRENT_TIMESTAMP)"))
     db.execute(text("INSERT INTO cima_medicamento_cache (cn,sync_status) VALUES ('0005','ok')"))
     db.execute(text("INSERT INTO bifimed_cache (cn,sync_status) VALUES ('0006','ok')"))
     db.execute(text("CREATE OR REPLACE VIEW v_gft_publicada AS SELECT '0001'::text AS cn"))
