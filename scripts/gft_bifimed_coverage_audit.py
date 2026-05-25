@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse, json
 from sqlalchemy import text
 from app.core.database import SessionLocal
-from app.models.gft_bifimed_cache import GftBifimedCache
+from app.models.bifimed_cache import BifimedCache
 
 def parse_args(argv=None):
     p=argparse.ArgumentParser(); p.add_argument('--json', action='store_true', dest='json_output'); p.add_argument('--examples', type=int, default=20); return p.parse_args(argv)
@@ -12,7 +12,7 @@ def main(argv=None)->int:
     args=parse_args(argv)
     with SessionLocal() as db:
       cns=[str(r['cn']) for r in db.execute(text('SELECT cn FROM v_gft_publicada ORDER BY cn')).mappings().all()]
-      rows=db.query(GftBifimedCache).filter(GftBifimedCache.cn.in_(cns)).all() if cns else []
+      rows=db.query(BifimedCache).filter(BifimedCache.cn.in_(cns)).all() if cns else []
     by_cn={r.cn:r for r in rows}
     fin_si=fin_no=0; con_sit=0; con_restr=0; con_esp=0
     ex_sin=[]; ex_con=[]
