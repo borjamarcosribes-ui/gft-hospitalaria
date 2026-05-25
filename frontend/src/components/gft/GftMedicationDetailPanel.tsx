@@ -33,6 +33,22 @@ function formatDate(date: string | null): string | null {
   return new Intl.DateTimeFormat('es-ES').format(new Date(date));
 }
 
+function normalizeText(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  return normalized || null;
+}
+
+export function cleanClinicalText(label: string, value: string | null | undefined): string | null {
+  const normalizedValue = normalizeText(value);
+  if (!normalizedValue) return null;
+
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const prefixPattern = new RegExp(`^${escapedLabel}(?:\\s*:\\s*|\\s+)`, 'i');
+
+  return normalizedValue.replace(prefixPattern, '').trim();
+}
+
 function joinPrincipios(principios: GFTPrincipioActivoRef[]): string {
   return principios.length > 0 ? principios.map((principio) => principio.nombre).join(', ') : 'No informado';
 }
@@ -64,9 +80,24 @@ function DetailRow({ label, value }: { label: string; value: string | number | n
   );
 }
 
-function ClinicalTextBlock({ label, value }: { label: string; value: string | null | undefined }) {
-  if (!value || !value.trim()) return null;
-  return (<div className="gft-detail__text-block"><h4>{label}</h4><p>{value}</p></div>);
+function FieldDisclosure({
+  label,
+  value,
+  fallback,
+  defaultOpen = false,
+}: {
+  label: string;
+  value: string | null | undefined;
+  fallback: string;
+  defaultOpen?: boolean;
+}) {
+  const cleanValue = cleanClinicalText(label, value) ?? fallback;
+  return (
+    <details className="gft-detail__text-block" open={defaultOpen}>
+      <summary>{label}</summary>
+      <p>{cleanValue}</p>
+    </details>
+  );
 }
 
 function firstNonEmpty(...values: Array<string | null | undefined>): string | null {
@@ -78,37 +109,59 @@ function GftClinicalUseInfo({ detail }: { detail: GFTMedicamentoDetail }) {
   return (
     <section className="gft-detail__section gft-detail__section--clinical">
       <h3>Información clínica de uso en guía</h3>
-      <ClinicalTextBlock label="Indicaciones" value={firstNonEmpty(detail.resumen_clinico_auto?.indicaciones, detail.indicaciones_ficha_tecnica, "No informado")} />
-      <ClinicalTextBlock label="Posología" value={firstNonEmpty(detail.resumen_clinico_auto?.posologia, "No localizado automáticamente")} />
-      <ClinicalTextBlock label="Ajuste renal" value={firstNonEmpty(detail.resumen_clinico_auto?.ajuste_renal, detail.ajuste_insuficiencia_renal, "No localizado automáticamente")} />
-      <ClinicalTextBlock label="Ajuste hepático" value={firstNonEmpty(detail.resumen_clinico_auto?.ajuste_hepatico, detail.ajuste_insuficiencia_hepatica, "No localizado automáticamente")} />
-      <ClinicalTextBlock label="Contraindicaciones" value={firstNonEmpty(detail.resumen_clinico_auto?.contraindicaciones, "No localizado automáticamente")} />
-      <ClinicalTextBlock label="Advertencias/precauciones" value={firstNonEmpty(detail.resumen_clinico_auto?.advertencias, "No localizado automáticamente")} />
-      <ClinicalTextBlock label="Embarazo" value={firstNonEmpty(detail.resumen_clinico_auto?.embarazo, detail.precauciones_embarazo, "No localizado automáticamente")} />
-      <ClinicalTextBlock label="Lactancia" value={firstNonEmpty(detail.resumen_clinico_auto?.lactancia, detail.precauciones_lactancia, "No localizado automáticamente")} />
-      <ClinicalTextBlock label="Restricciones hospitalarias" value={firstNonEmpty(detail.restricciones_hospitalarias, "No informado")} />
-      <p>{detail.resumen_clinico_auto?.source_status === "ok" ? "Resumen clínico automático generado desde ficha técnica CIMA." : detail.resumen_clinico_auto?.source_status === "partial" ? "Resumen clínico automático parcial." : "Resumen clínico automático no disponible."}</p>
+      <FieldDisclosure label="Indicaciones" value={firstNonEmpty(detail.resumen_clinico_auto?.indicaciones, detail.indicaciones_ficha_tecnica)} fallback="No localizado automáticamente." />
+      <FieldDisclosure label="Posología" value={firstNonEmpty(detail.resumen_clinico_auto?.posologia)} fallback="No localizado automáticamente." />
+      <FieldDisclosure label="Ajuste insuficiencia renal" value={firstNonEmpty(detail.resumen_clinico_auto?.ajuste_renal, detail.ajuste_insuficiencia_renal)} fallback="No localizado automáticamente." />
+      <FieldDisclosure label="Ajuste insuficiencia hepática" value={firstNonEmpty(detail.resumen_clinico_auto?.ajuste_hepatico, detail.ajuste_insuficiencia_hepatica)} fallback="No localizado automáticamente." />
+      <FieldDisclosure label="Contraindicaciones" value={firstNonEmpty(detail.resumen_clinico_auto?.contraindicaciones)} fallback="No localizado automáticamente." />
+      <FieldDisclosure label="Advertencias y precauciones" value={firstNonEmpty(detail.resumen_clinico_auto?.advertencias)} fallback="No localizado automáticamente." />
+      <FieldDisclosure label="Embarazo" value={firstNonEmpty(detail.resumen_clinico_auto?.embarazo, detail.precauciones_embarazo)} fallback="No localizado automáticamente." />
+      <FieldDisclosure label="Lactancia" value={firstNonEmpty(detail.resumen_clinico_auto?.lactancia, detail.precauciones_lactancia)} fallback="No localizado automáticamente." />
+      <FieldDisclosure label="Restricciones hospitalarias" value={firstNonEmpty(detail.restricciones_hospitalarias)} fallback="No informado." defaultOpen />
+      <p>
+        {detail.resumen_clinico_auto?.source_status === 'ok'
+          ? 'Resumen clínico automático generado desde ficha técnica CIMA.'
+          : detail.resumen_clinico_auto?.source_status === 'partial'
+            ? 'Resumen clínico automático parcial generado desde ficha técnica CIMA.'
+            : 'Resumen clínico automático no disponible. Se muestran campos estructurados publicados.'}
+      </p>
     </section>
   );
 }
 
 function GftFinanciacionDetail({ financiacion, cn }: { financiacion: GFTFinanciacionDetalle; cn: string }) {
+  const financiado =
+    financiacion.situacion_financiacion?.trim().toLowerCase() === 'si' ||
+    financiacion.situacion_financiacion?.trim().toLowerCase() === 'sí';
+
   return (
     <section className="gft-detail__section">
       <h3>Financiación BIFIMED</h3>
       <dl className="gft-detail__grid gft-detail__grid--compact">
                 <DetailRow label="CN" value={cn} />
-        <DetailRow label="Situación" value={(financiacion.situacion_financiacion?.trim().toLowerCase() === "si" || financiacion.situacion_financiacion?.trim().toLowerCase() === "sí") ? "Financiado" : financiacion.situacion_financiacion} />
+        <DetailRow label="Situación" value={financiado ? 'Financiado' : financiacion.situacion_financiacion} />
         <DetailRow label="Última sincronización" value={formatDate(financiacion.last_synced_at ?? null)} />
-        <DetailRow
-          label="Condiciones restringidas"
-          value={firstNonEmpty(financiacion.condiciones_financiacion_restringidas, ((financiacion.situacion_financiacion?.trim().toLowerCase()==="si"||financiacion.situacion_financiacion?.trim().toLowerCase()==="sí") ? "No constan condiciones restringidas en BIFIMED." : "No informado."))}
-        />
-        <DetailRow label="Condiciones especiales" value={firstNonEmpty(financiacion.condiciones_especiales_financiacion, ((financiacion.situacion_financiacion?.trim().toLowerCase()==="si"||financiacion.situacion_financiacion?.trim().toLowerCase()==="sí") ? "No constan condiciones especiales en BIFIMED." : "No informado."))} />
         <DetailRow label="Estado Nomenclátor" value={financiacion.estado_nomenclator} />
         <DetailRow label="Aportación usuario" value={financiacion.aportacion_usuario} />
         <DetailRow label="Subgrupo ATC" value={financiacion.subgrupo_atc} />
       </dl>
+      <details className="gft-detail__text-block">
+        <summary>Condiciones de financiación BIFIMED</summary>
+        <p>
+          <strong>Condiciones restringidas:</strong>{' '}
+          {firstNonEmpty(
+            financiacion.condiciones_financiacion_restringidas,
+            financiado ? 'No constan condiciones restringidas en BIFIMED.' : 'No informado.',
+          )}
+        </p>
+        <p>
+          <strong>Condiciones especiales:</strong>{' '}
+          {firstNonEmpty(
+            financiacion.condiciones_especiales_financiacion,
+            financiado ? 'No constan condiciones especiales en BIFIMED.' : 'No informado.',
+          )}
+        </p>
+      </details>
     </section>
   );
 }
