@@ -35,7 +35,7 @@ def test_sync_script_candidate_mode_syncable_and_confirm_write(monkeypatch, db_s
     db_session.add(CimaMedicamentoCache(cn='100001', nregistro='NR1', sync_status='ok'))
     db_session.add(CimaMedicamentoCache(cn='100002', nregistro='NR2', sync_status='error'))
     db_session.add(CimaMedicamentoCache(cn='100003', nregistro='', sync_status='ok'))
-    db_session.add(CimaFichaTecnicaCache(cn='100001', nregistro='NR1', tipo_documento=1, seccion='4.2', sync_status='ok', contenido_texto='x'))
+    db_session.add(CimaFichaTecnicaCache(cn='100001', nregistro='NR1', tipo_documento=1, seccion='4.2', titulo='4.2', sync_status='ok', contenido_texto='x'))
     db_session.commit()
     _create_view(db_session)
 
@@ -81,8 +81,8 @@ def test_summary_script_uses_public_frontier_and_skips_not_public(monkeypatch, d
     _seed_pub(db_session, '200001')
     db_session.add(CimaMedicamentoCache(cn='200001', nregistro='NR200001', sync_status='ok'))
     db_session.add(CimaMedicamentoCache(cn='200999', nregistro='NR200999', sync_status='ok'))
-    db_session.add(CimaFichaTecnicaCache(cn='200001', nregistro='NR200001', tipo_documento=1, seccion='4.1', sync_status='ok', contenido_texto='Indicaciones'))
-    db_session.add(CimaFichaTecnicaCache(cn='200999', nregistro='NR200999', tipo_documento=1, seccion='4.1', sync_status='ok', contenido_texto='No público'))
+    db_session.add(CimaFichaTecnicaCache(cn='200001', nregistro='NR200001', tipo_documento=1, seccion='4.1', titulo='4.1', sync_status='ok', contenido_texto='Indicaciones'))
+    db_session.add(CimaFichaTecnicaCache(cn='200999', nregistro='NR200999', tipo_documento=1, seccion='4.1', titulo='4.1', sync_status='ok', contenido_texto='No público'))
     db_session.commit()
     _create_view(db_session)
 
