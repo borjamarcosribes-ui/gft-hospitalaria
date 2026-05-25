@@ -2,7 +2,7 @@ from sqlalchemy import text
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
-from app.models.gft_bifimed_cache import GftBifimedCache
+from app.models.bifimed_cache import BifimedCache
 
 def _create_view(db_session):
     db_session.execute(text('DROP VIEW IF EXISTS v_gft_publicada'))
@@ -15,7 +15,7 @@ def test_audits_and_backfill_dry_run(monkeypatch, db_session):
     db_session.add(GFTEstadoPresentacion(cn='300002', estado_gft='incluido', estado_editorial='publicado'))
     db_session.add(CimaMedicamentoCache(cn='300001', nregistro='NR1', sync_status='ok'))
     db_session.add(CimaFichaTecnicaCache(cn='300001', nregistro='NR1', seccion='4.2', tipo_documento=1, titulo='4.2', sync_status='ok', contenido_texto='insuficiencia renal'))
-    db_session.add(GftBifimedCache(cn='300001', situacion_financiacion='Sí', condiciones_financiacion_restringidas='Restricción test', condiciones_especiales_financiacion=None))
+    db_session.add(BifimedCache(cn='300001', situacion_financiacion='Sí', condiciones_financiacion_restringidas='Restricción test', condiciones_especiales_financiacion=None))
     db_session.commit(); _create_view(db_session)
     monkeypatch.setattr(ca, 'SessionLocal', lambda: db_session)
     monkeypatch.setattr(ba, 'SessionLocal', lambda: db_session)
