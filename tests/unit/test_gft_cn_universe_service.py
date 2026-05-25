@@ -3,7 +3,7 @@ from app.services.gft_cn_universe_service import get_cn_universe
 
 
 def _seed(db):
-    db.execute(text("INSERT INTO gft_estado_presentacion (cn, estado_gft, estado_editorial) VALUES ('0001','incluido','publicado'),('2','excluido','borrador')"))
+    db.execute(text("INSERT INTO gft_estado_presentacion (cn, estado_gft, estado_editorial, updated_at) VALUES ('0001','incluido','publicado','2026-01-01 00:00:00'),('2','excluido','borrador','2026-01-01 00:00:00')"))
     db.execute(text("INSERT INTO import_row_staging (id,batch_id,row_number,cn_normalized,estado_gft,validation_errors,validation_warnings,raw_payload,created_at) VALUES ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000011',1,'0003','incluido','[]','[]','{}',CURRENT_TIMESTAMP), ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000012',2,' 0004 ','incluido','[]','[]','{}',CURRENT_TIMESTAMP)"))
     db.execute(text("INSERT INTO cima_medicamento_cache (cn,sync_status) VALUES ('0005','ok')"))
     db.execute(text("INSERT INTO bifimed_cache (cn,sync_status) VALUES ('0006','ok')"))
