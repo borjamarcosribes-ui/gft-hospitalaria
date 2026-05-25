@@ -8,6 +8,7 @@ from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.services.cima_segmented_sync_service import sync_cima_segmented_section
 from app.services.gft_clinical_pipeline_service import ClinicalPipelineParams, build_clinical_pipeline_dry_run
+from app.services.gft_cn_universe_service import get_cn_universe
 
 
 def parse_args(argv=None):
@@ -21,6 +22,7 @@ def parse_args(argv=None):
     p.add_argument('--confirm-write', action='store_true')
     p.add_argument('--only-missing', action='store_true')
     p.add_argument('--candidate-mode', default='first', choices=['first', 'syncable'])
+    p.add_argument('--scope', default='published', choices=['published','included','state','imported','all_known'])
     p.add_argument('--cn', action='append', default=[])
     return p.parse_args(argv)
 
@@ -61,9 +63,9 @@ def main(argv=None) -> int:
         raise SystemExit('Para escritura real indique --limit o --cn.')
 
     with SessionLocal() as db:
-        published_cns = _published_cns(db)
+        published_cns = get_cn_universe(db, args.scope, args.cn)
         if args.cn:
-            base_cns = [cn for cn in args.cn if cn in set(published_cns)]
+            base_cns = published_cns
         elif args.candidate_mode == 'syncable':
             base_cns = _candidate_syncable_cns(db, published_cns, args.sections, args.only_missing)
             if args.limit is not None:
