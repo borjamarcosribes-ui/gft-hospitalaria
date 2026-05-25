@@ -23,6 +23,7 @@ def parse_args(argv=None):
     p.add_argument('--only-missing', action='store_true')
     p.add_argument('--examples', type=int, default=20)
     p.add_argument('--candidate-mode', default='first', choices=['first', 'summary_ready'])
+    p.add_argument('--write-missing-source', action='store_true')
     p.add_argument('--scope', default='published', choices=['published','included','state','imported','all_known'])
     p.add_argument('--cn', action='append', default=[])
     return p.parse_args(argv)
@@ -36,6 +37,9 @@ def _published_cns(db) -> list[str]:
 def _summary_ready_cns(db, cns: list[str]) -> list[str]:
     out: list[str] = []
     for cn in cns:
+        cima = db.get(CimaMedicamentoCache, cn)
+        if not (cima and cima.sync_status == 'ok' and (cima.nregistro or '').strip()):
+            continue
         found = db.query(CimaFichaTecnicaCache.cn).filter(
             CimaFichaTecnicaCache.cn == cn,
             CimaFichaTecnicaCache.sync_status == 'ok',
@@ -82,13 +86,16 @@ def main(argv=None) -> int:
             has_nregistro = bool(cima and (cima.nregistro or '').strip())
             rows = db.query(CimaFichaTecnicaCache).filter(CimaFichaTecnicaCache.cn == cn, CimaFichaTecnicaCache.sync_status == 'ok', CimaFichaTecnicaCache.seccion.in_(TARGET_SECTIONS)).all()
             summary = build_clinical_summary({r.seccion: (r.contenido_texto or '') for r in rows}, has_nregistro=has_nregistro, has_cima_ok=has_cima_ok)
-            by_source[summary.get('source_status', 'error')] += 1
+            source_status = summary.get('source_status', 'error')
+            by_source[source_status] += 1
             if args.dry_run:
                 if len(examples) < args.examples:
-                    examples.append({'cn': cn, 'source_status': summary.get('source_status')})
+                    examples.append({'cn': cn, 'source_status': source_status})
+                continue
+            if source_status == 'missing_source' and not args.write_missing_source:
                 continue
             row = current or GftClinicalSummaryCache(cn=cn)
-            row.source_status = summary.get('source_status', 'error')
+            row.source_status = source_status
             row.generated_at = datetime.now(timezone.utc)
             row.source_sections_json = summary.get('source_sections_json')
             row.source_hash = summary.get('source_hash')
