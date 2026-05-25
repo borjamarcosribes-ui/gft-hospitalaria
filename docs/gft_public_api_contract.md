@@ -97,6 +97,16 @@ Estas reglas convierten `v_gft_publicada` en la frontera contractual entre los p
 | `precauciones_lactancia` | `gft_estado_presentacion.precauciones_lactancia` | Campo editorial hospitalario; no sustituye ficha técnica ni revisión clínica. |
 | `observaciones_internas_publicables` | `gft_estado_presentacion.observaciones_internas` | Disponible en el detalle. El schema público actual lo expone con nombre publicable; si en el futuro existen observaciones internas no publicables, deberán separarse explícitamente. |
 
+### Reglas ATC para índice y filtro público
+
+- El servicio público usa una fuente ATC efectiva común para listado, detalle, índice global (`GET /gft/atc`) y filtro `atc` de `GET /gft/medicamentos`.
+- Prioridad ATC:
+  1. `cima_medicamento_cache.atc_json` cuando contiene datos válidos.
+  2. Fallback importado `gft_estado_presentacion.codigo_atc_importado` + `gft_estado_presentacion.descripcion_atc_importada` cuando `atc_json` no aporta códigos.
+- El índice expande cada ATC efectivo por prefijos L1-L5 y cuenta CN únicos por código/prefijo.
+- El filtro `atc` se aplica por prefijo (`startswith`) sobre ATC efectivo, por lo que admite L1, L2, L3, L4 y L5.
+- Los medicamentos publicados sin ATC efectivo siguen apareciendo en `/gft/medicamentos`, pero no en el índice ATC.
+
 ## F. Campos técnicos que NO se exponen
 
 La API pública `/gft` no debe exponer campos técnicos internos ni payloads de auditoría. En particular, no se exponen:

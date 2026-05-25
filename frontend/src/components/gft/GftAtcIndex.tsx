@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { GFTAtcIndexItem } from '../../types/gft';
 
 interface GftAtcIndexProps {
@@ -167,7 +168,7 @@ export function GftAtcIndex({ items, selectedAtc, onSelectAtc }: GftAtcIndexProp
     });
   }
 
-  function renderNodes(nodes: AtcNode[]): JSX.Element {
+  function renderNodes(nodes: AtcNode[]): ReactNode {
     return (
       <ul className="gft-atc-index__tree" role="tree">
         {nodes.map((node) => {

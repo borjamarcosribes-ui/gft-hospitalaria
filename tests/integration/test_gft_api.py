@@ -26,6 +26,8 @@ def _create_view(db_session):
               c.forma_farmaceutica_simplificada,
               c.vias_administracion_json,
               c.atc_json,
+              g.codigo_atc_importado,
+              g.descripcion_atc_importada,
               c.principios_activos_json,
               c.documentos_json,
               c.url_ficha_tecnica,
@@ -508,6 +510,52 @@ def test_gft_atc_index_endpoint_ignores_unpublished(client, db_session):
     codes = {item["codigo"] for item in body["items"]}
     assert "N" in codes
     assert "A" not in codes
+
+
+def test_gft_atc_index_endpoint_uses_imported_fallback(client, db_session):
+    _insert_base_medicamento(db_session, "943101", publicado=True)
+    _set_atc_json(db_session, "943101", None)
+    db_session.execute(
+        text(
+            """
+            UPDATE gft_estado_presentacion
+            SET codigo_atc_importado='C09AA05', descripcion_atc_importada='Ramipril'
+            WHERE cn='943101'
+            """
+        )
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    response = client.get("/gft/atc")
+    assert response.status_code == 200
+    codes = {item["codigo"] for item in response.json()["items"]}
+    assert {"C", "C09", "C09A", "C09AA", "C09AA05"}.issubset(codes)
+
+
+def test_gft_list_medicamentos_atc_param_matches_imported_fallback(client, db_session):
+    _insert_base_medicamento(db_session, "943201", publicado=True)
+    _set_atc_json(db_session, "943201", None)
+    db_session.execute(
+        text(
+            """
+            UPDATE gft_estado_presentacion
+            SET codigo_atc_importado='C09AA05', descripcion_atc_importada='Ramipril'
+            WHERE cn='943201'
+            """
+        )
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    l1_response = client.get("/gft/medicamentos?atc=C")
+    l5_response = client.get("/gft/medicamentos?atc=C09AA05")
+
+    assert l1_response.status_code == 200
+    assert l5_response.status_code == 200
+    assert l1_response.json()["total"] == 1
+    assert l5_response.json()["total"] == 1
+    assert l1_response.json()["items"][0]["cn"] == "943201"
 
 
 def _add_principio_relacion(db_session, cn: str, nombre: str, slug: str | None = None):
