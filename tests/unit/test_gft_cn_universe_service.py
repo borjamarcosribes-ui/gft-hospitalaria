@@ -7,7 +7,8 @@ def _seed(db):
     db.execute(text("INSERT INTO import_row_staging (id,batch_id,row_number,cn_normalized,estado_gft,validation_errors,validation_warnings,raw_payload,created_at) VALUES ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000011',1,'0003','incluido','[]','[]','{}',CURRENT_TIMESTAMP), ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000012',2,' 0004 ','incluido','[]','[]','{}',CURRENT_TIMESTAMP)"))
     db.execute(text("INSERT INTO cima_medicamento_cache (cn,sync_status) VALUES ('0005','ok')"))
     db.execute(text("INSERT INTO bifimed_cache (cn,sync_status) VALUES ('0006','ok')"))
-    db.execute(text("CREATE OR REPLACE VIEW v_gft_publicada AS SELECT '0001'::text AS cn"))
+    db.execute(text("DROP VIEW IF EXISTS v_gft_publicada"))
+    db.execute(text("CREATE VIEW v_gft_publicada AS SELECT '0001' AS cn"))
     db.commit()
 
 
