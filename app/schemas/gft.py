@@ -62,6 +62,7 @@ class GFTFinanciacionDetalle(BaseModel):
 class GFTClinicalSummaryAuto(BaseModel):
     source_status: str | None = None
     generated_at: datetime | None = None
+    resumen_general: str | None = None
     indicaciones: str | None = None
     posologia: str | None = None
     ajuste_renal: str | None = None

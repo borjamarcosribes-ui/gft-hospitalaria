@@ -99,6 +99,7 @@ def main(argv=None) -> int:
             row.generated_at = datetime.now(timezone.utc)
             row.source_sections_json = summary.get('source_sections_json')
             row.source_hash = summary.get('source_hash')
+            row.resumen_general = summary.get('resumen_general')
             row.resumen_indicaciones = summary.get('resumen_indicaciones')
             row.resumen_posologia = summary.get('resumen_posologia')
             row.resumen_ajuste_renal = summary.get('resumen_ajuste_renal')

@@ -824,3 +824,15 @@ def test_get_medicamento_by_cn_includes_resumen_clinico_auto(db_session):
     _create_view(db_session)
     result = get_medicamento_by_cn(db_session, "999001")
     assert result["resumen_clinico_auto"]["source_status"] == "ok"
+
+
+def test_get_medicamento_by_cn_includes_resumen_general(db_session):
+    _insert_base_medicamento(db_session, "111116", publicado=True)
+    db_session.add(GftClinicalSummaryCache(cn="111116", source_status="ok", resumen_general="Resumen general test", resumen_indicaciones="Indicaciones"))
+    db_session.commit()
+    _create_view(db_session)
+
+    result = get_medicamento_by_cn(db_session, "111116")
+    assert result is not None
+    assert result["resumen_clinico_auto"] is not None
+    assert result["resumen_clinico_auto"]["resumen_general"] == "Resumen general test"
