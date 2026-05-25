@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import type { GFTAtcRef, GFTMedicamentoListItem, GFTPrincipioActivoRef } from '../../types/gft';
 import { GftDocumentLinks } from './GftDocumentLinks';
 
@@ -59,15 +59,6 @@ function getAtcResumen(atc: GFTAtcRef[]): string {
   return levelFive.nombre ? `${levelFive.codigo} · ${levelFive.nombre}` : levelFive.codigo;
 }
 
-function pendingHospitalFields(medicamento: GFTMedicamentoListItem): string[] {
-  const pending: string[] = [];
-  if (!medicamento.ajuste_insuficiencia_renal?.trim()) pending.push('Ajuste por insuficiencia renal');
-  if (!medicamento.ajuste_insuficiencia_hepatica?.trim()) pending.push('Ajuste por insuficiencia hepática');
-  if (!medicamento.precauciones_embarazo?.trim()) pending.push('Precauciones en embarazo');
-  if (!medicamento.precauciones_lactancia?.trim()) pending.push('Precauciones en lactancia');
-  return pending;
-}
-
 export function GftMedicationCard({ medicamento, selected = false, onViewDetail }: GftMedicationCardProps) {
   const [expandedIndicaciones, setExpandedIndicaciones] = useState(false);
   const title = medicamento.nombre ?? 'Medicamento sin nombre informado';
@@ -78,7 +69,6 @@ export function GftMedicationCard({ medicamento, selected = false, onViewDetail 
   const indicacionesPreview = showIndicacionesToggle && !expandedIndicaciones
     ? `${indicaciones.slice(0, INDICACIONES_PREVIEW_LENGTH).trimEnd()}…`
     : indicaciones;
-  const pendingFields = useMemo(() => pendingHospitalFields(medicamento), [medicamento]);
 
   return (
     <article className={`gft-card${selected ? ' gft-card--selected' : ''}`} aria-current={selected ? 'true' : undefined}>
@@ -119,19 +109,6 @@ export function GftMedicationCard({ medicamento, selected = false, onViewDetail 
             {expandedIndicaciones ? 'Ver menos' : 'Ver indicaciones completas'}
           </button>
         ) : null}
-      </section>
-
-      <section className="gft-card__section">
-        <h4>Información hospitalaria</h4>
-        <dl className="gft-card__details">
-          <div><dt>Restricciones hospitalarias</dt><dd>{medicamento.restricciones_hospitalarias?.trim() || 'Pendiente de completar'}</dd></div>
-          <div><dt>Financiación BIFIMED</dt><dd>{medicamento.situacion_financiacion?.trim() || 'No disponible en la fuente actual'}</dd></div>
-          <div><dt>Ajuste insuficiencia renal</dt><dd>{medicamento.ajuste_insuficiencia_renal?.trim() || 'Pendiente de completar'}</dd></div>
-          <div><dt>Ajuste insuficiencia hepática</dt><dd>{medicamento.ajuste_insuficiencia_hepatica?.trim() || 'Pendiente de completar'}</dd></div>
-          <div><dt>Precauciones embarazo</dt><dd>{medicamento.precauciones_embarazo?.trim() || 'Pendiente de completar'}</dd></div>
-          <div><dt>Precauciones lactancia</dt><dd>{medicamento.precauciones_lactancia?.trim() || 'Pendiente de completar'}</dd></div>
-        </dl>
-        {pendingFields.length > 0 ? <p className="gft-card__muted">Pendiente de completar: {pendingFields.join(' · ')}.</p> : null}
       </section>
 
       <section className="gft-card__section">

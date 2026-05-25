@@ -39,12 +39,15 @@ function normalizeText(value: string | null | undefined): string | null {
   return normalized || null;
 }
 
-export function cleanClinicalText(label: string, value: string | null | undefined): string | null {
+export function cleanClinicalText(label: string, value: string | null | undefined, aliases: string[] = []): string | null {
   const normalizedValue = normalizeText(value);
   if (!normalizedValue) return null;
 
-  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const prefixPattern = new RegExp(`^${escapedLabel}(?:\\s*:\\s*|\\s+)`, 'i');
+  const prefixCandidates = [label, ...aliases]
+    .map((candidate) => candidate.trim())
+    .filter((candidate, index, array) => candidate.length > 0 && array.indexOf(candidate) === index);
+  const escapedPrefixes = prefixCandidates.map((candidate) => candidate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const prefixPattern = new RegExp(`^(?:${escapedPrefixes.join('|')})(?:\\s*:\\s*|\\s+)`, 'i');
 
   return normalizedValue.replace(prefixPattern, '').trim();
 }
@@ -85,13 +88,15 @@ function FieldDisclosure({
   value,
   fallback,
   defaultOpen = false,
+  aliases = [],
 }: {
   label: string;
   value: string | null | undefined;
   fallback: string;
   defaultOpen?: boolean;
+  aliases?: string[];
 }) {
-  const cleanValue = cleanClinicalText(label, value) ?? fallback;
+  const cleanValue = cleanClinicalText(label, value, aliases) ?? fallback;
   return (
     <details className="gft-detail__text-block" open={defaultOpen}>
       <summary>{label}</summary>
@@ -114,7 +119,7 @@ function GftClinicalUseInfo({ detail }: { detail: GFTMedicamentoDetail }) {
       <FieldDisclosure label="Ajuste insuficiencia renal" value={firstNonEmpty(detail.resumen_clinico_auto?.ajuste_renal, detail.ajuste_insuficiencia_renal)} fallback="No localizado automáticamente." />
       <FieldDisclosure label="Ajuste insuficiencia hepática" value={firstNonEmpty(detail.resumen_clinico_auto?.ajuste_hepatico, detail.ajuste_insuficiencia_hepatica)} fallback="No localizado automáticamente." />
       <FieldDisclosure label="Contraindicaciones" value={firstNonEmpty(detail.resumen_clinico_auto?.contraindicaciones)} fallback="No localizado automáticamente." />
-      <FieldDisclosure label="Advertencias y precauciones" value={firstNonEmpty(detail.resumen_clinico_auto?.advertencias)} fallback="No localizado automáticamente." />
+      <FieldDisclosure label="Advertencias y precauciones" aliases={['Advertencias', 'Precauciones']} value={firstNonEmpty(detail.resumen_clinico_auto?.advertencias)} fallback="No localizado automáticamente." />
       <FieldDisclosure label="Embarazo" value={firstNonEmpty(detail.resumen_clinico_auto?.embarazo, detail.precauciones_embarazo)} fallback="No localizado automáticamente." />
       <FieldDisclosure label="Lactancia" value={firstNonEmpty(detail.resumen_clinico_auto?.lactancia, detail.precauciones_lactancia)} fallback="No localizado automáticamente." />
       <FieldDisclosure label="Restricciones hospitalarias" value={firstNonEmpty(detail.restricciones_hospitalarias)} fallback="No informado." defaultOpen />
