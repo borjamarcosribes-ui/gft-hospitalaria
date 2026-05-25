@@ -1,5 +1,6 @@
 import json
 from collections.abc import Mapping
+from datetime import datetime, timezone
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -51,6 +52,31 @@ def _non_empty(value) -> str | None:
     text = str(value).strip()
     return text or None
 
+
+
+
+def _normalize_document_secc(value) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return _non_empty(value)
+
+
+def _normalize_document_fecha(value) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        try:
+            ts = float(value)
+            if ts > 10_000_000_000:
+                ts = ts / 1000.0
+            return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        except (ValueError, OSError, OverflowError):
+            return str(value)
+    return _non_empty(value)
 
 def _parse_atc(atc_json) -> list[dict]:
     parsed = _parse_json_value(atc_json)
@@ -176,8 +202,8 @@ def _parse_documentos(documentos_json) -> list[dict]:
                 "tipo": item.get("tipo"),
                 "url": item.get("url"),
                 "urlHtml": item.get("urlHtml"),
-                "secc": item.get("secc"),
-                "fecha": item.get("fecha"),
+                "secc": _normalize_document_secc(item.get("secc")),
+                "fecha": _normalize_document_fecha(item.get("fecha")),
                 "titulo": item.get("titulo"),
                 "nombre": item.get("nombre"),
             }
