@@ -1,6 +1,6 @@
 # GFT Linkage Backfill
 
-Define universos CN (`published`, `included`, `state`, `imported`, `all_known`) y procesa linkage en lotes seguros y reanudables.
+Define universos CN (`published`, `included`, `pending`, `imported`, `all_known`) y procesa linkage en lotes seguros y reanudables.
 
 - `published` sigue siendo el perímetro público (`v_gft_publicada`).
 - Alcances más amplios **no publican** nada automáticamente.
@@ -177,3 +177,26 @@ WHERE source_status = 'missing_source';
 ## Backfill rápido recomendado tras importar Excel
 
 Usar `scripts/run_gft_fast_public_backfill.py` en modo `--dry-run` y luego `--confirm-write` por tandas, con `--seed-from-imported-urls` y `--repair-not-found-from-imported-url` para priorizar CIMA desde URLs AEMPS importadas.
+
+
+## Backfill recomendado tras importar Excel
+
+Usar `run_gft_cache_backfill.py` sobre `imported`/`all_known`. La web pública mantiene `published`.
+
+```bash
+PYTHONPATH=. python scripts/gft_linkage_coverage_audit.py --scope published --json
+PYTHONPATH=. python scripts/gft_linkage_coverage_audit.py --scope imported --json
+PYTHONPATH=. python scripts/gft_linkage_coverage_audit.py --scope all_known --json
+
+PYTHONPATH=. python scripts/run_gft_cache_backfill.py \
+  --dry-run \
+  --scope imported \
+  --priority-mode \
+  --batch-size 100 \
+  --max-batches 1 \
+  --sections 4.1 4.2 4.3 4.4 4.6 \
+  --only-missing \
+  --seed-from-imported-urls \
+  --repair-not-found-from-imported-url \
+  --json
+```

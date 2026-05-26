@@ -2,7 +2,7 @@
 from __future__ import annotations
 import argparse, json
 from scripts._db_guard import ensure_postgresql_database
-from scripts import run_gft_linkage_backfill as linkage
+from scripts import run_gft_cache_backfill as cache_backfill
 
 def parse_args(argv=None):
  p=argparse.ArgumentParser(); p.add_argument('--dry-run',action='store_true'); p.add_argument('--confirm-write',action='store_true'); p.add_argument('--scope',default='published'); p.add_argument('--batch-size',type=int,default=100); p.add_argument('--max-batches',type=int,default=1); p.add_argument('--sections',nargs='*',default=['4.1','4.2','4.3','4.4','4.6']); p.add_argument('--only-missing',action='store_true'); p.add_argument('--force-bifimed',action='store_true'); p.add_argument('--refresh-bifimed-ok',action='store_true'); p.add_argument('--retry-bifimed-not-found',action='store_true'); p.add_argument('--json',action='store_true',dest='json_output'); p.add_argument('--skip-bifimed',action='store_true'); p.add_argument('--skip-cima-med',action='store_true'); p.add_argument('--skip-cima-sections',action='store_true'); p.add_argument('--skip-summaries',action='store_true'); p.add_argument('--seed-from-imported-urls',action='store_true'); p.add_argument('--repair-not-found-from-imported-url',action='store_true'); p.add_argument('--allow-default-db',action='store_true'); return p.parse_args(argv)
@@ -24,10 +24,10 @@ def main(argv=None):
  if a.seed_from_imported_urls: args.append('--seed-from-imported-urls')
  if a.repair_not_found_from_imported_url: args.append('--repair-not-found-from-imported-url')
  if a.allow_default_db: args.append('--allow-default-db')
- payload={'scope':a.scope,'dry_run':a.dry_run,'phases':{'seed_cima_from_imported_urls':{'enabled':a.seed_from_imported_urls,'repair_not_found':a.repair_not_found_from_imported_url}},'next_recommended_command':'PYTHONPATH=. python scripts/run_gft_fast_public_backfill.py --confirm-write --scope published --batch-size 100 --max-batches 5 --sections 4.1 4.2 4.3 4.4 4.6 --only-missing --seed-from-imported-urls --repair-not-found-from-imported-url --json'}
+ payload={'scope':a.scope,'dry_run':a.dry_run,'phases':{'seed_cima_from_imported_urls':{'enabled':a.seed_from_imported_urls,'repair_not_found':a.repair_not_found_from_imported_url}},'next_recommended_command':'PYTHONPATH=. python scripts/run_gft_cache_backfill.py --confirm-write --scope published --batch-size 100 --max-batches 5 --sections 4.1 4.2 4.3 4.4 4.6 --only-missing --seed-from-imported-urls --repair-not-found-from-imported-url --json'}
  import io,contextlib
  b=io.StringIO()
- with contextlib.redirect_stdout(b): linkage.main(args)
+ with contextlib.redirect_stdout(b): cache_backfill.main(args)
  linkage_payload=json.loads(b.getvalue() or '{}')
  payload['linkage']=linkage_payload
  before=linkage_payload.get('before',{}); after=linkage_payload.get('after',{})

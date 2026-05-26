@@ -22,7 +22,7 @@ def parse_args(argv=None):
     p.add_argument('--confirm-write', action='store_true')
     p.add_argument('--only-missing', action='store_true')
     p.add_argument('--candidate-mode', default='first', choices=['first', 'syncable'])
-    p.add_argument('--scope', default='published', choices=['published','included','state','imported','all_known'])
+    p.add_argument('--scope', default='published', choices=['published','included','pending','imported','all_known'])
     p.add_argument('--cn', action='append', default=[])
     return p.parse_args(argv)
 
