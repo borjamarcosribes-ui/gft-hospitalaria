@@ -34,6 +34,7 @@ def sync_bifimed_cn(db: Session, cn: str, force: bool = False) -> BifimedCache:
         row.aportacion_usuario = data.get("aportacion_usuario")
         row.subgrupo_atc = data.get("subgrupo_atc")
         row.detalle_financiacion_json = data.get("detalle_financiacion_json")
+        row.indicaciones_autorizadas_json = data.get("indicaciones_autorizadas_json")
         row.raw_data = result.raw_payload
         row.sync_status = "ok"
         row.sync_error = None

@@ -49,6 +49,13 @@ class GFTDocumentoCimaRef(BaseModel):
     nombre: str | None = None
 
 
+class GFTIndicacionAutorizadaBifimed(BaseModel):
+    indicacion_autorizada: str | None = None
+    situacion_expediente_indicacion: str | None = None
+    resolucion_expediente_financiacion_indicacion: str | None = None
+    financiada: bool | None = None
+
+
 class GFTFinanciacionDetalle(BaseModel):
     situacion_financiacion: str | None = None
     condiciones_financiacion_restringidas: str | None = None
@@ -57,6 +64,7 @@ class GFTFinanciacionDetalle(BaseModel):
     aportacion_usuario: str | None = None
     subgrupo_atc: str | None = None
     last_synced_at: datetime | None = None
+    indicaciones_autorizadas: list[GFTIndicacionAutorizadaBifimed] | None = None
 
 
 class GFTClinicalSummaryAuto(BaseModel):

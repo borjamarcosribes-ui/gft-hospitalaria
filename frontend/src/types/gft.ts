@@ -43,6 +43,13 @@ export interface GFTDocumentoCimaRef {
   nombre: string | null;
 }
 
+export interface GFTIndicacionAutorizadaBifimed {
+  indicacion_autorizada: string | null;
+  situacion_expediente_indicacion: string | null;
+  resolucion_expediente_financiacion_indicacion: string | null;
+  financiada: boolean | null;
+}
+
 export interface GFTFinanciacionDetalle {
   situacion_financiacion: string | null;
   condiciones_financiacion_restringidas: string | null;
@@ -51,6 +58,7 @@ export interface GFTFinanciacionDetalle {
   aportacion_usuario: string | null;
   subgrupo_atc: string | null;
   last_synced_at?: string | null;
+  indicaciones_autorizadas?: GFTIndicacionAutorizadaBifimed[] | null;
 }
 export interface GFTResumenClinicoAuto {
   source_status: string;

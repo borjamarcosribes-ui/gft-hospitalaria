@@ -59,6 +59,56 @@ def _normalized_field(pairs: dict[str, str], field: str) -> str | None:
     return value if value else None
 
 
+
+
+def _strip_accents(text: str) -> str:
+    return ''.join(ch for ch in __import__("unicodedata").normalize("NFKD", text) if not __import__("unicodedata").combining(ch))
+
+
+def _norm_header(text: str) -> str:
+    return _strip_accents(normalize_bifimed_text(text).lower())
+
+
+def _classify_financiada(resolucion: str | None) -> bool | None:
+    value = _norm_header(resolucion or "")
+    if "no financiada" in value:
+        return False
+    if "si" in value and "financiada" in value:
+        return True
+    return None
+
+
+def extract_indicaciones_autorizadas(html: str) -> list[dict]:
+    soup = BeautifulSoup(html, "html.parser")
+    wanted = {
+        "indicacion autorizada": "indicacion_autorizada",
+        "situacion expediente indicacion": "situacion_expediente_indicacion",
+        "resolucion expediente de financiacion indicacion": "resolucion_expediente_financiacion_indicacion",
+    }
+    out = []
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+        if not rows:
+            continue
+        headers = []
+        for cell in rows[0].find_all(["th","td"]):
+            headers.append(_norm_header(cell.get_text(" ", strip=False)))
+        mapped = [wanted.get(h) for h in headers]
+        if "indicacion_autorizada" not in mapped or "resolucion_expediente_financiacion_indicacion" not in mapped:
+            continue
+        for row in rows[1:]:
+            vals=[normalize_bifimed_text(c.get_text(" ", strip=False)) for c in row.find_all(["th","td"]) ]
+            if not any(vals):
+                continue
+            item={}
+            for i,key in enumerate(mapped):
+                if key and i < len(vals):
+                    item[key]=vals[i] or None
+            if item.get('indicacion_autorizada'):
+                item['financiada']=_classify_financiada(item.get('resolucion_expediente_financiacion_indicacion'))
+                out.append(item)
+    return out
+
 def parse_bifimed_detail_html(html: str, requested_cn: str) -> dict | None:
     """Parsea una ficha BIFIMED v1 basada explícitamente en etiquetas en castellano."""
     pairs = extract_label_value_pairs(html)
@@ -76,4 +126,5 @@ def parse_bifimed_detail_html(html: str, requested_cn: str) -> dict | None:
         "aportacion_usuario": _normalized_field(pairs, "aportacion_usuario"),
         "subgrupo_atc": _normalized_field(pairs, "subgrupo_atc"),
         "detalle_financiacion_json": pairs,
+        "indicaciones_autorizadas_json": extract_indicaciones_autorizadas(html),
     }
