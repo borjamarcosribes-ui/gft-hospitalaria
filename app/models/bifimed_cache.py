@@ -14,6 +14,7 @@ class BifimedCache(Base):
     aportacion_usuario: Mapped[str | None] = mapped_column(Text)
     subgrupo_atc: Mapped[str | None] = mapped_column(Text)
     detalle_financiacion_json: Mapped[dict | None] = mapped_column(JSON)
+    indicaciones_autorizadas_json: Mapped[list[dict] | None] = mapped_column(JSON)
     raw_data: Mapped[dict | None] = mapped_column(JSON)
     sync_status: Mapped[str] = mapped_column(String(32), nullable=False, default="not_implemented")
     sync_error: Mapped[str | None] = mapped_column(Text)

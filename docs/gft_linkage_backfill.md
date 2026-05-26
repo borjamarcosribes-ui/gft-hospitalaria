@@ -173,3 +173,7 @@ Si existen filas históricas `missing_source`, se pueden limpiar con:
 DELETE FROM gft_clinical_summary_cache
 WHERE source_status = 'missing_source';
 ```
+
+## Backfill rápido recomendado tras importar Excel
+
+Usar `scripts/run_gft_fast_public_backfill.py` en modo `--dry-run` y luego `--confirm-write` por tandas, con `--seed-from-imported-urls` y `--repair-not-found-from-imported-url` para priorizar CIMA desde URLs AEMPS importadas.

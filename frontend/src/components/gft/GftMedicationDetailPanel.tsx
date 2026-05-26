@@ -173,6 +173,16 @@ function GftFinanciacionDetail({ financiacion, cn }: { financiacion: GFTFinancia
           )}
         </p>
       </details>
+      <details className="gft-detail__text-block">
+        <summary>Indicaciones autorizadas BIFIMED</summary>
+        {(financiacion.indicaciones_autorizadas && financiacion.indicaciones_autorizadas.length > 0) ? financiacion.indicaciones_autorizadas.map((item, idx) => (
+          <div key={idx}>
+            <p><strong>Indicación autorizada:</strong> {formatValue(item.indicacion_autorizada)}</p>
+            <p><strong>Situación:</strong> {formatValue(item.situacion_expediente_indicacion)}</p>
+            <p><strong>Resolución:</strong> {formatValue(item.resolucion_expediente_financiacion_indicacion)} {item.financiada === true ? '· Financiada' : item.financiada === false ? '· No financiada' : ''}</p>
+          </div>
+        )) : <p>No constan indicaciones autorizadas específicas en BIFIMED.</p>}
+      </details>
     </section>
   );
 }
