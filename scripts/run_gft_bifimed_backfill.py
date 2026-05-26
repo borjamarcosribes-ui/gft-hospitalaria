@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+from scripts._db_guard import ensure_postgresql_database
 import argparse, json
 from collections import Counter
 from app.core.database import SessionLocal
@@ -8,10 +9,12 @@ from app.services.bifimed_sync_service import sync_bifimed_cn
 from app.services.gft_cn_universe_service import get_cn_universe, normalize_cn_value
 
 def parse_args(argv=None):
- p=argparse.ArgumentParser(); p.add_argument('--dry-run',action='store_true'); p.add_argument('--confirm-write',action='store_true'); p.add_argument('--scope',default='published',choices=['published','included','state','imported','all_known']); p.add_argument('--cn',action='append',default=[]); p.add_argument('--batch-size',type=int,default=50); p.add_argument('--max-batches',type=int,default=1); p.add_argument('--only-missing',action='store_true'); p.add_argument('--force',action='store_true'); p.add_argument('--retry-errors',action='store_true'); p.add_argument('--start-after-cn'); p.add_argument('--examples',type=int,default=20); p.add_argument('--sleep-seconds',type=float,default=0); p.add_argument('--json',action='store_true',dest='json_output'); return p.parse_args(argv)
+ p=argparse.ArgumentParser(); p.add_argument('--dry-run',action='store_true'); p.add_argument('--confirm-write',action='store_true'); p.add_argument('--scope',default='published',choices=['published','included','state','imported','all_known']); p.add_argument('--cn',action='append',default=[]); p.add_argument('--batch-size',type=int,default=50); p.add_argument('--max-batches',type=int,default=1); p.add_argument('--only-missing',action='store_true'); p.add_argument('--force',action='store_true'); p.add_argument('--retry-errors',action='store_true'); p.add_argument('--start-after-cn'); p.add_argument('--examples',type=int,default=20); p.add_argument('--sleep-seconds',type=float,default=0); p.add_argument('--json',action='store_true',dest='json_output'); p.add_argument("--allow-default-db", action="store_true")
+ return p.parse_args(argv)
 
 def main(argv=None):
  a=parse_args(argv)
+ ensure_postgresql_database(a.allow_default_db)
  if not a.dry_run and not a.confirm_write: raise SystemExit('Safe abort: requiere --dry-run o --confirm-write.')
  if a.confirm_write and not a.cn and (a.batch_size is None or a.max_batches is None): raise SystemExit('Con --confirm-write indique --batch-size y --max-batches o --cn explícito.')
  with SessionLocal() as db:

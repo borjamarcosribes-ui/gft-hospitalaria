@@ -18,6 +18,8 @@ class GFTEstadoPresentacion(Base):
     via_administracion_importada: Mapped[str | None] = mapped_column(Text)
     codigo_atc_importado: Mapped[str | None] = mapped_column(Text)
     descripcion_atc_importada: Mapped[str | None] = mapped_column(Text)
+    url_ficha_tecnica_importada: Mapped[str | None] = mapped_column(Text)
+    url_prospecto_importado: Mapped[str | None] = mapped_column(Text)
     restricciones_hospitalarias: Mapped[str | None] = mapped_column(Text)
     ajuste_insuficiencia_renal: Mapped[str | None] = mapped_column(Text)
     ajuste_insuficiencia_hepatica: Mapped[str | None] = mapped_column(Text)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+from scripts._db_guard import ensure_postgresql_database
 import argparse, json
 from scripts import sync_gft_clinical_sections as sync_mod
 from scripts import generate_gft_clinical_summaries as sum_mod
@@ -15,6 +16,7 @@ def parse_args(argv=None):
     p.add_argument('--stop-on-error', action='store_true'); p.add_argument('--sleep-seconds', type=float, default=0)
     p.add_argument('--skip-sections', action='store_true'); p.add_argument('--skip-summaries', action='store_true')
     p.add_argument('--cn', action='append', default=[])
+    p.add_argument("--allow-default-db", action="store_true")
     return p.parse_args(argv)
 
 def _parse_json_output(fn, argv):
@@ -26,6 +28,7 @@ def _parse_json_output(fn, argv):
 
 def main(argv=None):
     a=parse_args(argv)
+    ensure_postgresql_database(a.allow_default_db)
     if not a.dry_run and not a.confirm_write: raise SystemExit('Safe abort: requiere --dry-run o --confirm-write.')
     if a.confirm_write and not a.cn and (a.batch_size is None or a.max_batches is None):
         raise SystemExit('Con --confirm-write indique límites de lote o --cn explícitos.')

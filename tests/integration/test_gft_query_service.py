@@ -39,6 +39,8 @@ def _create_view(db_session):
               c.documentos_json,
               c.url_ficha_tecnica,
               c.url_prospecto,
+              g.url_ficha_tecnica_importada,
+              g.url_prospecto_importado,
               c.fecha_ficha_tecnica,
               c.fecha_prospecto,
               b.situacion_financiacion,
@@ -726,6 +728,8 @@ def test_list_principios_activos_index_deduplicates_same_cn_same_principio(db_se
               c.documentos_json,
               c.url_ficha_tecnica,
               c.url_prospecto,
+              g.url_ficha_tecnica_importada,
+              g.url_prospecto_importado,
               c.fecha_ficha_tecnica,
               c.fecha_prospecto,
               b.situacion_financiacion,
@@ -754,6 +758,8 @@ def test_list_principios_activos_index_deduplicates_same_cn_same_principio(db_se
               c.documentos_json,
               c.url_ficha_tecnica,
               c.url_prospecto,
+              g.url_ficha_tecnica_importada,
+              g.url_prospecto_importado,
               c.fecha_ficha_tecnica,
               c.fecha_prospecto,
               b.situacion_financiacion,
@@ -836,3 +842,28 @@ def test_get_medicamento_by_cn_includes_resumen_general(db_session):
     assert result is not None
     assert result["resumen_clinico_auto"] is not None
     assert result["resumen_clinico_auto"]["resumen_general"] == "Resumen general test"
+
+
+def test_get_medicamento_by_cn_uses_imported_document_fallback(db_session):
+    db_session.add(GFTEstadoPresentacion(cn="333333", estado_gft="incluido", estado_editorial="publicado", nemonico="NEM-333333",
+        url_ficha_tecnica_importada="https://aemps.es/ft/333333", url_prospecto_importado="https://aemps.es/pr/333333"))
+    db_session.add(CimaMedicamentoCache(cn="333333", nombre="Nombre 333333", sync_status="not_found", documentos_json=None, url_ficha_tecnica=None, url_prospecto=None))
+    db_session.commit(); _create_view(db_session)
+    result = get_medicamento_by_cn(db_session, "333333")
+    assert result is not None
+    assert result["url_ficha_tecnica"] == "https://aemps.es/ft/333333"
+    assert result["url_prospecto"] == "https://aemps.es/pr/333333"
+    tipos = {d.get("tipo") for d in result["documentos"]}
+    assert "ficha_tecnica" in tipos
+    assert "prospecto" in tipos
+
+
+def test_get_medicamento_by_cn_deduplicates_imported_document_fallback(db_session):
+    _insert_base_medicamento(db_session, "333334", publicado=True)
+    estado = db_session.get(GFTEstadoPresentacion, "333334")
+    assert estado is not None
+    estado.url_ficha_tecnica_importada = "https://example.com/doc"
+    db_session.commit(); _create_view(db_session)
+    result = get_medicamento_by_cn(db_session, "333334")
+    urls = [d.get("url") for d in result["documentos"]]
+    assert urls.count("https://example.com/doc") == 1

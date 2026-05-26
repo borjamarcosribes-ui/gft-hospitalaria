@@ -246,6 +246,37 @@ def _parse_documentos(documentos_json) -> list[dict]:
     return documentos
 
 
+
+
+def _build_document_links(row) -> list[dict]:
+    documentos = _parse_documentos(_row_get(row, "documentos_json"))
+    seen_urls: set[str] = set()
+
+    for doc in documentos:
+        url = _non_empty(doc.get("url"))
+        if url:
+            seen_urls.add(url)
+
+    fallback_docs = [
+        {
+            "tipo": "ficha_tecnica",
+            "titulo": "Ficha técnica AEMPS",
+            "url": _non_empty(_row_get(row, "url_ficha_tecnica_importada")),
+        },
+        {
+            "tipo": "prospecto",
+            "titulo": "Prospecto AEMPS",
+            "url": _non_empty(_row_get(row, "url_prospecto_importado")),
+        },
+    ]
+    for fallback in fallback_docs:
+        url = fallback["url"]
+        if not url or url in seen_urls:
+            continue
+        documentos.append(fallback)
+        seen_urls.add(url)
+
+    return documentos
 def _row_get(row, key: str, default=None):
     if hasattr(row, "get"):
         return row.get(key, default)
@@ -323,8 +354,8 @@ def _row_to_list_item(row, principios: list[dict]) -> dict:
         "precauciones_embarazo": _row_get(row, "precauciones_embarazo"),
         "precauciones_lactancia": _row_get(row, "precauciones_lactancia"),
         "situacion_financiacion": _row_get(row, "situacion_financiacion"),
-        "url_ficha_tecnica": row["url_ficha_tecnica"],
-        "url_prospecto": row["url_prospecto"],
+        "url_ficha_tecnica": _non_empty(_row_get(row, "url_ficha_tecnica")) or _non_empty(_row_get(row, "url_ficha_tecnica_importada")),
+        "url_prospecto": _non_empty(_row_get(row, "url_prospecto")) or _non_empty(_row_get(row, "url_prospecto_importado")),
         "fecha_ficha_tecnica": _row_get(row, "fecha_ficha_tecnica"),
         "fecha_prospecto": _row_get(row, "fecha_prospecto"),
         "indicaciones_ficha_tecnica": _row_get(row, "indicaciones_ficha_tecnica"),
@@ -340,7 +371,7 @@ def _row_to_detail(
 ) -> dict:
     item = _row_to_list_item(row, principios)
     item["observaciones_publicables"] = _row_get(row, "observaciones_publicables")
-    item["documentos"] = _parse_documentos(row["documentos_json"])
+    item["documentos"] = _build_document_links(row)
     if bifimed_row is not None:
         detalle = {
             "situacion_financiacion": bifimed_row.situacion_financiacion,
