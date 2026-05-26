@@ -5,13 +5,15 @@ import argparse
 import contextlib
 import io
 import json
-import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from scripts import generate_gft_clinical_summaries as summaries
 from scripts import gft_linkage_coverage_audit as audit
-from scripts import run_gft_linkage_backfill as linkage
+from scripts import run_gft_bifimed_backfill as bifimed
+from scripts import run_gft_cima_medicamento_backfill as cima_med
+from scripts import sync_gft_clinical_sections as sections_sync
 from scripts._db_guard import ensure_postgresql_database
 
 DEFAULT_SECTIONS = ["4.1", "4.2", "4.3", "4.4", "4.6"]
@@ -50,14 +52,14 @@ def parse_args(argv=None):
 
 
 def _run_json(fn, argv):
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
         fn(argv)
-    return json.loads(buf.getvalue() or "{}")
+    return json.loads(b.getvalue() or "{}")
 
 
-def _build_delta(before, after, sections):
-    d = {
+def _build_delta(before, after, req_sections):
+    out = {
         "bifimed_con_cache": after.get("bifimed", {}).get("con_cache", 0) - before.get("bifimed", {}).get("con_cache", 0),
         "bifimed_ok": after.get("bifimed", {}).get("sync_status_counts", {}).get("ok", 0) - before.get("bifimed", {}).get("sync_status_counts", {}).get("ok", 0),
         "cima_con_cache": after.get("cima", {}).get("con_cache", 0) - before.get("cima", {}).get("con_cache", 0),
@@ -67,22 +69,17 @@ def _build_delta(before, after, sections):
         "clinical_ready": after.get("completion", {}).get("clinical_ready", 0) - before.get("completion", {}).get("clinical_ready", 0),
         "fully_linked_public_detail_ready": after.get("completion", {}).get("fully_linked_public_detail_ready", 0) - before.get("completion", {}).get("fully_linked_public_detail_ready", 0),
     }
-    for s in sections:
-        key = f"sections_{s.replace('.', '_')}"
-        d[key] = after.get("sections", {}).get("coverage_by_section", {}).get(s, 0) - before.get("sections", {}).get("coverage_by_section", {}).get(s, 0)
-    return d
+    for s in req_sections:
+        out[f"sections_{s.replace('.', '_')}"] = after.get("sections", {}).get("coverage_by_section", {}).get(s, 0) - before.get("sections", {}).get("coverage_by_section", {}).get(s, 0)
+    return out
 
 
-def _phase_limit(value, fallback):
-    return value if value is not None else fallback
-
-
-def _require_safety(a):
+def _req_safety(a):
+    if a.workers != 1:
+        raise SystemExit("workers > 1 todavía no implementado en este wrapper; usa --workers 1")
     if not a.dry_run and not a.confirm_write:
         raise SystemExit("Safe abort: requiere --dry-run o --confirm-write.")
-    if a.confirm_write and (a.batch_size is None or a.max_batches is None):
-        raise SystemExit("Con --confirm-write requiere --batch-size y --max-batches.")
-    if a.confirm_write and any(x is None for x in [a.bifimed_limit, a.cima_med_limit, a.sections_limit, a.summaries_limit]):
+    if a.confirm_write and any(v is None for v in [a.bifimed_limit, a.cima_med_limit, a.sections_limit, a.summaries_limit]):
         raise SystemExit("Con --confirm-write exige límites por fase (--bifimed-limit/--cima-med-limit/--sections-limit/--summaries-limit).")
     if a.scope in {"imported", "all_known"} and a.batch_size > 200 and not a.i_know_what_i_am_doing:
         raise SystemExit("batch-size > 200 para imported/all_known exige --i-know-what-i-am-doing")
@@ -93,87 +90,92 @@ def main(argv=None):
     if a.examples:
         print("PYTHONPATH=. python scripts/run_gft_post_import_pipeline.py --dry-run --scope imported --priority-mode --batch-size 100 --max-batches 1 --bifimed-limit 100 --cima-med-limit 100 --sections-limit 50 --summaries-limit 100 --sections 4.1 4.2 4.3 4.4 4.6 --only-missing --seed-from-imported-urls --repair-not-found-from-imported-url --workers 1 --json")
         return 0
-
     ensure_postgresql_database(a.allow_default_db)
-    _require_safety(a)
+    _req_safety(a)
 
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    default_limit = a.batch_size * a.max_batches
+    bifimed_limit = a.bifimed_limit if a.bifimed_limit is not None else default_limit
+    cima_limit = a.cima_med_limit if a.cima_med_limit is not None else default_limit
+    sections_limit = a.sections_limit if a.sections_limit is not None else default_limit
+    summaries_limit = a.summaries_limit if a.summaries_limit is not None else default_limit
+
     started = time.time()
-    started_iso = datetime.now(timezone.utc).isoformat()
+    started_at = datetime.now(timezone.utc).isoformat()
+    phase_elapsed = {}
 
     audit_args = ["--scope", a.scope, "--sections", *a.sections, "--json"]
     if a.allow_default_db:
         audit_args.append("--allow-default-db")
-    before = _run_json(audit.main, audit_args)
 
-    phase_default = a.batch_size * a.max_batches
-    linkage_args = ["--dry-run" if a.dry_run else "--confirm-write", "--scope", a.scope, "--batch-size", str(a.batch_size), "--max-batches", str(a.max_batches), "--sections", *a.sections, "--json"]
-    flags = {
-        a.only_missing: "--only-missing",
-        a.seed_from_imported_urls: "--seed-from-imported-urls",
-        a.repair_not_found_from_imported_url: "--repair-not-found-from-imported-url",
-        a.refresh_bifimed_ok: "--refresh-bifimed-ok",
-        a.retry_bifimed_not_found: "--retry-bifimed-not-found",
-        a.skip_bifimed: "--skip-bifimed",
-        a.skip_cima_med: "--skip-cima-medicamento",
-        a.skip_cima_sections: "--skip-sections",
-        a.skip_summaries: "--skip-summaries",
-    }
-    for cond, flag in flags.items():
-        if cond:
-            linkage_args.append(flag)
-    if a.allow_default_db:
-        linkage_args.append("--allow-default-db")
+    t = time.time(); before = _run_json(audit.main, audit_args); phase_elapsed["audit_before"] = time.time() - t
+    mode = "--dry-run" if a.dry_run else "--confirm-write"
+    phases = {}
 
-    phases = _run_json(linkage.main, linkage_args)
-    after = _run_json(audit.main, audit_args)
+    if not a.skip_bifimed:
+        args = [mode, "--scope", a.scope, "--batch-size", str(bifimed_limit), "--max-batches", "1", "--sleep-seconds", str(a.sleep_seconds), "--json"]
+        if a.only_missing: args.append("--only-missing")
+        if a.refresh_bifimed_ok: args.append("--refresh-ok")
+        if a.retry_bifimed_not_found: args.append("--retry-not-found")
+        if a.allow_default_db: args.append("--allow-default-db")
+        t = time.time(); phases["bifimed"] = _run_json(bifimed.main, args); phase_elapsed["bifimed"] = time.time() - t
+
+    if not a.skip_cima_med:
+        args = [mode, "--scope", a.scope, "--batch-size", str(cima_limit), "--max-batches", "1", "--sleep-seconds", str(a.sleep_seconds), "--json"]
+        if a.only_missing: args.append("--only-missing")
+        if a.seed_from_imported_urls: args.append("--seed-from-imported-urls")
+        if a.repair_not_found_from_imported_url: args.append("--repair-not-found-from-imported-url")
+        if a.allow_default_db: args.append("--allow-default-db")
+        t = time.time(); phases["cima_medicamento"] = _run_json(cima_med.main, args); phase_elapsed["cima_medicamento"] = time.time() - t
+
+    if not a.skip_cima_sections:
+        args = [mode, "--scope", a.scope, "--limit", str(sections_limit), "--sections", *a.sections, "--candidate-mode", "syncable", "--json"]
+        if a.only_missing: args.append("--only-missing")
+        t = time.time(); phases["cima_sections"] = _run_json(sections_sync.main, args); phase_elapsed["cima_sections"] = time.time() - t
+
+    if not a.skip_summaries:
+        args = [mode, "--scope", a.scope, "--limit", str(summaries_limit), "--candidate-mode", "summary_ready", "--json"]
+        if a.only_missing: args.append("--only-missing")
+        if a.allow_default_db: args.append("--allow-default-db")
+        t = time.time(); phases["summaries"] = _run_json(summaries.main, args); phase_elapsed["summaries"] = time.time() - t
+
+    t = time.time(); after = _run_json(audit.main, audit_args); phase_elapsed["audit_after"] = time.time() - t
     delta = _build_delta(before, after, a.sections)
 
-    ended = time.time()
-    elapsed = ended - started
-    limits = {
-        "bifimed_limit": _phase_limit(a.bifimed_limit, phase_default),
-        "cima_med_limit": _phase_limit(a.cima_med_limit, phase_default),
-        "sections_limit": _phase_limit(a.sections_limit, phase_default),
-        "summaries_limit": _phase_limit(a.summaries_limit, phase_default),
-    }
-
-    perf = {
-        "started_at": started_iso,
-        "ended_at": datetime.now(timezone.utc).isoformat(),
-        "elapsed_seconds": elapsed,
-        "phase_elapsed_seconds": {},
-        "operations_per_second": (sum(abs(v) for v in delta.values()) / elapsed) if elapsed else 0,
-        "external_calls_estimate": phases.get("bifimed", {}).get("processed", 0) + phases.get("cima_medicamento", {}).get("processed", 0),
-        "error_count": phases.get("bifimed", {}).get("by_status", {}).get("error", 0) + phases.get("cima_medicamento", {}).get("by_status", {}).get("error", 0),
-        "timeout_count": 0,
-        "retry_count": 0,
-    }
+    elapsed = time.time() - started
+    err_count = sum(phases.get(k, {}).get("by_status", {}).get("error", 0) for k in ["bifimed", "cima_medicamento", "cima_sections"]) + phases.get("summaries", {}).get("by_source_status", {}).get("error", 0)
+    ext_calls = phases.get("bifimed", {}).get("processed", 0) + phases.get("cima_medicamento", {}).get("processed", 0) + phases.get("cima_sections", {}).get("processed_operations", 0)
 
     out = {
-        "run_id": run_id,
+        "run_id": datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"),
         "scope": a.scope,
-        "dry_run": a.dry_run,
         "priority_mode": a.priority_mode,
+        "dry_run": a.dry_run,
         "workers": a.workers,
-        "limits": limits,
+        "limits": {"bifimed_limit": bifimed_limit, "cima_med_limit": cima_limit, "sections_limit": sections_limit, "summaries_limit": summaries_limit},
         "before": before,
         "phases": phases,
         "after": after,
         "delta": delta,
-        "performance": perf,
-        "next_recommended_command": "PYTHONPATH=. python scripts/run_gft_post_import_pipeline.py --confirm-write --scope imported --priority-mode --batch-size 100 --max-batches 3 --bifimed-limit 300 --cima-med-limit 300 --sections-limit 150 --summaries-limit 250 --sections 4.1 4.2 4.3 4.4 4.6 --only-missing --seed-from-imported-urls --repair-not-found-from-imported-url --workers 3 --sleep-seconds 0.2 --json",
+        "performance": {
+            "started_at": started_at,
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+            "elapsed_seconds": elapsed,
+            "phase_elapsed_seconds": phase_elapsed,
+            "operations_per_second": (sum(abs(v) for v in delta.values()) / elapsed) if elapsed else 0,
+            "external_calls_estimate": ext_calls,
+            "error_count": err_count,
+            "timeout_count": 0,
+            "retry_count": 0,
+        },
+        "next_recommended_command": "PYTHONPATH=. python scripts/run_gft_post_import_pipeline.py --confirm-write --scope imported --priority-mode --batch-size 100 --max-batches 3 --bifimed-limit 300 --cima-med-limit 300 --sections-limit 150 --summaries-limit 250 --sections 4.1 4.2 4.3 4.4 4.6 --only-missing --seed-from-imported-urls --repair-not-found-from-imported-url --workers 1 --sleep-seconds 0.2 --json",
     }
     if sum(abs(v) for v in delta.values()) == 0:
         out["no_progress_reason"] = "dry_run" if a.dry_run else "no_candidates"
 
-    log_dir = Path("runtime_logs")
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / f"gft_post_import_run_{run_id}.json"
-    with log_path.open("w", encoding="utf-8") as f:
-        json.dump(out, f, ensure_ascii=False, indent=2)
+    Path("runtime_logs").mkdir(exist_ok=True)
+    log_path = Path("runtime_logs") / f"gft_post_import_run_{out['run_id']}.json"
+    log_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     out["runtime_log_path"] = str(log_path)
-
     print(json.dumps(out, ensure_ascii=False, indent=2 if a.json_output else None))
     return 0
 
