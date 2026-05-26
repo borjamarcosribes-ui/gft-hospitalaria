@@ -9,7 +9,7 @@ from app.services.bifimed_sync_service import sync_bifimed_cn
 from app.services.gft_cn_universe_service import get_cn_universe, normalize_cn_value
 
 def parse_args(argv=None):
- p=argparse.ArgumentParser(); p.add_argument('--dry-run',action='store_true'); p.add_argument('--confirm-write',action='store_true'); p.add_argument('--scope',default='published',choices=['published','included','state','imported','all_known']); p.add_argument('--cn',action='append',default=[]); p.add_argument('--batch-size',type=int,default=50); p.add_argument('--max-batches',type=int,default=1); p.add_argument('--only-missing',action='store_true'); p.add_argument('--force',action='store_true'); p.add_argument('--retry-errors',action='store_true'); p.add_argument('--start-after-cn'); p.add_argument('--examples',type=int,default=20); p.add_argument('--sleep-seconds',type=float,default=0); p.add_argument('--json',action='store_true',dest='json_output'); p.add_argument("--allow-default-db", action="store_true")
+ p=argparse.ArgumentParser(); p.add_argument('--dry-run',action='store_true'); p.add_argument('--confirm-write',action='store_true'); p.add_argument('--scope',default='published',choices=['published','included','state','imported','all_known']); p.add_argument('--cn',action='append',default=[]); p.add_argument('--batch-size',type=int,default=50); p.add_argument('--max-batches',type=int,default=1); p.add_argument('--only-missing',action='store_true'); p.add_argument('--force',action='store_true'); p.add_argument('--refresh-ok',action='store_true'); p.add_argument('--retry-not-found',action='store_true'); p.add_argument('--retry-errors',action='store_true'); p.add_argument('--start-after-cn'); p.add_argument('--examples',type=int,default=20); p.add_argument('--sleep-seconds',type=float,default=0); p.add_argument('--json',action='store_true',dest='json_output'); p.add_argument("--allow-default-db", action="store_true")
  return p.parse_args(argv)
 
 def main(argv=None):
@@ -18,15 +18,29 @@ def main(argv=None):
  if not a.dry_run and not a.confirm_write: raise SystemExit('Safe abort: requiere --dry-run o --confirm-write.')
  if a.confirm_write and not a.cn and (a.batch_size is None or a.max_batches is None): raise SystemExit('Con --confirm-write indique --batch-size y --max-batches o --cn explícito.')
  with SessionLocal() as db:
-  cns=get_cn_universe(db,a.scope,a.cn)
-  if a.start_after_cn: cns=[cn for cn in cns if cn>a.start_after_cn]
-  cns=cns[:a.batch_size*a.max_batches] if not a.cn else cns
+  universe=get_cn_universe(db,a.scope,a.cn)
+  cns=[]
+  limit=(a.batch_size*a.max_batches) if not a.cn else None
+  for cn in universe:
+   if a.start_after_cn and cn<=a.start_after_cn: continue
+   norm=normalize_cn_value(cn)
+   if not norm: continue
+   existing=db.get(BifimedCache,norm)
+   if a.only_missing and not (a.force or a.retry_errors or a.refresh_ok or a.retry_not_found):
+    if existing is not None:
+     continue
+   if a.refresh_ok and not (existing and existing.sync_status=='ok' and existing.indicaciones_autorizadas_json is None):
+    continue
+   if a.retry_not_found and not (existing and existing.sync_status=='not_found'):
+    continue
+   cns.append(cn)
+   if limit is not None and len(cns)>=limit: break
   by=Counter(); ex=[]; written=0; processed=0; skipped_existing=0
   for cn in cns:
    norm=normalize_cn_value(cn)
    if not norm: by['skipped_invalid_cn']+=1; continue
    existing=db.get(BifimedCache,norm)
-   if a.only_missing and existing and (existing.situacion_financiacion or '').strip() and not a.force and not (a.retry_errors and existing.sync_status=='error'):
+   if a.only_missing and existing and not (a.force or a.refresh_ok or a.retry_not_found) and not (a.retry_errors and existing.sync_status=='error'):
     by['skipped_existing']+=1; skipped_existing+=1; continue
    processed+=1
    if a.dry_run:
