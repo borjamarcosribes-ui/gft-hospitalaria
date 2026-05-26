@@ -25,7 +25,7 @@ def parse_args(argv=None):
     p.add_argument('--examples', type=int, default=20)
     p.add_argument('--candidate-mode', default='first', choices=['first', 'summary_ready'])
     p.add_argument('--write-missing-source', action='store_true')
-    p.add_argument('--scope', default='published', choices=['published','included','state','imported','all_known'])
+    p.add_argument('--scope', default='published', choices=['published','included','pending','imported','all_known'])
     p.add_argument('--cn', action='append', default=[])
     p.add_argument("--allow-default-db", action="store_true")
     return p.parse_args(argv)

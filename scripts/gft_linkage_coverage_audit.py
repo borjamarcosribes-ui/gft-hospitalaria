@@ -22,7 +22,7 @@ def _has_useful_text(value: str | None) -> bool:
 
 def parse_args(argv=None):
     p=argparse.ArgumentParser()
-    p.add_argument('--scope', default='published', choices=['published','included','state','imported','all_known'])
+    p.add_argument('--scope', default='published', choices=['published','included','pending','imported','all_known'])
     p.add_argument('--cn', action='append', default=[])
     p.add_argument('--sections', nargs='*', default=['4.1','4.2','4.3','4.4','4.6'])
     p.add_argument('--examples', type=int, default=20)

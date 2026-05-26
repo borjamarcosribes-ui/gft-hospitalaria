@@ -9,7 +9,7 @@ from scripts import gft_linkage_coverage_audit as audit_mod
 def parse_args(argv=None):
     p=argparse.ArgumentParser()
     p.add_argument('--dry-run', action='store_true'); p.add_argument('--confirm-write', action='store_true')
-    p.add_argument('--scope', default='published', choices=['published','included','state','imported','all_known']); p.add_argument('--batch-size', type=int, default=50); p.add_argument('--max-batches', type=int, default=1)
+    p.add_argument('--scope', default='published', choices=['published','included','pending','imported','all_known']); p.add_argument('--batch-size', type=int, default=50); p.add_argument('--max-batches', type=int, default=1)
     p.add_argument('--sections', nargs='*', default=['4.2','4.3','4.4','4.6']); p.add_argument('--only-missing', action='store_true')
     p.add_argument('--force-summary', action='store_true'); p.add_argument('--retry-errors', action='store_true'); p.add_argument('--start-after-cn')
     p.add_argument('--examples', type=int, default=20); p.add_argument('--json', action='store_true', dest='json_output')
