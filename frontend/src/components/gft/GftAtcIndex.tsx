@@ -152,6 +152,7 @@ export function GftAtcIndex({ items, selectedAtc, onSelectAtc }: GftAtcIndexProp
   const totalMedicationCount = useMemo(() => tree.reduce((sum, node) => sum + node.count, 0), [tree]);
   const defaultExpanded = useMemo(() => collectDefaultExpandedCodes(tree, selectedAtc), [tree, selectedAtc]);
   const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set());
+  const panelId = 'gft-atc-index-panel';
   const [isPanelOpen, setIsPanelOpen] = useState(Boolean(selectedAtc));
 
   useEffect(() => {
@@ -221,24 +222,23 @@ export function GftAtcIndex({ items, selectedAtc, onSelectAtc }: GftAtcIndexProp
   return (
     <section className="gft-atc-index" aria-labelledby="gft-atc-index-title">
       <div className="gft-atc-index__header">
-        <div>
+        <div className="gft-atc-index__heading">
           <h2 className="gft-atc-index__title" id="gft-atc-index-title">Índice ATC</h2>
           <p className="gft-atc-index__subtitle">Navegación jerárquica por niveles L1-L5</p>
         </div>
         <button
           type="button"
-          className="gft-atc-index__toggle"
+          className="gft-atc-index__panel-toggle"
           aria-expanded={isPanelOpen}
-          aria-controls="gft-atc-index-panel"
+          aria-controls={panelId}
           onClick={() => setIsPanelOpen((prev) => !prev)}
         >
-          <span className="gft-atc-index__count" aria-label={`${totalMedicationCount} medicamentos en el índice ATC`}>{totalMedicationCount}</span>
-          <span className="gft-atc-index__level">{isPanelOpen ? 'Ocultar' : 'Mostrar'}</span>
+          {isPanelOpen ? 'Ocultar índice' : 'Mostrar índice'}
         </button>
       </div>
 
       {isPanelOpen ? (
-        <div id="gft-atc-index-panel">
+        <div id={panelId} className="gft-atc-index__panel">
           <div className="gft-atc-index__actions">
             <button
               type="button"
