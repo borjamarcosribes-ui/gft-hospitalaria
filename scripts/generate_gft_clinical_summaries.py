@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+from scripts._db_guard import ensure_postgresql_database
 import argparse, json
 from collections import Counter
 from datetime import datetime, timezone
@@ -26,6 +27,7 @@ def parse_args(argv=None):
     p.add_argument('--write-missing-source', action='store_true')
     p.add_argument('--scope', default='published', choices=['published','included','state','imported','all_known'])
     p.add_argument('--cn', action='append', default=[])
+    p.add_argument("--allow-default-db", action="store_true")
     return p.parse_args(argv)
 
 
@@ -52,6 +54,7 @@ def _summary_ready_cns(db, cns: list[str]) -> list[str]:
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    ensure_postgresql_database(args.allow_default_db)
     if not args.dry_run and not args.confirm_write:
         raise SystemExit('Safe abort: requiere --dry-run o --confirm-write.')
     if args.confirm_write and args.limit is None and not args.cn:

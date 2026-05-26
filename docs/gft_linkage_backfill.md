@@ -28,6 +28,25 @@ export ADMIN_API_KEY="demo-local-admin-key"
 alembic upgrade head
 ```
 
+Comprobar conexión antes de ejecutar auditorías/backfills:
+
+```bash
+python - <<'PY'
+import os
+from sqlalchemy import create_engine, text
+engine = create_engine(os.environ["DATABASE_URL"])
+with engine.connect() as conn:
+    print("dialect =", conn.dialect.name)
+    print("database =", conn.execute(text("SELECT current_database()")).scalar())
+PY
+```
+
+Esperado:
+- `dialect = postgresql`
+- `database = gft`
+
+No lances backfill si `dialect != postgresql`. `--allow-default-db` solo debe usarse en tests/desarrollo controlado.
+
 ## Auditoría inicial
 
 ```bash

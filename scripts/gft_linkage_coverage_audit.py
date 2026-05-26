@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+from scripts._db_guard import ensure_postgresql_database
 import argparse, json
 from collections import Counter
 from sqlalchemy import text
@@ -26,10 +27,12 @@ def parse_args(argv=None):
     p.add_argument('--sections', nargs='*', default=['4.1','4.2','4.3','4.4','4.6'])
     p.add_argument('--examples', type=int, default=20)
     p.add_argument('--json', action='store_true', dest='json_output')
+    p.add_argument("--allow-default-db", action="store_true")
     return p.parse_args(argv)
 
 def main(argv=None):
     a=parse_args(argv)
+    ensure_postgresql_database(a.allow_default_db)
     with SessionLocal() as db:
       cns=get_cn_universe(db, a.scope, a.cn)
       bifis={r.cn:r for r in db.query(BifimedCache).filter(BifimedCache.cn.in_(cns)).all()} if cns else {}

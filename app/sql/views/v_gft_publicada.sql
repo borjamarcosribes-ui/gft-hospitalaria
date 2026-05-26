@@ -19,6 +19,8 @@ SELECT
   c.documentos_json,
   c.url_ficha_tecnica,
   c.url_prospecto,
+  g.url_ficha_tecnica_importada,
+  g.url_prospecto_importado,
   c.fecha_ficha_tecnica,
   c.fecha_prospecto,
   b.situacion_financiacion,
