@@ -64,8 +64,10 @@ def _count_auditable_rows(db, cn: str, section: str) -> int:
     ).count())
 
 
-def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missing: bool) -> list[str]:
+def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missing: bool) -> tuple[list[str], int, list[dict[str, str]]]:
     selected: list[str] = []
+    remaining_ops = 0
+    examples_remaining: list[dict[str, str]] = []
     for cn in cns:
         cima = db.get(CimaMedicamentoCache, cn)
         if not cima or cima.sync_status != 'ok':
@@ -74,13 +76,16 @@ def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missin
             continue
         has_pending = False
         for section in sections:
-            existing = _find_any_ok_row(db, cn, section)
-            if not only_missing or not _has_content(existing):
+            auditable = _find_auditable_row(db, cn, section)
+            is_pending = (not only_missing) or (auditable is None)
+            if is_pending:
+                remaining_ops += 1
+                if len(examples_remaining) < 20:
+                    examples_remaining.append({'cn': cn, 'section': section})
                 has_pending = True
-                break
         if has_pending:
             selected.append(cn)
-    return selected
+    return selected, remaining_ops, examples_remaining
 
 
 def main(argv=None) -> int:
@@ -95,20 +100,25 @@ def main(argv=None) -> int:
         if args.cn:
             base_cns = published_cns
         elif args.candidate_mode == 'syncable':
-            base_cns = _candidate_syncable_cns(db, published_cns, args.sections, args.only_missing)
+            all_syncable_cns, remaining_syncable_candidates, examples_remaining_syncable = _candidate_syncable_cns(db, published_cns, args.sections, args.only_missing)
+            base_cns = all_syncable_cns
             if args.limit is not None:
                 base_cns = base_cns[: max(0, args.limit)]
         else:
             base_cns = published_cns[: max(0, args.limit)] if args.limit is not None else published_cns
 
         payload = build_clinical_pipeline_dry_run(db, ClinicalPipelineParams(limit=None, examples=args.examples, sections=tuple(args.sections), only_missing=args.only_missing))
+        selected_candidates = len(base_cns)
+        if args.candidate_mode != 'syncable':
+            remaining_syncable_candidates = None
+            examples_remaining_syncable = []
         if args.candidate_mode == 'syncable':
             planned_examples = []
             would_sync_by_section = {s: 0 for s in args.sections}
             for cn in base_cns:
                 for section in args.sections:
-                    existing = _find_any_ok_row(db, cn, section)
-                    if args.only_missing and _has_content(existing):
+                    auditable = _find_auditable_row(db, cn, section)
+                    if args.only_missing and auditable is not None:
                         continue
                     would_sync_by_section[section] += 1
                     if len(planned_examples) < args.examples:
@@ -117,8 +127,9 @@ def main(argv=None) -> int:
             payload['sync_plan']['would_sync_by_section'] = would_sync_by_section
             payload['sync_plan']['would_sync_total'] = sum(would_sync_by_section.values())
             payload['sync_plan']['total_publicados_considerados'] = len(base_cns)
+            examples_remaining_syncable = examples_remaining_syncable[:args.examples]
         if args.dry_run:
-            out = {'dry_run': True, 'confirm_write': False, 'candidate_mode': args.candidate_mode, 'requested_sections': args.sections, **payload['sync_plan']}
+            out = {'dry_run': True, 'confirm_write': False, 'candidate_mode': args.candidate_mode, 'requested_sections': args.sections, 'selected_candidates': selected_candidates, 'skipped_existing_ok': 0, 'remaining_syncable_candidates': remaining_syncable_candidates, 'examples_remaining_syncable': examples_remaining_syncable, **payload['sync_plan']}
             print(json.dumps(out, ensure_ascii=False, indent=2 if args.json_output else None))
             return 0
 
@@ -177,7 +188,7 @@ def main(argv=None) -> int:
                 if len(examples) < args.examples:
                     examples.append({'cn': cn, 'section': section, 'status': row.sync_status})
 
-    out = {'dry_run': False, 'confirm_write': True, 'requested_sections': args.sections, 'candidate_mode': args.candidate_mode, 'processed_cn': len(cns), 'processed_operations': processed_ops, 'by_status': dict(by_status), 'examples': examples, 'examples_written_not_auditable': examples_written_not_auditable, 'examples_duplicate_auditable_rows': examples_duplicate_auditable_rows}
+    out = {'dry_run': False, 'confirm_write': True, 'requested_sections': args.sections, 'candidate_mode': args.candidate_mode, 'selected_candidates': len(cns), 'skipped_existing_ok': int(by_status.get('skipped_existing_ok', 0)), 'remaining_syncable_candidates': remaining_syncable_candidates, 'examples_remaining_syncable': examples_remaining_syncable[:args.examples], 'processed_cn': len(cns), 'processed_operations': processed_ops, 'by_status': dict(by_status), 'examples': examples, 'examples_written_not_auditable': examples_written_not_auditable, 'examples_duplicate_auditable_rows': examples_duplicate_auditable_rows}
     print(json.dumps(out, ensure_ascii=False, indent=2 if args.json_output else None))
     return 0
 
