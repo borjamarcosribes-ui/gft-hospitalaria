@@ -206,7 +206,7 @@ def test_sync_script_syncable_only_missing_avoids_find_auditable_n_plus_one(monk
     assert calls['n'] == 0
 
 
-def test_sync_script_counts_written_not_auditable_when_ok_without_content(monkeypatch, db_session):
+def test_sync_script_maps_ok_without_content_to_section_unavailable(monkeypatch, db_session):
     from scripts import sync_gft_clinical_sections as mod
     import contextlib, io, json
 
@@ -227,7 +227,8 @@ def test_sync_script_counts_written_not_auditable_when_ok_without_content(monkey
     with contextlib.redirect_stdout(b):
         assert mod.main(['--confirm-write', '--candidate-mode', 'syncable', '--sections', '4.2', '--only-missing', '--limit', '10', '--json']) == 0
     out = json.loads(b.getvalue())
-    assert out['by_status']['written_not_auditable'] == 1
+    assert out['by_status'].get('written_not_auditable', 0) == 0
+    assert out['by_status']['section_unavailable'] == 1
     assert out['by_status'].get('written_new_auditable', 0) == 0
 
 
@@ -244,6 +245,30 @@ def test_sync_script_accepts_auditable_row_with_same_nregistro_and_different_cn(
 
     def fake_sync(**kwargs):
         return db_session.query(CimaFichaTecnicaCache).filter(CimaFichaTecnicaCache.cn == '602913', CimaFichaTecnicaCache.seccion == '4.2').one()
+
+    monkeypatch.setattr(mod, 'sync_cima_segmented_section', fake_sync)
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--confirm-write', '--candidate-mode', 'syncable', '--sections', '4.2', '--only-missing', '--limit', '10', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['by_status'].get('written_not_auditable', 0) == 0
+    assert out['by_status']['written_new_auditable'] == 1
+
+
+def test_sync_script_ok_with_html_content_stays_auditable(monkeypatch, db_session):
+    from scripts import sync_gft_clinical_sections as mod
+    import contextlib, io, json
+
+    _seed_pub(db_session, '602915')
+    db_session.add(CimaMedicamentoCache(cn='602915', nregistro='69204', sync_status='ok'))
+    db_session.commit()
+    _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    def fake_sync(**kwargs):
+        return CimaFichaTecnicaCache(
+            cn=kwargs['cn'], nregistro=kwargs['nregistro'], tipo_documento=1, seccion=kwargs['seccion'], titulo=kwargs['seccion'], sync_status='ok', contenido_texto='', contenido_html='<p>texto</p>'
+        )
 
     monkeypatch.setattr(mod, 'sync_cima_segmented_section', fake_sync)
     b = io.StringIO()
@@ -477,4 +502,3 @@ def test_summary_ready_bulk_does_not_call_auditable_filter_per_cn(monkeypatch, d
     selected, _, missing, _ = mod._summary_ready_cns(db_session, ['710001', '710002'], prioritize_missing_summary=False)
     assert selected == ['710001', '710002']
     assert missing == []
-
