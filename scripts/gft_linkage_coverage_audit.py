@@ -39,10 +39,21 @@ def main(argv=None):
       bifis={r.cn:r for r in db.query(BifimedCache).filter(BifimedCache.cn.in_(cns)).all()} if cns else {}
       cimas={r.cn:r for r in db.query(CimaMedicamentoCache).filter(CimaMedicamentoCache.cn.in_(cns)).all()} if cns else {}
       sums={r.cn:r for r in db.query(GftClinicalSummaryCache).filter(GftClinicalSummaryCache.cn.in_(cns)).all()} if cns else {}
-      sec_rows=db.query(CimaFichaTecnicaCache.cn,CimaFichaTecnicaCache.seccion).filter(build_auditable_section_scope_filters(cns, a.sections)).all() if cns else []
+      nregistros=[(r.nregistro or '').strip() for r in cimas.values() if (r.nregistro or '').strip()]
+      sec_rows=db.query(CimaFichaTecnicaCache.cn,CimaFichaTecnicaCache.nregistro,CimaFichaTecnicaCache.seccion).filter(build_auditable_section_scope_filters(cns, nregistros, a.sections)).all() if cns else []
       post_sections_status_rows=db.query(CimaFichaTecnicaCache.seccion,CimaFichaTecnicaCache.sync_status,func.count().label("total")).filter(CimaFichaTecnicaCache.cn.in_(cns),CimaFichaTecnicaCache.seccion.in_(a.sections)).group_by(CimaFichaTecnicaCache.seccion,CimaFichaTecnicaCache.sync_status).all() if cns else []
     cov={s:set() for s in a.sections}
-    for r in sec_rows: cov[r.seccion].add(r.cn)
+    nregistro_to_cns = {}
+    for cn, med in cimas.items():
+      key = (med.nregistro or '').strip()
+      if key:
+        nregistro_to_cns.setdefault(key, set()).add(cn)
+    for r in sec_rows:
+      row_cn = str(r.cn or '')
+      if row_cn in cimas:
+        cov[r.seccion].add(row_cn)
+      for mapped_cn in nregistro_to_cns.get((r.nregistro or '').strip(), set()):
+        cov[r.seccion].add(mapped_cn)
     bstat=Counter(); cstat=Counter(); sstat=Counter(); linked=Counter()
     ex_missing_sections=[]; ex_pend=[]
     for cn in cns:
