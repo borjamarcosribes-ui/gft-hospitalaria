@@ -126,6 +126,7 @@ def main(argv=None) -> int:
         by_status = Counter()
         examples = []
         examples_written_not_auditable = []
+        examples_duplicate_auditable_rows = []
         processed_ops = 0
         for cn in cns:
             cima = db.get(CimaMedicamentoCache, cn)
@@ -136,12 +137,17 @@ def main(argv=None) -> int:
                 by_status['skipped_missing_nregistro'] += 1
                 continue
             for section in args.sections:
-                existing = _find_any_ok_row(db, cn, section)
-                if args.only_missing and _has_content(existing):
+                auditable_before = _find_auditable_row(db, cn, section)
+                auditable_before_count = _count_auditable_rows(db, cn, section) if auditable_before is not None else 0
+                if args.only_missing and auditable_before is not None:
                     by_status['skipped_existing_ok'] += 1
+                    if auditable_before_count > 1:
+                        by_status['duplicate_auditable_rows'] += 1
+                        if len(examples_duplicate_auditable_rows) < args.examples:
+                            examples_duplicate_auditable_rows.append({'cn': cn, 'section': section, 'auditable_rows': auditable_before_count})
                     continue
 
-                existed_auditable_before_sync = _find_auditable_row(db, cn, section) is not None
+                existing_ok_before = _find_any_ok_row(db, cn, section)
                 row = sync_cima_segmented_section(db=db, nregistro=cima.nregistro, tipo_documento=1, seccion=section, cn=cn, force=args.force)
                 if row.sync_status == 'ok':
                     auditable_row = _find_auditable_row(db, cn, section)
@@ -149,7 +155,7 @@ def main(argv=None) -> int:
                     if auditable_count > 1:
                         by_status['duplicate_auditable_rows'] += 1
                     if auditable_row is not None:
-                        by_status['updated_existing_auditable' if existed_auditable_before_sync else 'written_new_auditable'] += 1
+                        by_status['updated_existing_auditable' if existing_ok_before is not None else 'written_new_auditable'] += 1
                     else:
                         by_status['written_not_auditable'] += 1
                         if len(examples_written_not_auditable) < args.examples:
@@ -171,7 +177,7 @@ def main(argv=None) -> int:
                 if len(examples) < args.examples:
                     examples.append({'cn': cn, 'section': section, 'status': row.sync_status})
 
-    out = {'dry_run': False, 'confirm_write': True, 'requested_sections': args.sections, 'candidate_mode': args.candidate_mode, 'processed_cn': len(cns), 'processed_operations': processed_ops, 'by_status': dict(by_status), 'examples': examples, 'examples_written_not_auditable': examples_written_not_auditable}
+    out = {'dry_run': False, 'confirm_write': True, 'requested_sections': args.sections, 'candidate_mode': args.candidate_mode, 'processed_cn': len(cns), 'processed_operations': processed_ops, 'by_status': dict(by_status), 'examples': examples, 'examples_written_not_auditable': examples_written_not_auditable, 'examples_duplicate_auditable_rows': examples_duplicate_auditable_rows}
     print(json.dumps(out, ensure_ascii=False, indent=2 if args.json_output else None))
     return 0
 

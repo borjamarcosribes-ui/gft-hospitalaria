@@ -112,6 +112,7 @@ def test_sync_script_only_missing_skips_existing_ok_with_html_content(monkeypatc
 
 def test_sync_script_only_missing_skips_when_duplicate_auditable_rows_exist(monkeypatch, db_session):
     from scripts import sync_gft_clinical_sections as mod
+    import contextlib, io, json
 
     _seed_pub(db_session, '100021')
     db_session.add(CimaMedicamentoCache(cn='100021', nregistro='NR21', sync_status='ok'))
@@ -129,8 +130,14 @@ def test_sync_script_only_missing_skips_when_duplicate_auditable_rows_exist(monk
         return R()
 
     monkeypatch.setattr(mod, 'sync_cima_segmented_section', fake_sync)
-    assert mod.main(['--confirm-write', '--candidate-mode', 'syncable', '--sections', '4.2', '--only-missing', '--limit', '10']) == 0
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--confirm-write', '--candidate-mode', 'syncable', '--sections', '4.2', '--only-missing', '--limit', '10', '--json']) == 0
+    out = json.loads(b.getvalue())
     assert called == []
+    assert out['by_status']['skipped_existing_ok'] == 1
+    assert out['by_status']['duplicate_auditable_rows'] == 1
+    assert out['by_status'].get('updated_existing_auditable', 0) == 0
 
 
 def test_sync_script_counts_written_not_auditable_when_ok_without_content(monkeypatch, db_session):
