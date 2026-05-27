@@ -11,7 +11,7 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 def main(argv=None):
-    parse_args(argv)
+    args = parse_args(argv)
     with SessionLocal() as db:
         rows=build_gft_export_dataset(db)
     out={
@@ -30,7 +30,7 @@ def main(argv=None):
             'not_found_bifimed': [r['cn'] for r in rows if r.get('bifimed_status') == 'not_found'][:10],
         }
     }
-    print(json.dumps(out, ensure_ascii=False, indent=2))
+    print(json.dumps(out, ensure_ascii=False, indent=2 if args.json_output else None))
     return 0
 
 if __name__=='__main__':
