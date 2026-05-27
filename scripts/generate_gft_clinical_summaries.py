@@ -37,9 +37,10 @@ def _published_cns(db) -> list[str]:
     return [str(r["cn"]) for r in rows]
 
 
-def _summary_ready_cns(db, cns: list[str], prioritize_missing_summary: bool = False) -> list[str]:
+def _summary_ready_cns(db, cns: list[str], prioritize_missing_summary: bool = False) -> tuple[list[str], list[str], list[str]]:
     out: list[str] = []
     prioritized_missing: list[str] = []
+    missing_sections: list[str] = []
     for cn in cns:
         cima = db.get(CimaMedicamentoCache, cn)
         if not (cima and cima.sync_status == 'ok' and (cima.nregistro or '').strip()):
@@ -56,9 +57,11 @@ def _summary_ready_cns(db, cns: list[str], prioritize_missing_summary: bool = Fa
                     out.append(cn)
             else:
                 out.append(cn)
+        else:
+            missing_sections.append(cn)
     if prioritize_missing_summary:
-        return prioritized_missing + out
-    return out
+        return prioritized_missing + out, out, missing_sections
+    return out, [], missing_sections
 
 
 def main(argv=None) -> int:
@@ -72,6 +75,8 @@ def main(argv=None) -> int:
         scope_cns = get_cn_universe(db, args.scope)
         scope_set = set(scope_cns)
         skipped_not_public = 0
+        skipped_existing_pool = []
+        missing_sections_pool = []
         if args.cn:
             requested_cns = get_cn_universe(db, "explicit", args.cn)
             base_cns = [cn for cn in requested_cns if cn in scope_set]
@@ -79,7 +84,7 @@ def main(argv=None) -> int:
         else:
             candidates = scope_cns
             if args.candidate_mode == 'summary_ready':
-                candidates = _summary_ready_cns(db, candidates, prioritize_missing_summary=args.only_missing and not args.force)
+                candidates, skipped_existing_pool, missing_sections_pool = _summary_ready_cns(db, candidates, prioritize_missing_summary=args.only_missing and not args.force)
             if args.limit is not None:
                 candidates = candidates[: max(0, args.limit)]
             base_cns = candidates
@@ -87,12 +92,19 @@ def main(argv=None) -> int:
         processed = written = skipped_existing = 0
         by_source = Counter()
         examples = []
+        examples_selected_for_summary = []
+        examples_skipped_existing = [{'cn': cn} for cn in skipped_existing_pool[: args.examples]]
+        examples_missing_sections = [{'cn': cn} for cn in missing_sections_pool[: args.examples]]
         for cn in base_cns:
-            processed += 1
             current = db.get(GftClinicalSummaryCache, cn)
             if args.only_missing and not args.force and current and current.source_status in {'ok','partial'}:
                 skipped_existing += 1
+                if len(examples_skipped_existing) < args.examples:
+                    examples_skipped_existing.append({'cn': cn})
                 continue
+            processed += 1
+            if len(examples_selected_for_summary) < args.examples:
+                examples_selected_for_summary.append({'cn': cn})
             cima = db.get(CimaMedicamentoCache, cn)
             has_cima_ok = bool(cima and cima.sync_status == 'ok')
             has_nregistro = bool(cima and (cima.nregistro or '').strip())
@@ -128,7 +140,7 @@ def main(argv=None) -> int:
         if not args.dry_run:
             db.commit()
 
-    out = {'dry_run': args.dry_run, 'confirm_write': args.confirm_write, 'candidate_mode': args.candidate_mode, 'processed': processed, 'written': written, 'would_generate': processed if args.dry_run else None, 'skipped_existing': skipped_existing, 'skipped_not_public': skipped_not_public, 'by_source_status': dict(by_source), 'examples': examples}
+    out = {'dry_run': args.dry_run, 'confirm_write': args.confirm_write, 'candidate_mode': args.candidate_mode, 'processed': processed, 'written': written, 'would_generate': processed if args.dry_run else None, 'skipped_existing': skipped_existing, 'skipped_not_public': skipped_not_public, 'by_source_status': dict(by_source), 'examples': examples, 'examples_selected_for_summary': examples_selected_for_summary, 'examples_skipped_existing': examples_skipped_existing, 'examples_missing_sections': examples_missing_sections, 'no_candidates': processed == 0}
     print(json.dumps(out, ensure_ascii=False, indent=2 if args.json_output else None))
     return 0
 
