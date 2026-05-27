@@ -3,7 +3,7 @@ from __future__ import annotations
 from scripts._db_guard import ensure_postgresql_database
 import argparse, json
 from collections import Counter
-from sqlalchemy import text
+from sqlalchemy import text, func
 from app.core.database import SessionLocal
 from app.models.bifimed_cache import BifimedCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
@@ -38,7 +38,8 @@ def main(argv=None):
       bifis={r.cn:r for r in db.query(BifimedCache).filter(BifimedCache.cn.in_(cns)).all()} if cns else {}
       cimas={r.cn:r for r in db.query(CimaMedicamentoCache).filter(CimaMedicamentoCache.cn.in_(cns)).all()} if cns else {}
       sums={r.cn:r for r in db.query(GftClinicalSummaryCache).filter(GftClinicalSummaryCache.cn.in_(cns)).all()} if cns else {}
-      sec_rows=db.query(CimaFichaTecnicaCache.cn,CimaFichaTecnicaCache.seccion).filter(CimaFichaTecnicaCache.cn.in_(cns),CimaFichaTecnicaCache.sync_status=='ok',CimaFichaTecnicaCache.seccion.in_(a.sections),text("trim(coalesce(contenido_texto,''))<>''")).all() if cns else []
+      sec_rows=db.query(CimaFichaTecnicaCache.cn,CimaFichaTecnicaCache.seccion).filter(CimaFichaTecnicaCache.cn.in_(cns),CimaFichaTecnicaCache.sync_status=='ok',CimaFichaTecnicaCache.seccion.in_(a.sections),text("trim(coalesce(contenido_texto,''))<>'' OR trim(coalesce(contenido_html,''))<>''")).all() if cns else []
+      post_sections_status_rows=db.query(CimaFichaTecnicaCache.seccion,CimaFichaTecnicaCache.sync_status,func.count().label("total")).filter(CimaFichaTecnicaCache.cn.in_(cns),CimaFichaTecnicaCache.seccion.in_(a.sections)).group_by(CimaFichaTecnicaCache.seccion,CimaFichaTecnicaCache.sync_status).all() if cns else []
     cov={s:set() for s in a.sections}
     for r in sec_rows: cov[r.seccion].add(r.cn)
     bstat=Counter(); cstat=Counter(); sstat=Counter(); linked=Counter()
@@ -57,11 +58,14 @@ def main(argv=None):
       elif not s: linked['clinical_ready' if (b and b.sync_status=='ok') else 'blocked_missing_bifimed']+=1
       elif not b or b.sync_status!='ok': linked['clinical_ready']+=1
       else: linked['full_public_ready']+=1
+    post_sections_status_counts={s:{} for s in a.sections}
+    for row in post_sections_status_rows:
+      post_sections_status_counts[row.seccion][row.sync_status or 'unknown']=int(row.total)
     out={
       'scope':a.scope,'total_cn':len(cns),
       'bifimed':{'con_cache':len(bifis),'con_situacion_financiacion':sum(1 for r in bifis.values() if (r.situacion_financiacion or '').strip()),'financiados_si':sum(1 for r in bifis.values() if (r.situacion_financiacion or '').strip().lower() in {'si','sí'}),'financiados_no':sum(1 for r in bifis.values() if (r.situacion_financiacion or '').strip().lower()=='no'),'con_condiciones_restringidas':sum(1 for r in bifis.values() if (r.condiciones_financiacion_restringidas or '').strip()),'con_condiciones_especiales':sum(1 for r in bifis.values() if (r.condiciones_especiales_financiacion or '').strip()),'sin_cache':len(cns)-len(bifis),'sync_status_counts':dict(bstat)},
       'cima':{'con_cache':len(cimas),'ok':sum(1 for r in cimas.values() if r.sync_status=='ok'),'not_found':sum(1 for r in cimas.values() if r.sync_status=='not_found'),'error':sum(1 for r in cimas.values() if r.sync_status not in {'ok','not_found'}),'con_nregistro':sum(1 for r in cimas.values() if r.sync_status=='ok' and (r.nregistro or '').strip()),'sin_nregistro':sum(1 for r in cimas.values() if r.sync_status=='ok' and not (r.nregistro or '').strip()),'sync_status_counts':dict(cstat)},
-      'sections':{'coverage_by_section':{s:len(cov[s]) for s in a.sections},'complete_all_requested_sections':sum(1 for cn in cns if all(cn in cov[s] for s in a.sections)),'missing_any_requested_section':sum(1 for cn in cns if any(cn not in cov[s] for s in a.sections)),'examples_missing_sections':ex_missing_sections},
+      'sections':{'coverage_by_section':{s:len(cov[s]) for s in a.sections},'complete_all_requested_sections':sum(1 for cn in cns if all(cn in cov[s] for s in a.sections)),'missing_any_requested_section':sum(1 for cn in cns if any(cn not in cov[s] for s in a.sections)),'examples_missing_sections':ex_missing_sections,'post_sections_status_counts':post_sections_status_counts},
       'summaries':{'con_resumen':sum(1 for r in sums.values() if (r.source_status or '') in VALID_SUMMARY_SOURCE_STATUSES),'source_status_counts':dict(sstat),'con_resumen_general':sum(1 for r in sums.values() if (r.source_status or '') in VALID_SUMMARY_SOURCE_STATUSES and _has_useful_text(r.resumen_general)),'con_ajuste_renal':sum(1 for r in sums.values() if (r.source_status or '') in VALID_SUMMARY_SOURCE_STATUSES and _has_useful_text(r.resumen_ajuste_renal)),'con_ajuste_hepatico':sum(1 for r in sums.values() if (r.source_status or '') in VALID_SUMMARY_SOURCE_STATUSES and _has_useful_text(r.resumen_ajuste_hepatico)),'con_embarazo':sum(1 for r in sums.values() if (r.source_status or '') in VALID_SUMMARY_SOURCE_STATUSES and _has_useful_text(r.resumen_embarazo)),'con_lactancia':sum(1 for r in sums.values() if (r.source_status or '') in VALID_SUMMARY_SOURCE_STATUSES and _has_useful_text(r.resumen_lactancia)),'pendientes_resumen':sum(1 for cn in cns if cn not in sums or (sums[cn].source_status or '') not in VALID_SUMMARY_SOURCE_STATUSES),'examples_pendientes_resumen':ex_pend},
       'completion':{'bifimed_ready':sum(1 for cn in cns if cn in bifis and bifis[cn].sync_status=='ok'),'cima_ready':sum(1 for cn in cns if cn in cimas and cimas[cn].sync_status=='ok'),'clinical_ready':linked['clinical_ready']+linked['full_public_ready'],'fully_linked_public_detail_ready':linked['full_public_ready'],'blocked':len(cns)-linked['clinical_ready']-linked['full_public_ready']},
       'linked_status_counts':dict(linked),

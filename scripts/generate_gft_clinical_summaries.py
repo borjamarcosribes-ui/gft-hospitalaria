@@ -36,8 +36,9 @@ def _published_cns(db) -> list[str]:
     return [str(r["cn"]) for r in rows]
 
 
-def _summary_ready_cns(db, cns: list[str]) -> list[str]:
+def _summary_ready_cns(db, cns: list[str], prioritize_missing_summary: bool = False) -> list[str]:
     out: list[str] = []
+    prioritized_missing: list[str] = []
     for cn in cns:
         cima = db.get(CimaMedicamentoCache, cn)
         if not (cima and cima.sync_status == 'ok' and (cima.nregistro or '').strip()):
@@ -48,7 +49,16 @@ def _summary_ready_cns(db, cns: list[str]) -> list[str]:
             CimaFichaTecnicaCache.seccion.in_(TARGET_SECTIONS),
         ).first()
         if found:
-            out.append(cn)
+            if prioritize_missing_summary:
+                current = db.get(GftClinicalSummaryCache, cn)
+                if not current or current.source_status not in {'ok', 'partial'}:
+                    prioritized_missing.append(cn)
+                else:
+                    out.append(cn)
+            else:
+                out.append(cn)
+    if prioritize_missing_summary:
+        return prioritized_missing + out
     return out
 
 
@@ -70,7 +80,7 @@ def main(argv=None) -> int:
         else:
             candidates = scope_cns
             if args.candidate_mode == 'summary_ready':
-                candidates = _summary_ready_cns(db, candidates)
+                candidates = _summary_ready_cns(db, candidates, prioritize_missing_summary=args.only_missing and not args.force)
             if args.limit is not None:
                 candidates = candidates[: max(0, args.limit)]
             base_cns = candidates
