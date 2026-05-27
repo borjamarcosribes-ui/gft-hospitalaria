@@ -401,3 +401,60 @@ def test_summary_ready_generates_from_shared_nregistro_sections(monkeypatch, db_
     row = db_session.get(GftClinicalSummaryCache, '605869')
     assert row is not None
     assert row.source_status in {'ok', 'partial'}
+
+
+def test_syncable_excludes_known_section_unavailable_without_retry(monkeypatch, db_session):
+    from scripts import sync_gft_clinical_sections as mod
+    import contextlib, io, json
+
+    _seed_pub(db_session, '700001')
+    db_session.add(CimaMedicamentoCache(cn='700001', nregistro='NR700001', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='999999', nregistro='NR700001', tipo_documento=1, seccion='4.2', titulo='4.2', sync_status='section_unavailable'))
+    db_session.commit(); _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--dry-run', '--candidate-mode', 'syncable', '--sections', '4.2', '--only-missing', '--limit', '10', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['selected_candidates'] == 0
+    assert out['remaining_syncable_candidates'] == 0
+    assert out['excluded_existing_unavailable_candidates'] == 1
+
+
+def test_syncable_retry_section_unavailable_allows_selection(monkeypatch, db_session):
+    from scripts import sync_gft_clinical_sections as mod
+    import contextlib, io, json
+
+    _seed_pub(db_session, '700002')
+    db_session.add(CimaMedicamentoCache(cn='700002', nregistro='NR700002', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='999998', nregistro='NR700002', tipo_documento=1, seccion='4.2', titulo='4.2', sync_status='section_unavailable'))
+    db_session.commit(); _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--dry-run', '--candidate-mode', 'syncable', '--sections', '4.2', '--only-missing', '--retry-section-unavailable', '--limit', '10', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['selected_candidates'] == 1
+    assert out['remaining_syncable_candidates'] == 1
+
+
+def test_summary_ready_only_missing_no_new_candidates_does_not_count_skipped_existing(monkeypatch, db_session):
+    from scripts import generate_gft_clinical_summaries as mod
+    import contextlib, io, json
+
+    _seed_pub(db_session, '700003')
+    db_session.add(CimaMedicamentoCache(cn='700003', nregistro='NR700003', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='700003', nregistro='NR700003', tipo_documento=1, seccion='4.1', titulo='4.1', sync_status='ok', contenido_texto='ok'))
+    db_session.add(GftClinicalSummaryCache(cn='700003', source_status='ok', resumen_general='existente'))
+    db_session.commit(); _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--confirm-write', '--candidate-mode', 'summary_ready', '--only-missing', '--limit', '10', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['processed'] == 0
+    assert out['skipped_existing'] == 0
+    assert out['no_candidates'] is True

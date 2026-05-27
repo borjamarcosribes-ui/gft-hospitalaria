@@ -99,17 +99,37 @@ def _load_auditable_section_pairs(db, cn_to_nregistro: dict[str, str], sections:
     return pairs
 
 
-def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missing: bool, examples_limit: int) -> tuple[list[str], int, list[dict[str, str]], set[tuple[str, str]], dict[str, str]]:
+def _load_unavailable_pairs(db, nregistros: list[str], sections: list[str]) -> set[tuple[str, str]]:
+    if not nregistros or not sections:
+        return set()
+    rows = db.query(CimaFichaTecnicaCache.nregistro, CimaFichaTecnicaCache.seccion).filter(
+        CimaFichaTecnicaCache.nregistro.in_(nregistros),
+        CimaFichaTecnicaCache.seccion.in_(sections),
+        CimaFichaTecnicaCache.sync_status == "section_unavailable",
+    ).distinct().all()
+    return {(str(nr or "").strip(), str(sec)) for nr, sec in rows if str(nr or "").strip()}
+
+
+def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missing: bool, examples_limit: int, retry_section_unavailable: bool) -> tuple[list[str], int, list[dict[str, str]], set[tuple[str, str]], dict[str, str], int, int]:
     selected: list[str] = []
     remaining_ops = 0
     examples_remaining: list[dict[str, str]] = []
     eligible_cn_map = _load_eligible_cns_with_nregistro(db, cns)
     eligible_cns = [cn for cn in cns if cn in eligible_cn_map]
     auditable_pairs = _load_auditable_section_pairs(db, {cn: eligible_cn_map[cn] for cn in eligible_cns}, sections) if only_missing else set()
+    unavailable_pairs = _load_unavailable_pairs(db, list({eligible_cn_map[cn] for cn in eligible_cns}), sections) if only_missing and not retry_section_unavailable else set()
+    excluded_existing_unavailable_candidates = 0
+    remaining_known_unavailable = 0
     for cn in eligible_cns:
         has_pending = False
         for section in sections:
+            nregistro = (eligible_cn_map.get(cn) or "").strip()
             is_pending = (not only_missing) or ((cn, section) not in auditable_pairs)
+            known_unavailable = only_missing and not retry_section_unavailable and (nregistro, section) in unavailable_pairs
+            if is_pending and known_unavailable:
+                excluded_existing_unavailable_candidates += 1
+                remaining_known_unavailable += 1
+                continue
             if is_pending:
                 remaining_ops += 1
                 if len(examples_remaining) < examples_limit:
@@ -117,7 +137,7 @@ def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missin
                 has_pending = True
         if has_pending:
             selected.append(cn)
-    return selected, remaining_ops, examples_remaining, auditable_pairs, eligible_cn_map
+    return selected, remaining_ops, examples_remaining, auditable_pairs, eligible_cn_map, excluded_existing_unavailable_candidates, remaining_known_unavailable
 
 
 def main(argv=None) -> int:
@@ -132,8 +152,8 @@ def main(argv=None) -> int:
         if args.cn:
             base_cns = published_cns
         elif args.candidate_mode == 'syncable':
-            all_syncable_cns, remaining_syncable_candidates, examples_remaining_syncable, auditable_pairs, eligible_cn_map = _candidate_syncable_cns(
-                db, published_cns, args.sections, args.only_missing, args.examples
+            all_syncable_cns, remaining_syncable_candidates, examples_remaining_syncable, auditable_pairs, eligible_cn_map, excluded_existing_unavailable_candidates, remaining_known_unavailable = _candidate_syncable_cns(
+                db, published_cns, args.sections, args.only_missing, args.examples, args.retry_section_unavailable
             )
             base_cns = all_syncable_cns
             if args.limit is not None:
@@ -148,6 +168,8 @@ def main(argv=None) -> int:
             examples_remaining_syncable = []
             auditable_pairs = set()
             eligible_cn_map = {}
+            excluded_existing_unavailable_candidates = 0
+            remaining_known_unavailable = 0
         if args.candidate_mode == 'syncable':
             planned_examples = []
             would_sync_by_section = {s: 0 for s in args.sections}
@@ -164,7 +186,7 @@ def main(argv=None) -> int:
             payload['sync_plan']['total_publicados_considerados'] = len(base_cns)
             examples_remaining_syncable = examples_remaining_syncable[:args.examples]
         if args.dry_run:
-            out = {'dry_run': True, 'confirm_write': False, 'candidate_mode': args.candidate_mode, 'requested_sections': args.sections, 'selected_candidates': selected_candidates, 'skipped_existing_ok': 0, 'remaining_syncable_candidates': remaining_syncable_candidates, 'examples_remaining_syncable': examples_remaining_syncable, **payload['sync_plan']}
+            out = {'dry_run': True, 'confirm_write': False, 'candidate_mode': args.candidate_mode, 'requested_sections': args.sections, 'selected_candidates': selected_candidates, 'skipped_existing_ok': 0, 'remaining_syncable_candidates': remaining_syncable_candidates, 'examples_remaining_syncable': examples_remaining_syncable, 'excluded_existing_unavailable_candidates': excluded_existing_unavailable_candidates, 'remaining_known_unavailable': remaining_known_unavailable, **payload['sync_plan']}
             print(json.dumps(out, ensure_ascii=False, indent=2 if args.json_output else None))
             return 0
 
@@ -223,7 +245,7 @@ def main(argv=None) -> int:
                 if len(examples) < args.examples:
                     examples.append({'cn': cn, 'section': section, 'status': row.sync_status})
 
-    out = {'dry_run': False, 'confirm_write': True, 'requested_sections': args.sections, 'candidate_mode': args.candidate_mode, 'selected_candidates': len(cns), 'skipped_existing_ok': int(by_status.get('skipped_existing_ok', 0)), 'remaining_syncable_candidates': remaining_syncable_candidates, 'examples_remaining_syncable': examples_remaining_syncable[:args.examples], 'processed_cn': len(cns), 'processed_operations': processed_ops, 'by_status': dict(by_status), 'examples': examples, 'examples_written_not_auditable': examples_written_not_auditable, 'examples_duplicate_auditable_rows': examples_duplicate_auditable_rows}
+    out = {'dry_run': False, 'confirm_write': True, 'requested_sections': args.sections, 'candidate_mode': args.candidate_mode, 'selected_candidates': len(cns), 'skipped_existing_ok': int(by_status.get('skipped_existing_ok', 0)), 'remaining_syncable_candidates': remaining_syncable_candidates, 'examples_remaining_syncable': examples_remaining_syncable[:args.examples], 'excluded_existing_unavailable_candidates': excluded_existing_unavailable_candidates, 'remaining_known_unavailable': remaining_known_unavailable, 'processed_cn': len(cns), 'processed_operations': processed_ops, 'by_status': dict(by_status), 'examples': examples, 'examples_written_not_auditable': examples_written_not_auditable, 'examples_duplicate_auditable_rows': examples_duplicate_auditable_rows}
     print(json.dumps(out, ensure_ascii=False, indent=2 if args.json_output else None))
     return 0
 
