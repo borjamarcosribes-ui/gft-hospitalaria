@@ -458,3 +458,23 @@ def test_summary_ready_only_missing_no_new_candidates_does_not_count_skipped_exi
     assert out['processed'] == 0
     assert out['skipped_existing'] == 0
     assert out['no_candidates'] is True
+
+
+def test_summary_ready_bulk_does_not_call_auditable_filter_per_cn(monkeypatch, db_session):
+    from scripts import generate_gft_clinical_summaries as mod
+
+    _seed_pub(db_session, '710001')
+    _seed_pub(db_session, '710002')
+    db_session.add(CimaMedicamentoCache(cn='710001', nregistro='NR710', sync_status='ok'))
+    db_session.add(CimaMedicamentoCache(cn='710002', nregistro='NR710', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='999001', nregistro='NR710', tipo_documento=1, seccion='4.1', titulo='4.1', sync_status='ok', contenido_texto='compartido'))
+    db_session.commit(); _create_view(db_session)
+
+    def fail_filter(*args, **kwargs):
+        raise AssertionError('no debe llamarse en _summary_ready_cns bulk')
+
+    monkeypatch.setattr(mod, 'build_auditable_section_scope_filters', fail_filter)
+    selected, _, missing, _ = mod._summary_ready_cns(db_session, ['710001', '710002'], prioritize_missing_summary=False)
+    assert selected == ['710001', '710002']
+    assert missing == []
+
