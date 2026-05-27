@@ -37,9 +37,10 @@ def _published_cns(db) -> list[str]:
     return [str(r["cn"]) for r in rows]
 
 
-def _summary_ready_cns(db, cns: list[str], prioritize_missing_summary: bool = False) -> tuple[list[str], list[str], list[str]]:
+def _summary_ready_cns(db, cns: list[str], prioritize_missing_summary: bool = False) -> tuple[list[str], list[str], list[str], list[str]]:
     out: list[str] = []
     prioritized_missing: list[str] = []
+    skipped_existing_known: list[str] = []
     missing_sections: list[str] = []
     for cn in cns:
         cima = db.get(CimaMedicamentoCache, cn)
@@ -54,14 +55,15 @@ def _summary_ready_cns(db, cns: list[str], prioritize_missing_summary: bool = Fa
                 if not current or current.source_status not in {'ok', 'partial'}:
                     prioritized_missing.append(cn)
                 else:
+                    skipped_existing_known.append(cn)
                     out.append(cn)
             else:
                 out.append(cn)
         else:
             missing_sections.append(cn)
     if prioritize_missing_summary:
-        return prioritized_missing + out, out, missing_sections
-    return out, [], missing_sections
+        return prioritized_missing + out, out, missing_sections, skipped_existing_known
+    return out, [], missing_sections, []
 
 
 def main(argv=None) -> int:
@@ -77,6 +79,7 @@ def main(argv=None) -> int:
         skipped_not_public = 0
         skipped_existing_pool = []
         missing_sections_pool = []
+        skipped_existing_known_pool = []
         if args.cn:
             requested_cns = get_cn_universe(db, "explicit", args.cn)
             base_cns = [cn for cn in requested_cns if cn in scope_set]
@@ -84,7 +87,7 @@ def main(argv=None) -> int:
         else:
             candidates = scope_cns
             if args.candidate_mode == 'summary_ready':
-                candidates, skipped_existing_pool, missing_sections_pool = _summary_ready_cns(db, candidates, prioritize_missing_summary=args.only_missing and not args.force)
+                candidates, skipped_existing_pool, missing_sections_pool, skipped_existing_known_pool = _summary_ready_cns(db, candidates, prioritize_missing_summary=args.only_missing and not args.force)
             if args.limit is not None:
                 candidates = candidates[: max(0, args.limit)]
             base_cns = candidates
@@ -140,7 +143,7 @@ def main(argv=None) -> int:
         if not args.dry_run:
             db.commit()
 
-    out = {'dry_run': args.dry_run, 'confirm_write': args.confirm_write, 'candidate_mode': args.candidate_mode, 'processed': processed, 'written': written, 'would_generate': processed if args.dry_run else None, 'skipped_existing': skipped_existing, 'skipped_not_public': skipped_not_public, 'by_source_status': dict(by_source), 'examples': examples, 'examples_selected_for_summary': examples_selected_for_summary, 'examples_skipped_existing': examples_skipped_existing, 'examples_missing_sections': examples_missing_sections, 'no_candidates': processed == 0}
+    out = {'dry_run': args.dry_run, 'confirm_write': args.confirm_write, 'candidate_mode': args.candidate_mode, 'processed': processed, 'written': written, 'would_generate': processed if args.dry_run else None, 'skipped_existing': skipped_existing, 'skipped_not_public': skipped_not_public, 'skipped_existing_known': len(skipped_existing_known_pool), 'by_source_status': dict(by_source), 'examples': examples, 'examples_selected_for_summary': examples_selected_for_summary, 'examples_skipped_existing': examples_skipped_existing, 'examples_missing_sections': examples_missing_sections, 'no_candidates': processed == 0}
     print(json.dumps(out, ensure_ascii=False, indent=2 if args.json_output else None))
     return 0
 

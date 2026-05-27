@@ -44,6 +44,13 @@ def _delta(before, after, sections):
 def _is_blocking_warning(w):
     return bool(w)
 
+
+def _exhausted_without_candidates(phase_sections, phase_summaries):
+    remaining = int(phase_sections.get('remaining_syncable_candidates') or 0)
+    known_unavailable = int(phase_sections.get('remaining_known_unavailable') or 0)
+    no_candidates = bool(phase_summaries.get('no_candidates'))
+    return remaining == 0 and no_candidates, known_unavailable
+
 def main(argv=None):
     a=parse_args(argv)
     if not a.confirm_write:
@@ -65,10 +72,13 @@ def main(argv=None):
         err_count=int((phase_sections.get('by_status',{}) or {}).get('error',0))+int((phase_summaries.get('by_source_status',{}) or {}).get('error',0))
         timeout_count=0
         section_delta_sum=sum(delta.get(f"sections_{s.replace('.','_')}",0) for s in a.sections)
-        if section_delta_sum==0 and delta.get('summaries_con_resumen',0)==0:
-            warning={'code':'no_progress','message':'sections and summaries delta are zero'}
+        exhausted, known_unavailable = _exhausted_without_candidates(phase_sections, phase_summaries)
         if err_count>0 or timeout_count>0:
             warning={'code':'phase_error_or_timeout','error_count':err_count,'timeout_count':timeout_count}
+        elif int((phase_sections.get('by_status',{}) or {}).get('written_not_auditable',0))>0:
+            warning={'code':'written_not_auditable','message':'sections wrote rows that are not auditable'}
+        elif section_delta_sum==0 and delta.get('summaries_con_resumen',0)==0 and not exhausted:
+            warning={'code':'no_progress','message':'sections and summaries delta are zero'}
         run_obj={'run_number':run_number,'before':before,'phases':{'cima_sections':phase_sections,'summaries':phase_summaries},'after':after,'delta':delta,'clinical_phase_warning':warning,'performance':{'elapsed_seconds':time.time()-run_started,'error_count':err_count,'timeout_count':timeout_count},'next_action':'continue'}
         all_runs.append(run_obj)
         final_audit=after
@@ -76,8 +86,8 @@ def main(argv=None):
             next_action='stop_warning'
             run_obj['next_action']=next_action
             break
-        if (phase_sections.get('remaining_syncable_candidates') in (0,None)) and phase_summaries.get('no_candidates'):
-            next_action='stop_no_candidates'
+        if exhausted:
+            next_action='completed_exhausted' if known_unavailable>0 else 'stop_no_candidates'
             run_obj['next_action']=next_action
             break
         if a.stop_on_no_progress and section_delta_sum==0 and delta.get('summaries_con_resumen',0)==0:
