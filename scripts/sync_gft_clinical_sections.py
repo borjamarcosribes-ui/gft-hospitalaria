@@ -29,6 +29,7 @@ def parse_args(argv=None):
     p.add_argument('--candidate-mode', default='first', choices=['first', 'syncable'])
     p.add_argument('--scope', default='published', choices=['published','included','pending','imported','all_known'])
     p.add_argument('--cn', action='append', default=[])
+    p.add_argument('--retry-section-unavailable', action='store_true')
     return p.parse_args(argv)
 
 
@@ -42,6 +43,14 @@ def _find_any_ok_row(db, cn: str, section: str) -> CimaFichaTecnicaCache | None:
         CimaFichaTecnicaCache.cn == cn,
         CimaFichaTecnicaCache.seccion == section,
         CimaFichaTecnicaCache.sync_status == 'ok',
+    ).order_by(CimaFichaTecnicaCache.last_synced_at.desc(), CimaFichaTecnicaCache.id.desc()).first()
+
+
+def _find_section_unavailable_row(db, nregistro: str, section: str) -> CimaFichaTecnicaCache | None:
+    return db.query(CimaFichaTecnicaCache).filter(
+        CimaFichaTecnicaCache.nregistro == nregistro,
+        CimaFichaTecnicaCache.seccion == section,
+        CimaFichaTecnicaCache.sync_status == 'section_unavailable',
     ).order_by(CimaFichaTecnicaCache.last_synced_at.desc(), CimaFichaTecnicaCache.id.desc()).first()
 
 
@@ -178,6 +187,11 @@ def main(argv=None) -> int:
                 if args.only_missing and auditable_before:
                     by_status['skipped_existing_ok'] += 1
                     continue
+                if args.only_missing and not args.retry_section_unavailable and _find_section_unavailable_row(db, cima.nregistro, section) is not None:
+                    by_status['skipped_existing_unavailable'] += 1
+                    continue
+                if args.only_missing and args.retry_section_unavailable and _find_section_unavailable_row(db, cima.nregistro, section) is not None:
+                    by_status['retried_unavailable'] += 1
 
                 existing_ok_before = _find_any_ok_row(db, cn, section)
                 row = sync_cima_segmented_section(db=db, nregistro=cima.nregistro, tipo_documento=1, seccion=section, cn=cn, force=args.force)
