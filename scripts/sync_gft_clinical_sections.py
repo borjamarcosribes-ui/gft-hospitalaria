@@ -32,6 +32,12 @@ def _published_cns(db) -> list[str]:
     return [str(r["cn"]) for r in rows]
 
 
+def _has_content(row: CimaFichaTecnicaCache | None) -> bool:
+    if row is None:
+        return False
+    return bool((row.contenido_texto or "").strip() or (row.contenido_html or "").strip())
+
+
 def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missing: bool) -> list[str]:
     selected: list[str] = []
     for cn in cns:
@@ -47,7 +53,7 @@ def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missin
                 CimaFichaTecnicaCache.seccion == section,
                 CimaFichaTecnicaCache.sync_status == 'ok',
             ).one_or_none()
-            if not only_missing or existing is None:
+            if not only_missing or not _has_content(existing):
                 has_pending = True
                 break
         if has_pending:
@@ -84,7 +90,7 @@ def main(argv=None) -> int:
                         CimaFichaTecnicaCache.seccion == section,
                         CimaFichaTecnicaCache.sync_status == 'ok',
                     ).one_or_none()
-                    if args.only_missing and existing is not None:
+                    if args.only_missing and _has_content(existing):
                         continue
                     would_sync_by_section[section] += 1
                     if len(planned_examples) < args.examples:
@@ -111,13 +117,23 @@ def main(argv=None) -> int:
                 by_status['skipped_missing_nregistro'] += 1
                 continue
             for section in args.sections:
-                if args.only_missing:
-                    existing = db.query(CimaFichaTecnicaCache).filter(CimaFichaTecnicaCache.cn == cn, CimaFichaTecnicaCache.seccion == section, CimaFichaTecnicaCache.sync_status == 'ok').one_or_none()
-                    if existing:
-                        by_status['skipped_existing_ok'] += 1
-                        continue
+                existing = db.query(CimaFichaTecnicaCache).filter(
+                    CimaFichaTecnicaCache.cn == cn,
+                    CimaFichaTecnicaCache.seccion == section,
+                    CimaFichaTecnicaCache.sync_status == 'ok',
+                ).one_or_none()
+                if args.only_missing and _has_content(existing):
+                    by_status['skipped_existing_ok'] += 1
+                    continue
+
+                existed_before_sync = existing is not None
                 row = sync_cima_segmented_section(db=db, nregistro=cima.nregistro, tipo_documento=1, seccion=section, cn=cn, force=args.force)
-                by_status[row.sync_status if row.sync_status in {'ok','not_found','not_segmented','section_unavailable'} else 'error'] += 1
+                if row.sync_status == 'ok':
+                    by_status['updated_existing' if existed_before_sync else 'written_new'] += 1
+                elif row.sync_status in {'section_unavailable'}:
+                    by_status['section_unavailable'] += 1
+                else:
+                    by_status['error'] += 1
                 processed_ops += 1
                 if len(examples) < args.examples:
                     examples.append({'cn': cn, 'section': section, 'status': row.sync_status})

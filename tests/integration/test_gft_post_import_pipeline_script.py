@@ -95,7 +95,7 @@ def test_clinical_warning_when_sections_ok_but_zero_delta(monkeypatch):
     monkeypatch.setattr(mod, 'ensure_postgresql_database', lambda *_: None)
     calls = [
         {'bifimed': {'con_cache': 1, 'sync_status_counts': {'ok': 1}}, 'cima': {'con_cache': 1, 'ok': 1}, 'summaries': {'con_resumen': 0, 'con_resumen_general': 0}, 'completion': {'clinical_ready': 0, 'fully_linked_public_detail_ready': 0}, 'sections': {'coverage_by_section': {'4.1': 1}, 'examples_missing_sections': ['111111'], 'post_sections_status_counts': {'4.1': {'ok': 1}}}},
-        {'processed': 1, 'by_status': {}}, {'processed': 1, 'by_status': {}}, {'processed_operations': 1, 'by_status': {'ok': 5}}, {'processed': 1, 'by_source_status': {}},
+        {'processed': 1, 'by_status': {}}, {'processed': 1, 'by_status': {}}, {'processed_operations': 1, 'by_status': {'written_new': 5}}, {'processed': 1, 'by_source_status': {}},
         {'bifimed': {'con_cache': 2, 'sync_status_counts': {'ok': 2}}, 'cima': {'con_cache': 2, 'ok': 2}, 'summaries': {'con_resumen': 0, 'con_resumen_general': 0}, 'completion': {'clinical_ready': 0, 'fully_linked_public_detail_ready': 0}, 'sections': {'coverage_by_section': {'4.1': 1}, 'examples_missing_sections': ['111111'], 'post_sections_status_counts': {'4.1': {'ok': 2, 'section_unavailable': 1}}}},
     ]
     monkeypatch.setattr(mod, '_run_json', lambda *_: calls.pop(0))
@@ -106,3 +106,19 @@ def test_clinical_warning_when_sections_ok_but_zero_delta(monkeypatch):
     assert out['clinical_phase_warning']['code'] == 'sections_ok_but_zero_delta'
     assert out['post_sections_status_counts']['4.1']['ok'] == 2
     assert out['examples_sections_written_not_counted'] == ['111111']
+
+
+def test_no_clinical_warning_when_only_skipped_existing_ok(monkeypatch):
+    from scripts import run_gft_post_import_pipeline as mod
+    monkeypatch.setattr(mod, 'ensure_postgresql_database', lambda *_: None)
+    calls = [
+        {'bifimed': {'con_cache': 1, 'sync_status_counts': {'ok': 1}}, 'cima': {'con_cache': 1, 'ok': 1}, 'summaries': {'con_resumen': 0, 'con_resumen_general': 0}, 'completion': {'clinical_ready': 0, 'fully_linked_public_detail_ready': 0}, 'sections': {'coverage_by_section': {'4.1': 1}, 'examples_missing_sections': [], 'post_sections_status_counts': {'4.1': {'ok': 1}}}},
+        {'processed': 1, 'by_status': {}}, {'processed': 1, 'by_status': {}}, {'processed_operations': 0, 'by_status': {'skipped_existing_ok': 5}}, {'processed': 1, 'by_source_status': {}},
+        {'bifimed': {'con_cache': 1, 'sync_status_counts': {'ok': 1}}, 'cima': {'con_cache': 1, 'ok': 1}, 'summaries': {'con_resumen': 0, 'con_resumen_general': 0}, 'completion': {'clinical_ready': 0, 'fully_linked_public_detail_ready': 0}, 'sections': {'coverage_by_section': {'4.1': 1}, 'examples_missing_sections': [], 'post_sections_status_counts': {'4.1': {'ok': 1}}}},
+    ]
+    monkeypatch.setattr(mod, '_run_json', lambda *_: calls.pop(0))
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--dry-run', '--sections', '4.1', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['clinical_phase_warning'] is None

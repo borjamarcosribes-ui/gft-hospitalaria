@@ -75,6 +75,41 @@ def test_sync_script_confirm_write_requires_limit_or_cn(db_session):
         assert 'indique --limit o --cn' in str(exc)
 
 
+def test_sync_script_only_missing_skips_existing_ok_with_html_content(monkeypatch, db_session):
+    from scripts import sync_gft_clinical_sections as mod
+
+    _seed_pub(db_session, '100020')
+    db_session.add(CimaMedicamentoCache(cn='100020', nregistro='NR20', sync_status='ok'))
+    db_session.add(
+        CimaFichaTecnicaCache(
+            cn='100020',
+            nregistro='NR20',
+            tipo_documento=1,
+            seccion='4.2',
+            titulo='4.2',
+            sync_status='ok',
+            contenido_texto='',
+            contenido_html='<p>contenido existente</p>',
+        )
+    )
+    db_session.commit()
+    _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+    called = []
+
+    def fake_sync(**kwargs):
+        called.append((kwargs['cn'], kwargs['seccion']))
+
+        class R:
+            sync_status = 'ok'
+
+        return R()
+
+    monkeypatch.setattr(mod, 'sync_cima_segmented_section', fake_sync)
+    assert mod.main(['--confirm-write', '--candidate-mode', 'syncable', '--sections', '4.2', '--only-missing', '--limit', '10']) == 0
+    assert called == []
+
+
 def test_summary_script_uses_public_frontier_and_skips_not_public(monkeypatch, db_session):
     from scripts import generate_gft_clinical_summaries as mod
 
