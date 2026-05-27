@@ -1,0 +1,90 @@
+import contextlib
+import io
+import json
+import pytest
+
+
+def test_documented_dry_run_command_does_not_raise_argparse(monkeypatch):
+    from scripts import run_gft_post_import_pipeline as mod
+    monkeypatch.setattr(mod, 'ensure_postgresql_database', lambda *_: None)
+    monkeypatch.setattr(mod, '_run_json', lambda *_: {})
+    assert mod.main([
+        '--dry-run', '--scope', 'published', '--priority-mode', '--batch-size', '50', '--max-batches', '1',
+        '--bifimed-limit', '50', '--cima-med-limit', '50', '--sections-limit', '25', '--summaries-limit', '50',
+        '--sections', '4.1', '4.2', '4.3', '4.4', '4.6', '--only-missing', '--seed-from-imported-urls',
+        '--repair-not-found-from-imported-url', '--workers', '1', '--json'
+    ]) == 0
+
+
+def test_workers_gt_1_aborts_with_clear_message(monkeypatch):
+    from scripts import run_gft_post_import_pipeline as mod
+    monkeypatch.setattr(mod, 'ensure_postgresql_database', lambda *_: None)
+    with pytest.raises(SystemExit, match='workers > 1 todavía no implementado'):
+        mod.main(['--dry-run', '--workers', '2'])
+
+
+def test_phase_limit_and_flags_propagation(monkeypatch):
+    from scripts import run_gft_post_import_pipeline as mod
+    monkeypatch.setattr(mod, 'ensure_postgresql_database', lambda *_: None)
+
+    captured = {}
+
+    def fake_run(fn, argv):
+        captured.setdefault(fn.__module__.split('.')[-1], []).append(list(argv))
+        if 'coverage' in fn.__module__:
+            return {'bifimed': {'con_cache': 0, 'sync_status_counts': {'ok': 0}}, 'cima': {'con_cache': 0, 'ok': 0}, 'summaries': {'con_resumen': 0, 'con_resumen_general': 0}, 'completion': {'clinical_ready': 0, 'fully_linked_public_detail_ready': 0}, 'sections': {'coverage_by_section': {'4.1': 0}}}
+        return {}
+
+    monkeypatch.setattr(mod, '_run_json', fake_run)
+
+    mod.main([
+        '--dry-run', '--scope', 'published', '--bifimed-limit', '11', '--cima-med-limit', '12', '--sections-limit', '13', '--summaries-limit', '14',
+        '--seed-from-imported-urls', '--repair-not-found-from-imported-url', '--refresh-bifimed-ok', '--retry-bifimed-not-found', '--sections', '4.1'
+    ])
+
+    bif = ' '.join(captured['run_gft_bifimed_backfill'][0])
+    cima = ' '.join(captured['run_gft_cima_medicamento_backfill'][0])
+    sec = ' '.join(captured['sync_gft_clinical_sections'][0])
+    summ = ' '.join(captured['generate_gft_clinical_summaries'][0])
+
+    assert '--batch-size 11' in bif and '--refresh-ok' in bif and '--retry-not-found' in bif
+    assert '--batch-size 12' in cima and '--seed-from-imported-urls' in cima and '--repair-not-found-from-imported-url' in cima
+    assert '--limit 13' in sec and '--candidate-mode syncable' in sec
+    assert '--limit 14' in summ and '--candidate-mode summary_ready' in summ
+
+
+def test_skip_flags_skip_phases(monkeypatch):
+    from scripts import run_gft_post_import_pipeline as mod
+    monkeypatch.setattr(mod, 'ensure_postgresql_database', lambda *_: None)
+
+    called = []
+    def fake_run(fn, argv):
+        called.append(fn.__module__.split('.')[-1])
+        if 'coverage' in fn.__module__:
+            return {'bifimed': {'con_cache': 0, 'sync_status_counts': {'ok': 0}}, 'cima': {'con_cache': 0, 'ok': 0}, 'summaries': {'con_resumen': 0, 'con_resumen_general': 0}, 'completion': {'clinical_ready': 0, 'fully_linked_public_detail_ready': 0}, 'sections': {'coverage_by_section': {'4.1': 0}}}
+        return {}
+    monkeypatch.setattr(mod, '_run_json', fake_run)
+
+    mod.main(['--dry-run', '--skip-bifimed', '--skip-cima-med', '--skip-cima-sections', '--skip-summaries', '--sections', '4.1'])
+    assert called.count('gft_linkage_coverage_audit') == 2
+    assert 'run_gft_bifimed_backfill' not in called
+    assert 'run_gft_cima_medicamento_backfill' not in called
+
+
+def test_output_has_required_json_shape(monkeypatch):
+    from scripts import run_gft_post_import_pipeline as mod
+    monkeypatch.setattr(mod, 'ensure_postgresql_database', lambda *_: None)
+
+    calls = [
+        {'bifimed': {'con_cache': 1, 'sync_status_counts': {'ok': 1}}, 'cima': {'con_cache': 1, 'ok': 1}, 'summaries': {'con_resumen': 1, 'con_resumen_general': 1}, 'completion': {'clinical_ready': 1, 'fully_linked_public_detail_ready': 1}, 'sections': {'coverage_by_section': {'4.1': 1}}},
+        {'processed': 1, 'by_status': {}}, {'processed': 1, 'by_status': {}}, {'processed_operations': 1, 'by_status': {}}, {'processed': 1, 'by_source_status': {}},
+        {'bifimed': {'con_cache': 2, 'sync_status_counts': {'ok': 2}}, 'cima': {'con_cache': 2, 'ok': 2}, 'summaries': {'con_resumen': 2, 'con_resumen_general': 2}, 'completion': {'clinical_ready': 2, 'fully_linked_public_detail_ready': 2}, 'sections': {'coverage_by_section': {'4.1': 2}}},
+    ]
+    monkeypatch.setattr(mod, '_run_json', lambda *_: calls.pop(0))
+
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--dry-run', '--sections', '4.1', '--json']) == 0
+    out = json.loads(b.getvalue())
+    for k in ['before', 'phases', 'after', 'delta', 'performance', 'runtime_log_path']:
+        assert k in out
