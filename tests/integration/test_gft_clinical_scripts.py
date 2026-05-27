@@ -135,9 +135,75 @@ def test_sync_script_only_missing_skips_when_duplicate_auditable_rows_exist(monk
         assert mod.main(['--confirm-write', '--candidate-mode', 'syncable', '--sections', '4.2', '--only-missing', '--limit', '10', '--json']) == 0
     out = json.loads(b.getvalue())
     assert called == []
-    assert out['by_status']['skipped_existing_ok'] == 1
-    assert out['by_status']['duplicate_auditable_rows'] == 1
+    assert out['selected_candidates'] == 0
+    assert out['processed_operations'] == 0
+    assert out['skipped_existing_ok'] == 0
+    assert out['remaining_syncable_candidates'] == 0
     assert out['by_status'].get('updated_existing_auditable', 0) == 0
+
+
+def test_sync_script_duplicate_auditable_rows_count_is_cn_and_section_scoped(monkeypatch, db_session):
+    from scripts import sync_gft_clinical_sections as mod
+    import contextlib, io, json
+
+    _seed_pub(db_session, '100022')
+    db_session.add(CimaMedicamentoCache(cn='100022', nregistro='NR22', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='100022', nregistro='NR22A', tipo_documento=1, seccion='4.2', titulo='4.2', sync_status='ok', contenido_texto='texto A'))
+    db_session.add(CimaFichaTecnicaCache(cn='100022', nregistro='NR22B', tipo_documento=1, seccion='4.2', titulo='4.2', sync_status='ok', contenido_html='<p>html B</p>'))
+    db_session.add(CimaFichaTecnicaCache(cn='100022', nregistro='NR22C', tipo_documento=1, seccion='4.3', titulo='4.3', sync_status='ok', contenido_texto='texto C'))
+    db_session.commit()
+    _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--dry-run', '--candidate-mode', 'syncable', '--sections', '4.2', '--only-missing', '--limit', '10', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['selected_candidates'] == 0
+    assert out['remaining_syncable_candidates'] == 0
+    assert out['examples_remaining_syncable'] == []
+
+def test_sync_script_partial_selection_when_one_section_missing(monkeypatch, db_session):
+    from scripts import sync_gft_clinical_sections as mod
+    import contextlib, io, json
+
+    _seed_pub(db_session, '100023')
+    db_session.add(CimaMedicamentoCache(cn='100023', nregistro='NR23', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='100023', nregistro='NR23', tipo_documento=1, seccion='4.2', titulo='4.2', sync_status='ok', contenido_texto='ok'))
+    db_session.commit()
+    _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--dry-run', '--candidate-mode', 'syncable', '--sections', '4.2', '4.3', '--only-missing', '--limit', '10', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['selected_candidates'] == 1
+    assert out['remaining_syncable_candidates'] == 1
+    assert out['examples_remaining_syncable'] == [{'cn': '100023', 'section': '4.3'}]
+
+
+def test_sync_script_syncable_only_missing_avoids_find_auditable_n_plus_one(monkeypatch, db_session):
+    from scripts import sync_gft_clinical_sections as mod
+
+    for i in range(25):
+        cn = f'1003{i:02d}'
+        _seed_pub(db_session, cn)
+        db_session.add(CimaMedicamentoCache(cn=cn, nregistro=f'NR{i}', sync_status='ok'))
+        for sec in ['4.1', '4.2']:
+            db_session.add(CimaFichaTecnicaCache(cn=cn, nregistro=f'NR{i}', tipo_documento=1, seccion=sec, titulo=sec, sync_status='ok', contenido_texto='ok'))
+    db_session.commit()
+    _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    calls = {'n': 0}
+    orig = mod._find_auditable_row
+    def wrapped(*args, **kwargs):
+        calls['n'] += 1
+        return orig(*args, **kwargs)
+    monkeypatch.setattr(mod, '_find_auditable_row', wrapped)
+    assert mod.main(['--dry-run', '--candidate-mode', 'syncable', '--sections', '4.1', '4.2', '--only-missing', '--limit', '50']) == 0
+    assert calls['n'] == 0
 
 
 def test_sync_script_counts_written_not_auditable_when_ok_without_content(monkeypatch, db_session):
