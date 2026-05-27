@@ -4,7 +4,7 @@ from scripts._db_guard import ensure_postgresql_database
 import argparse, json
 from collections import Counter
 from datetime import datetime, timezone
-from sqlalchemy import text
+from sqlalchemy import and_, or_, text
 from app.core.database import SessionLocal
 from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
@@ -38,29 +38,62 @@ def _published_cns(db) -> list[str]:
 
 
 def _summary_ready_cns(db, cns: list[str], prioritize_missing_summary: bool = False) -> tuple[list[str], list[str], list[str], list[str]]:
+    if not cns:
+        return [], [], [], []
+
+    cima_rows = db.query(CimaMedicamentoCache.cn, CimaMedicamentoCache.nregistro).filter(
+        CimaMedicamentoCache.cn.in_(cns),
+        CimaMedicamentoCache.sync_status == 'ok',
+    ).all()
+    cn_to_nregistro = {str(cn): (nregistro or '').strip() for cn, nregistro in cima_rows if (nregistro or '').strip()}
+    candidate_cns = [cn for cn in cns if cn in cn_to_nregistro]
+    if not candidate_cns:
+        return [], [], [], []
+
+    nregistros = sorted({cn_to_nregistro[cn] for cn in candidate_cns})
+    audit_rows = db.query(CimaFichaTecnicaCache.cn, CimaFichaTecnicaCache.nregistro).filter(
+        CimaFichaTecnicaCache.sync_status == 'ok',
+        CimaFichaTecnicaCache.seccion.in_(list(TARGET_SECTIONS)),
+        or_(
+            CimaFichaTecnicaCache.cn.in_(candidate_cns),
+            CimaFichaTecnicaCache.nregistro.in_(nregistros),
+        ),
+    ).all()
+    ready_cns: set[str] = set()
+    ready_nregistros: set[str] = set()
+    for row_cn, row_nregistro in audit_rows:
+        if row_cn:
+            ready_cns.add(str(row_cn))
+        if row_nregistro:
+            ready_nregistros.add(str(row_nregistro).strip())
+
+    existing_ok_partial: set[str] = set()
+    if prioritize_missing_summary:
+        existing_rows = db.query(GftClinicalSummaryCache.cn).filter(
+            GftClinicalSummaryCache.cn.in_(candidate_cns),
+            GftClinicalSummaryCache.source_status.in_({'ok', 'partial'}),
+        ).all()
+        existing_ok_partial = {str(cn) for (cn,) in existing_rows}
+
     out: list[str] = []
     prioritized_missing: list[str] = []
     skipped_existing_known: list[str] = []
     missing_sections: list[str] = []
-    for cn in cns:
-        cima = db.get(CimaMedicamentoCache, cn)
-        if not (cima and cima.sync_status == 'ok' and (cima.nregistro or '').strip()):
-            continue
-        found = db.query(CimaFichaTecnicaCache.cn).filter(
-            build_auditable_section_scope_filters([cn], [cima.nregistro], list(TARGET_SECTIONS)),
-        ).first()
-        if found:
-            if prioritize_missing_summary:
-                current = db.get(GftClinicalSummaryCache, cn)
-                if not current or current.source_status not in {'ok', 'partial'}:
-                    prioritized_missing.append(cn)
-                else:
-                    skipped_existing_known.append(cn)
-                    out.append(cn)
-            else:
-                out.append(cn)
-        else:
+    for cn in candidate_cns:
+        nregistro = cn_to_nregistro[cn]
+        has_sections = cn in ready_cns or nregistro in ready_nregistros
+        if not has_sections:
             missing_sections.append(cn)
+            continue
+        if prioritize_missing_summary and cn in existing_ok_partial:
+            skipped_existing_known.append(cn)
+            out.append(cn)
+            continue
+        if prioritize_missing_summary:
+            prioritized_missing.append(cn)
+        else:
+            out.append(cn)
+
     if prioritize_missing_summary:
         return prioritized_missing + out, out, missing_sections, skipped_existing_known
     return out, [], missing_sections, []

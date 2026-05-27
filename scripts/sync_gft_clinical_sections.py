@@ -54,6 +54,10 @@ def _find_section_unavailable_row(db, nregistro: str, section: str) -> CimaFicha
     ).order_by(CimaFichaTecnicaCache.last_synced_at.desc(), CimaFichaTecnicaCache.id.desc()).first()
 
 
+def _is_row_content_empty(row: CimaFichaTecnicaCache) -> bool:
+    return not has_nonempty_section_content(row.contenido_texto, None) and not has_nonempty_section_content(None, row.contenido_html)
+
+
 def _find_auditable_row(db, cn: str, nregistro: str, section: str) -> CimaFichaTecnicaCache | None:
     return db.query(CimaFichaTecnicaCache).filter(
         *build_auditable_section_filters(cn, nregistro, section),
@@ -217,6 +221,8 @@ def main(argv=None) -> int:
 
                 existing_ok_before = _find_any_ok_row(db, cn, section)
                 row = sync_cima_segmented_section(db=db, nregistro=cima.nregistro, tipo_documento=1, seccion=section, cn=cn, force=args.force)
+                if row.sync_status == 'ok' and _is_row_content_empty(row):
+                    row.sync_status = 'section_unavailable'
                 if row.sync_status == 'ok':
                     auditable_row = _find_auditable_row(db, cn, cima.nregistro, section)
                     if auditable_row is not None:
