@@ -3,7 +3,7 @@ from __future__ import annotations
 from scripts._db_guard import ensure_postgresql_database
 import argparse, json
 from collections import Counter
-from sqlalchemy import text
+from sqlalchemy import text, func
 from app.core.database import SessionLocal
 from app.models.bifimed_cache import BifimedCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
@@ -39,7 +39,7 @@ def main(argv=None):
       cimas={r.cn:r for r in db.query(CimaMedicamentoCache).filter(CimaMedicamentoCache.cn.in_(cns)).all()} if cns else {}
       sums={r.cn:r for r in db.query(GftClinicalSummaryCache).filter(GftClinicalSummaryCache.cn.in_(cns)).all()} if cns else {}
       sec_rows=db.query(CimaFichaTecnicaCache.cn,CimaFichaTecnicaCache.seccion).filter(CimaFichaTecnicaCache.cn.in_(cns),CimaFichaTecnicaCache.sync_status=='ok',CimaFichaTecnicaCache.seccion.in_(a.sections),text("trim(coalesce(contenido_texto,''))<>'' OR trim(coalesce(contenido_html,''))<>''")).all() if cns else []
-      post_sections_status_rows=db.query(CimaFichaTecnicaCache.seccion,CimaFichaTecnicaCache.sync_status,text("count(*) AS total")).filter(CimaFichaTecnicaCache.cn.in_(cns),CimaFichaTecnicaCache.seccion.in_(a.sections)).group_by(CimaFichaTecnicaCache.seccion,CimaFichaTecnicaCache.sync_status).all() if cns else []
+      post_sections_status_rows=db.query(CimaFichaTecnicaCache.seccion,CimaFichaTecnicaCache.sync_status,func.count().label("total")).filter(CimaFichaTecnicaCache.cn.in_(cns),CimaFichaTecnicaCache.seccion.in_(a.sections)).group_by(CimaFichaTecnicaCache.seccion,CimaFichaTecnicaCache.sync_status).all() if cns else []
     cov={s:set() for s in a.sections}
     for r in sec_rows: cov[r.seccion].add(r.cn)
     bstat=Counter(); cstat=Counter(); sstat=Counter(); linked=Counter()

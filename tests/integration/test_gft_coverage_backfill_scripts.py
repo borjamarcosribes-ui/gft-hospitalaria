@@ -51,6 +51,25 @@ def test_linkage_audit_excludes_missing_source_from_useful_counts(monkeypatch, d
     assert out['summaries']['con_lactancia'] == 1
 
 
+def test_linkage_audit_exposes_post_sections_status_counts(monkeypatch, db_session):
+    from scripts import gft_linkage_coverage_audit as mod
+
+    db_session.add(GFTEstadoPresentacion(cn='311001', estado_gft='incluido', estado_editorial='publicado'))
+    db_session.add(CimaFichaTecnicaCache(cn='311001', nregistro='NR311001', seccion='4.1', tipo_documento=1, titulo='4.1', sync_status='ok', contenido_html='<p>Contenido</p>'))
+    db_session.add(CimaFichaTecnicaCache(cn='311001', nregistro='NR311001', seccion='4.2', tipo_documento=1, titulo='4.2', sync_status='section_unavailable'))
+    db_session.commit(); _create_view(db_session)
+
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+    import io, contextlib, json
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--scope', 'published', '--sections', '4.1', '4.2', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['sections']['coverage_by_section']['4.1'] == 1
+    assert out['sections']['post_sections_status_counts']['4.1']['ok'] == 1
+    assert out['sections']['post_sections_status_counts']['4.2']['section_unavailable'] == 1
+
+
 def test_linkage_backfill_skips_summaries_for_cima_not_found(monkeypatch, db_session):
     from scripts import run_gft_linkage_backfill as mod
 
