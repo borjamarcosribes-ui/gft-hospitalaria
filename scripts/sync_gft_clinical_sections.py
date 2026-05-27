@@ -64,28 +64,48 @@ def _count_auditable_rows(db, cn: str, section: str) -> int:
     ).count())
 
 
-def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missing: bool) -> tuple[list[str], int, list[dict[str, str]]]:
+def _load_eligible_cns_with_nregistro(db, cns: list[str]) -> dict[str, str]:
+    if not cns:
+        return {}
+    rows = db.query(CimaMedicamentoCache.cn, CimaMedicamentoCache.nregistro).filter(
+        CimaMedicamentoCache.cn.in_(cns),
+        CimaMedicamentoCache.sync_status == 'ok',
+        text("trim(coalesce(nregistro,''))<>''"),
+    ).all()
+    return {str(cn): str(nregistro) for cn, nregistro in rows}
+
+
+def _load_auditable_section_pairs(db, cns: list[str], sections: list[str]) -> set[tuple[str, str]]:
+    if not cns or not sections:
+        return set()
+    rows = db.query(CimaFichaTecnicaCache.cn, CimaFichaTecnicaCache.seccion).filter(
+        CimaFichaTecnicaCache.cn.in_(cns),
+        CimaFichaTecnicaCache.seccion.in_(sections),
+        CimaFichaTecnicaCache.sync_status == 'ok',
+        text("trim(coalesce(contenido_texto,''))<>'' OR trim(coalesce(contenido_html,''))<>''"),
+    ).distinct().all()
+    return {(str(cn), str(section)) for cn, section in rows}
+
+
+def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missing: bool, examples_limit: int) -> tuple[list[str], int, list[dict[str, str]], set[tuple[str, str]], dict[str, str]]:
     selected: list[str] = []
     remaining_ops = 0
     examples_remaining: list[dict[str, str]] = []
-    for cn in cns:
-        cima = db.get(CimaMedicamentoCache, cn)
-        if not cima or cima.sync_status != 'ok':
-            continue
-        if not (cima.nregistro or '').strip():
-            continue
+    eligible_cn_map = _load_eligible_cns_with_nregistro(db, cns)
+    eligible_cns = [cn for cn in cns if cn in eligible_cn_map]
+    auditable_pairs = _load_auditable_section_pairs(db, eligible_cns, sections) if only_missing else set()
+    for cn in eligible_cns:
         has_pending = False
         for section in sections:
-            auditable = _find_auditable_row(db, cn, section)
-            is_pending = (not only_missing) or (auditable is None)
+            is_pending = (not only_missing) or ((cn, section) not in auditable_pairs)
             if is_pending:
                 remaining_ops += 1
-                if len(examples_remaining) < 20:
+                if len(examples_remaining) < examples_limit:
                     examples_remaining.append({'cn': cn, 'section': section})
                 has_pending = True
         if has_pending:
             selected.append(cn)
-    return selected, remaining_ops, examples_remaining
+    return selected, remaining_ops, examples_remaining, auditable_pairs, eligible_cn_map
 
 
 def main(argv=None) -> int:
@@ -100,7 +120,9 @@ def main(argv=None) -> int:
         if args.cn:
             base_cns = published_cns
         elif args.candidate_mode == 'syncable':
-            all_syncable_cns, remaining_syncable_candidates, examples_remaining_syncable = _candidate_syncable_cns(db, published_cns, args.sections, args.only_missing)
+            all_syncable_cns, remaining_syncable_candidates, examples_remaining_syncable, auditable_pairs, eligible_cn_map = _candidate_syncable_cns(
+                db, published_cns, args.sections, args.only_missing, args.examples
+            )
             base_cns = all_syncable_cns
             if args.limit is not None:
                 base_cns = base_cns[: max(0, args.limit)]
@@ -112,13 +134,14 @@ def main(argv=None) -> int:
         if args.candidate_mode != 'syncable':
             remaining_syncable_candidates = None
             examples_remaining_syncable = []
+            auditable_pairs = set()
+            eligible_cn_map = {}
         if args.candidate_mode == 'syncable':
             planned_examples = []
             would_sync_by_section = {s: 0 for s in args.sections}
             for cn in base_cns:
                 for section in args.sections:
-                    auditable = _find_auditable_row(db, cn, section)
-                    if args.only_missing and auditable is not None:
+                    if args.only_missing and (cn, section) in auditable_pairs:
                         continue
                     would_sync_by_section[section] += 1
                     if len(planned_examples) < args.examples:
@@ -148,23 +171,15 @@ def main(argv=None) -> int:
                 by_status['skipped_missing_nregistro'] += 1
                 continue
             for section in args.sections:
-                auditable_before = _find_auditable_row(db, cn, section)
-                auditable_before_count = _count_auditable_rows(db, cn, section) if auditable_before is not None else 0
-                if args.only_missing and auditable_before is not None:
+                auditable_before = (cn, section) in auditable_pairs if args.candidate_mode == 'syncable' and args.only_missing else (_find_auditable_row(db, cn, section) is not None)
+                if args.only_missing and auditable_before:
                     by_status['skipped_existing_ok'] += 1
-                    if auditable_before_count > 1:
-                        by_status['duplicate_auditable_rows'] += 1
-                        if len(examples_duplicate_auditable_rows) < args.examples:
-                            examples_duplicate_auditable_rows.append({'cn': cn, 'section': section, 'auditable_rows': auditable_before_count})
                     continue
 
                 existing_ok_before = _find_any_ok_row(db, cn, section)
                 row = sync_cima_segmented_section(db=db, nregistro=cima.nregistro, tipo_documento=1, seccion=section, cn=cn, force=args.force)
                 if row.sync_status == 'ok':
                     auditable_row = _find_auditable_row(db, cn, section)
-                    auditable_count = _count_auditable_rows(db, cn, section)
-                    if auditable_count > 1:
-                        by_status['duplicate_auditable_rows'] += 1
                     if auditable_row is not None:
                         by_status['updated_existing_auditable' if existing_ok_before is not None else 'written_new_auditable'] += 1
                     else:
@@ -178,7 +193,7 @@ def main(argv=None) -> int:
                                 'row_sync_status': row.sync_status,
                                 'has_text': bool((row.contenido_texto or '').strip()),
                                 'has_html': bool((row.contenido_html or '').strip()),
-                                'duplicate_auditable_rows': auditable_count,
+                                'duplicate_auditable_rows': _count_auditable_rows(db, cn, section),
                             })
                 elif row.sync_status in {'section_unavailable'}:
                     by_status['section_unavailable'] += 1
