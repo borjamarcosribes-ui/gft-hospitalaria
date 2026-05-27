@@ -74,6 +74,10 @@ def _build_delta(before, after, req_sections):
     return out
 
 
+def _section_deltas(delta: dict, req_sections: list[str]) -> dict[str, int]:
+    return {s: delta.get(f"sections_{s.replace('.', '_')}", 0) for s in req_sections}
+
+
 def _req_safety(a):
     if a.workers != 1:
         raise SystemExit("workers > 1 todavía no implementado en este wrapper; usa --workers 1")
@@ -145,6 +149,21 @@ def main(argv=None):
     err_count = sum(phases.get(k, {}).get("by_status", {}).get("error", 0) for k in ["bifimed", "cima_medicamento", "cima_sections"]) + phases.get("summaries", {}).get("by_source_status", {}).get("error", 0)
     ext_calls = phases.get("bifimed", {}).get("processed", 0) + phases.get("cima_medicamento", {}).get("processed", 0) + phases.get("cima_sections", {}).get("processed_operations", 0)
 
+    clinical_warning = None
+    examples_not_counted = []
+    section_delta_map = _section_deltas(delta, a.sections)
+    section_delta_total = sum(section_delta_map.values())
+    cima_sections = phases.get("cima_sections", {}) or {}
+    cima_ok = int((cima_sections.get("by_status", {}) or {}).get("ok", 0))
+    if not a.skip_cima_sections and cima_ok > 0 and section_delta_total == 0:
+        clinical_warning = {
+            "code": "sections_ok_but_zero_delta",
+            "message": "sync_gft_clinical_sections reportó ok pero el audit no incrementó cobertura de secciones.",
+            "cima_sections_ok": cima_ok,
+            "section_deltas": section_delta_map,
+        }
+        examples_not_counted = (after.get("sections", {}) or {}).get("examples_missing_sections", [])[:10]
+
     out = {
         "run_id": datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"),
         "scope": a.scope,
@@ -156,6 +175,9 @@ def main(argv=None):
         "phases": phases,
         "after": after,
         "delta": delta,
+        "clinical_phase_warning": clinical_warning,
+        "examples_sections_written_not_counted": examples_not_counted,
+        "post_sections_status_counts": (after.get("sections", {}) or {}).get("post_sections_status_counts", {}),
         "performance": {
             "started_at": started_at,
             "ended_at": datetime.now(timezone.utc).isoformat(),
@@ -171,6 +193,8 @@ def main(argv=None):
     }
     if sum(abs(v) for v in delta.values()) == 0:
         out["no_progress_reason"] = "dry_run" if a.dry_run else "no_candidates"
+    elif clinical_warning:
+        out["no_progress_reason"] = "sections_written_not_counted_in_audit"
 
     Path("runtime_logs").mkdir(exist_ok=True)
     log_path = Path("runtime_logs") / f"gft_post_import_run_{out['run_id']}.json"

@@ -151,3 +151,20 @@ def test_summary_script_force_updates_resumen_general(monkeypatch, db_session):
     assert row is not None
     assert row.resumen_general is not None
     assert row.resumen_general != 'Antiguo resumen'
+
+
+def test_summary_ready_only_missing_prioritizes_cn_without_summary(monkeypatch, db_session):
+    from scripts import generate_gft_clinical_summaries as mod
+
+    _seed_pub(db_session, '240001')
+    _seed_pub(db_session, '240002')
+    db_session.add(CimaMedicamentoCache(cn='240001', nregistro='NR240001', sync_status='ok'))
+    db_session.add(CimaMedicamentoCache(cn='240002', nregistro='NR240002', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='240001', nregistro='NR240001', tipo_documento=1, seccion='4.1', titulo='4.1', sync_status='ok', contenido_texto='Texto A'))
+    db_session.add(CimaFichaTecnicaCache(cn='240002', nregistro='NR240002', tipo_documento=1, seccion='4.1', titulo='4.1', sync_status='ok', contenido_texto='Texto B'))
+    db_session.add(GftClinicalSummaryCache(cn='240001', source_status='ok', resumen_general='existente'))
+    db_session.commit(); _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    assert mod.main(['--confirm-write', '--candidate-mode', 'summary_ready', '--only-missing', '--limit', '1']) == 0
+    assert db_session.get(GftClinicalSummaryCache, '240002') is not None
