@@ -70,6 +70,23 @@ def test_linkage_audit_exposes_post_sections_status_counts(monkeypatch, db_sessi
     assert out['sections']['post_sections_status_counts']['4.2']['section_unavailable'] == 1
 
 
+def test_linkage_audit_counts_cn_coverage_from_shared_nregistro(monkeypatch, db_session):
+    from scripts import gft_linkage_coverage_audit as mod
+    import io, contextlib, json
+
+    db_session.add(GFTEstadoPresentacion(cn='605868', estado_gft='incluido', estado_editorial='publicado'))
+    db_session.add(CimaMedicamentoCache(cn='605868', nregistro='62404', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='605867', nregistro='62404', seccion='4.1', tipo_documento=1, titulo='4.1', sync_status='ok', contenido_texto='Compartido'))
+    db_session.commit(); _create_view(db_session)
+
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--scope', 'published', '--sections', '4.1', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['sections']['coverage_by_section']['4.1'] == 1
+
+
 def test_linkage_backfill_skips_summaries_for_cima_not_found(monkeypatch, db_session):
     from scripts import run_gft_linkage_backfill as mod
 

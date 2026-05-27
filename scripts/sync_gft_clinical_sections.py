@@ -9,6 +9,11 @@ from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.services.cima_segmented_sync_service import sync_cima_segmented_section
 from app.services.gft_clinical_pipeline_service import ClinicalPipelineParams, build_clinical_pipeline_dry_run
 from app.services.gft_cn_universe_service import get_cn_universe
+from app.services.gft_clinical_sections_auditability import (
+    build_auditable_section_filters,
+    build_auditable_section_scope_filters,
+    has_nonempty_section_content,
+)
 
 
 def parse_args(argv=None):
@@ -32,12 +37,6 @@ def _published_cns(db) -> list[str]:
     return [str(r["cn"]) for r in rows]
 
 
-def _has_content(row: CimaFichaTecnicaCache | None) -> bool:
-    if row is None:
-        return False
-    return bool((row.contenido_texto or "").strip() or (row.contenido_html or "").strip())
-
-
 def _find_any_ok_row(db, cn: str, section: str) -> CimaFichaTecnicaCache | None:
     return db.query(CimaFichaTecnicaCache).filter(
         CimaFichaTecnicaCache.cn == cn,
@@ -46,21 +45,15 @@ def _find_any_ok_row(db, cn: str, section: str) -> CimaFichaTecnicaCache | None:
     ).order_by(CimaFichaTecnicaCache.last_synced_at.desc(), CimaFichaTecnicaCache.id.desc()).first()
 
 
-def _find_auditable_row(db, cn: str, section: str) -> CimaFichaTecnicaCache | None:
+def _find_auditable_row(db, cn: str, nregistro: str, section: str) -> CimaFichaTecnicaCache | None:
     return db.query(CimaFichaTecnicaCache).filter(
-        CimaFichaTecnicaCache.cn == cn,
-        CimaFichaTecnicaCache.seccion == section,
-        CimaFichaTecnicaCache.sync_status == 'ok',
-        text("trim(coalesce(contenido_texto,''))<>'' OR trim(coalesce(contenido_html,''))<>''"),
+        *build_auditable_section_filters(cn, nregistro, section),
     ).order_by(CimaFichaTecnicaCache.last_synced_at.desc(), CimaFichaTecnicaCache.id.desc()).first()
 
 
-def _count_auditable_rows(db, cn: str, section: str) -> int:
+def _count_auditable_rows(db, cn: str, nregistro: str, section: str) -> int:
     return int(db.query(CimaFichaTecnicaCache).filter(
-        CimaFichaTecnicaCache.cn == cn,
-        CimaFichaTecnicaCache.seccion == section,
-        CimaFichaTecnicaCache.sync_status == 'ok',
-        text("trim(coalesce(contenido_texto,''))<>'' OR trim(coalesce(contenido_html,''))<>''"),
+        *build_auditable_section_filters(cn, nregistro, section),
     ).count())
 
 
@@ -75,16 +68,26 @@ def _load_eligible_cns_with_nregistro(db, cns: list[str]) -> dict[str, str]:
     return {str(cn): str(nregistro) for cn, nregistro in rows}
 
 
-def _load_auditable_section_pairs(db, cns: list[str], sections: list[str]) -> set[tuple[str, str]]:
-    if not cns or not sections:
+def _load_auditable_section_pairs(db, cn_to_nregistro: dict[str, str], sections: list[str]) -> set[tuple[str, str]]:
+    if not cn_to_nregistro or not sections:
         return set()
-    rows = db.query(CimaFichaTecnicaCache.cn, CimaFichaTecnicaCache.seccion).filter(
-        CimaFichaTecnicaCache.cn.in_(cns),
-        CimaFichaTecnicaCache.seccion.in_(sections),
-        CimaFichaTecnicaCache.sync_status == 'ok',
-        text("trim(coalesce(contenido_texto,''))<>'' OR trim(coalesce(contenido_html,''))<>''"),
+    rows = db.query(CimaFichaTecnicaCache.cn, CimaFichaTecnicaCache.nregistro, CimaFichaTecnicaCache.seccion).filter(
+        build_auditable_section_scope_filters(list(cn_to_nregistro.keys()), list(cn_to_nregistro.values()), sections),
     ).distinct().all()
-    return {(str(cn), str(section)) for cn, section in rows}
+    nregistro_to_cns: dict[str, set[str]] = {}
+    for target_cn, target_nregistro in cn_to_nregistro.items():
+        key = (target_nregistro or '').strip()
+        if key:
+            nregistro_to_cns.setdefault(key, set()).add(target_cn)
+    pairs = set()
+    for row_cn, row_nregistro, section in rows:
+        row_cn_str = str(row_cn or '')
+        section_str = str(section)
+        if row_cn_str in cn_to_nregistro:
+            pairs.add((row_cn_str, section_str))
+        for target_cn in nregistro_to_cns.get(str(row_nregistro or '').strip(), set()):
+            pairs.add((target_cn, section_str))
+    return pairs
 
 
 def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missing: bool, examples_limit: int) -> tuple[list[str], int, list[dict[str, str]], set[tuple[str, str]], dict[str, str]]:
@@ -93,7 +96,7 @@ def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missin
     examples_remaining: list[dict[str, str]] = []
     eligible_cn_map = _load_eligible_cns_with_nregistro(db, cns)
     eligible_cns = [cn for cn in cns if cn in eligible_cn_map]
-    auditable_pairs = _load_auditable_section_pairs(db, eligible_cns, sections) if only_missing else set()
+    auditable_pairs = _load_auditable_section_pairs(db, {cn: eligible_cn_map[cn] for cn in eligible_cns}, sections) if only_missing else set()
     for cn in eligible_cns:
         has_pending = False
         for section in sections:
@@ -171,7 +174,7 @@ def main(argv=None) -> int:
                 by_status['skipped_missing_nregistro'] += 1
                 continue
             for section in args.sections:
-                auditable_before = (cn, section) in auditable_pairs if args.candidate_mode == 'syncable' and args.only_missing else (_find_auditable_row(db, cn, section) is not None)
+                auditable_before = (cn, section) in auditable_pairs if args.candidate_mode == 'syncable' and args.only_missing else (_find_auditable_row(db, cn, cima.nregistro, section) is not None)
                 if args.only_missing and auditable_before:
                     by_status['skipped_existing_ok'] += 1
                     continue
@@ -179,7 +182,7 @@ def main(argv=None) -> int:
                 existing_ok_before = _find_any_ok_row(db, cn, section)
                 row = sync_cima_segmented_section(db=db, nregistro=cima.nregistro, tipo_documento=1, seccion=section, cn=cn, force=args.force)
                 if row.sync_status == 'ok':
-                    auditable_row = _find_auditable_row(db, cn, section)
+                    auditable_row = _find_auditable_row(db, cn, cima.nregistro, section)
                     if auditable_row is not None:
                         by_status['updated_existing_auditable' if existing_ok_before is not None else 'written_new_auditable'] += 1
                     else:
@@ -190,10 +193,13 @@ def main(argv=None) -> int:
                                 'section': section,
                                 'nregistro': cima.nregistro,
                                 'row_cn': row.cn,
+                                'row_nregistro': row.nregistro,
+                                'row_section': row.seccion,
                                 'row_sync_status': row.sync_status,
-                                'has_text': bool((row.contenido_texto or '').strip()),
-                                'has_html': bool((row.contenido_html or '').strip()),
-                                'duplicate_auditable_rows': _count_auditable_rows(db, cn, section),
+                                'has_text': has_nonempty_section_content(row.contenido_texto, None),
+                                'has_html': has_nonempty_section_content(None, row.contenido_html),
+                                'reason': 'post_write_row_not_auditable_under_shared_criteria',
+                                'duplicate_auditable_rows': _count_auditable_rows(db, cn, cima.nregistro, section),
                             })
                 elif row.sync_status in {'section_unavailable'}:
                     by_status['section_unavailable'] += 1

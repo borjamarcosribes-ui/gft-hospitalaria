@@ -12,6 +12,7 @@ from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.services.gft_clinical_summary_service import build_clinical_summary
 from app.services.gft_clinical_pipeline_service import TARGET_SECTIONS
 from app.services.gft_cn_universe_service import get_cn_universe
+from app.services.gft_clinical_sections_auditability import build_auditable_section_scope_filters
 
 
 def parse_args(argv=None):
@@ -44,9 +45,7 @@ def _summary_ready_cns(db, cns: list[str], prioritize_missing_summary: bool = Fa
         if not (cima and cima.sync_status == 'ok' and (cima.nregistro or '').strip()):
             continue
         found = db.query(CimaFichaTecnicaCache.cn).filter(
-            CimaFichaTecnicaCache.cn == cn,
-            CimaFichaTecnicaCache.sync_status == 'ok',
-            CimaFichaTecnicaCache.seccion.in_(TARGET_SECTIONS),
+            build_auditable_section_scope_filters([cn], [cima.nregistro], list(TARGET_SECTIONS)),
         ).first()
         if found:
             if prioritize_missing_summary:
@@ -97,7 +96,7 @@ def main(argv=None) -> int:
             cima = db.get(CimaMedicamentoCache, cn)
             has_cima_ok = bool(cima and cima.sync_status == 'ok')
             has_nregistro = bool(cima and (cima.nregistro or '').strip())
-            rows = db.query(CimaFichaTecnicaCache).filter(CimaFichaTecnicaCache.cn == cn, CimaFichaTecnicaCache.sync_status == 'ok', CimaFichaTecnicaCache.seccion.in_(TARGET_SECTIONS)).all()
+            rows = db.query(CimaFichaTecnicaCache).filter(build_auditable_section_scope_filters([cn], [cima.nregistro if cima else ''], list(TARGET_SECTIONS))).all()
             summary = build_clinical_summary({r.seccion: (r.contenido_texto or '') for r in rows}, has_nregistro=has_nregistro, has_cima_ok=has_cima_ok)
             source_status = summary.get('source_status', 'error')
             by_source[source_status] += 1

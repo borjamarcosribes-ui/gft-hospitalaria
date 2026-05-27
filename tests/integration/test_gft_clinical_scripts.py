@@ -231,19 +231,41 @@ def test_sync_script_counts_written_not_auditable_when_ok_without_content(monkey
     assert out['by_status'].get('written_new_auditable', 0) == 0
 
 
-def test_sync_script_counts_written_not_auditable_when_ok_with_wrong_cn(monkeypatch, db_session):
+def test_sync_script_accepts_auditable_row_with_same_nregistro_and_different_cn(monkeypatch, db_session):
     from scripts import sync_gft_clinical_sections as mod
     import contextlib, io, json
 
-    _seed_pub(db_session, '100031')
-    db_session.add(CimaMedicamentoCache(cn='100031', nregistro='NR31', sync_status='ok'))
-    db_session.add(CimaFichaTecnicaCache(cn='999999', nregistro='NR31', tipo_documento=1, seccion='4.2', titulo='4.2', sync_status='ok', contenido_texto='texto'))
+    _seed_pub(db_session, '602914')
+    db_session.add(CimaMedicamentoCache(cn='602914', nregistro='69203', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='602913', nregistro='69203', tipo_documento=1, seccion='4.2', titulo='4.2', sync_status='ok', contenido_texto='texto'))
     db_session.commit()
     _create_view(db_session)
     monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
 
     def fake_sync(**kwargs):
-        return db_session.query(CimaFichaTecnicaCache).filter(CimaFichaTecnicaCache.cn == '999999', CimaFichaTecnicaCache.seccion == '4.2').one()
+        return db_session.query(CimaFichaTecnicaCache).filter(CimaFichaTecnicaCache.cn == '602913', CimaFichaTecnicaCache.seccion == '4.2').one()
+
+    monkeypatch.setattr(mod, 'sync_cima_segmented_section', fake_sync)
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--confirm-write', '--candidate-mode', 'syncable', '--sections', '4.2', '--only-missing', '--limit', '10', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['by_status'].get('written_not_auditable', 0) == 0
+    assert out['by_status']['written_new_auditable'] == 1
+
+
+def test_sync_script_keeps_written_not_auditable_when_nregistro_differs(monkeypatch, db_session):
+    from scripts import sync_gft_clinical_sections as mod
+    import contextlib, io, json
+
+    _seed_pub(db_session, '100032')
+    db_session.add(CimaMedicamentoCache(cn='100032', nregistro='NR32', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='100099', nregistro='NR99', tipo_documento=1, seccion='4.2', titulo='4.2', sync_status='ok', contenido_texto='texto'))
+    db_session.commit(); _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    def fake_sync(**kwargs):
+        return db_session.query(CimaFichaTecnicaCache).filter(CimaFichaTecnicaCache.cn == '100099', CimaFichaTecnicaCache.seccion == '4.2').one()
 
     monkeypatch.setattr(mod, 'sync_cima_segmented_section', fake_sync)
     b = io.StringIO()
@@ -346,3 +368,36 @@ def test_summary_ready_only_missing_prioritizes_cn_without_summary(monkeypatch, 
 
     assert mod.main(['--confirm-write', '--candidate-mode', 'summary_ready', '--only-missing', '--limit', '1']) == 0
     assert db_session.get(GftClinicalSummaryCache, '240002') is not None
+
+
+def test_syncable_only_missing_skips_cn_when_section_exists_by_same_nregistro(monkeypatch, db_session):
+    from scripts import sync_gft_clinical_sections as mod
+    import contextlib, io, json
+
+    _seed_pub(db_session, '605868')
+    db_session.add(CimaMedicamentoCache(cn='605868', nregistro='62404', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='605867', nregistro='62404', tipo_documento=1, seccion='4.1', titulo='4.1', sync_status='ok', contenido_texto='compartido'))
+    db_session.commit(); _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--dry-run', '--candidate-mode', 'syncable', '--sections', '4.1', '--only-missing', '--limit', '10', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['selected_candidates'] == 0
+    assert out['remaining_syncable_candidates'] == 0
+
+
+def test_summary_ready_generates_from_shared_nregistro_sections(monkeypatch, db_session):
+    from scripts import generate_gft_clinical_summaries as mod
+
+    _seed_pub(db_session, '605869')
+    db_session.add(CimaMedicamentoCache(cn='605869', nregistro='62404', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='605867', nregistro='62404', tipo_documento=1, seccion='4.1', titulo='4.1', sync_status='ok', contenido_texto='texto clínico compartido'))
+    db_session.commit(); _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    assert mod.main(['--confirm-write', '--candidate-mode', 'summary_ready', '--limit', '10']) == 0
+    row = db_session.get(GftClinicalSummaryCache, '605869')
+    assert row is not None
+    assert row.source_status in {'ok', 'partial'}
