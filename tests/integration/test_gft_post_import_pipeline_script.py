@@ -122,3 +122,20 @@ def test_no_clinical_warning_when_only_skipped_existing_ok(monkeypatch):
         assert mod.main(['--dry-run', '--sections', '4.1', '--json']) == 0
     out = json.loads(b.getvalue())
     assert out['clinical_phase_warning'] is None
+
+
+def test_pipeline_warns_sections_written_not_auditable(monkeypatch):
+    from scripts import run_gft_post_import_pipeline as mod
+    monkeypatch.setattr(mod, 'ensure_postgresql_database', lambda *_: None)
+    calls = [
+        {'bifimed': {'con_cache': 1, 'sync_status_counts': {'ok': 1}}, 'cima': {'con_cache': 1, 'ok': 1}, 'summaries': {'con_resumen': 0, 'con_resumen_general': 0}, 'completion': {'clinical_ready': 0, 'fully_linked_public_detail_ready': 0}, 'sections': {'coverage_by_section': {'4.1': 1}, 'examples_missing_sections': ['111111'], 'post_sections_status_counts': {'4.1': {'ok': 1}}}},
+        {'processed_operations': 1, 'by_status': {'written_not_auditable': 1}, 'examples_written_not_auditable': [{'cn': '602914', 'section': '4.1'}]},
+        {'bifimed': {'con_cache': 1, 'sync_status_counts': {'ok': 1}}, 'cima': {'con_cache': 1, 'ok': 1}, 'summaries': {'con_resumen': 0, 'con_resumen_general': 0}, 'completion': {'clinical_ready': 0, 'fully_linked_public_detail_ready': 0}, 'sections': {'coverage_by_section': {'4.1': 1}, 'examples_missing_sections': ['111111'], 'post_sections_status_counts': {'4.1': {'ok': 1}}}},
+    ]
+    monkeypatch.setattr(mod, '_run_json', lambda *_: calls.pop(0))
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--dry-run', '--sections', '4.1', '--skip-bifimed', '--skip-cima-med', '--skip-summaries', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['clinical_phase_warning']['code'] == 'sections_written_not_auditable'
+    assert out['examples_sections_written_not_counted'][0]['cn'] == '602914'

@@ -154,12 +154,21 @@ def main(argv=None):
     section_delta_map = _section_deltas(delta, a.sections)
     section_delta_total = sum(section_delta_map.values())
     cima_sections = phases.get("cima_sections", {}) or {}
-    cima_section_writes = int((cima_sections.get("by_status", {}) or {}).get("written_new", 0)) + int((cima_sections.get("by_status", {}) or {}).get("updated_existing", 0))
-    if not a.skip_cima_sections and cima_section_writes > 0 and section_delta_total == 0:
+    cima_section_auditable_writes = int((cima_sections.get("by_status", {}) or {}).get("written_new_auditable", 0)) + int((cima_sections.get("by_status", {}) or {}).get("updated_existing_auditable", 0))
+    cima_section_not_auditable = int((cima_sections.get("by_status", {}) or {}).get("written_not_auditable", 0))
+    if not a.skip_cima_sections and cima_section_not_auditable > 0:
+        clinical_warning = {
+            "code": "sections_written_not_auditable",
+            "message": "sync_gft_clinical_sections devolvió ok pero sin fila auditable por CN+sección+contenido.",
+            "written_not_auditable": cima_section_not_auditable,
+            "section_deltas": section_delta_map,
+        }
+        examples_not_counted = (cima_sections.get("examples_written_not_auditable", []) or [])[:10]
+    elif not a.skip_cima_sections and cima_section_auditable_writes > 0 and section_delta_total == 0:
         clinical_warning = {
             "code": "sections_ok_but_zero_delta",
             "message": "sync_gft_clinical_sections reportó ok pero el audit no incrementó cobertura de secciones.",
-            "cima_sections_writes": cima_section_writes,
+            "cima_sections_writes": cima_section_auditable_writes,
             "section_deltas": section_delta_map,
         }
         examples_not_counted = (after.get("sections", {}) or {}).get("examples_missing_sections", [])[:10]

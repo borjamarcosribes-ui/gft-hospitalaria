@@ -38,6 +38,15 @@ def _has_content(row: CimaFichaTecnicaCache | None) -> bool:
     return bool((row.contenido_texto or "").strip() or (row.contenido_html or "").strip())
 
 
+def _find_auditable_row(db, cn: str, section: str) -> CimaFichaTecnicaCache | None:
+    return db.query(CimaFichaTecnicaCache).filter(
+        CimaFichaTecnicaCache.cn == cn,
+        CimaFichaTecnicaCache.seccion == section,
+        CimaFichaTecnicaCache.sync_status == 'ok',
+        text("trim(coalesce(contenido_texto,''))<>'' OR trim(coalesce(contenido_html,''))<>''"),
+    ).one_or_none()
+
+
 def _candidate_syncable_cns(db, cns: list[str], sections: list[str], only_missing: bool) -> list[str]:
     selected: list[str] = []
     for cn in cns:
@@ -107,6 +116,7 @@ def main(argv=None) -> int:
         cns = base_cns
         by_status = Counter()
         examples = []
+        examples_written_not_auditable = []
         processed_ops = 0
         for cn in cns:
             cima = db.get(CimaMedicamentoCache, cn)
@@ -126,10 +136,24 @@ def main(argv=None) -> int:
                     by_status['skipped_existing_ok'] += 1
                     continue
 
-                existed_before_sync = existing is not None
+                existed_auditable_before_sync = _find_auditable_row(db, cn, section) is not None
                 row = sync_cima_segmented_section(db=db, nregistro=cima.nregistro, tipo_documento=1, seccion=section, cn=cn, force=args.force)
                 if row.sync_status == 'ok':
-                    by_status['updated_existing' if existed_before_sync else 'written_new'] += 1
+                    auditable_row = _find_auditable_row(db, cn, section)
+                    if auditable_row is not None:
+                        by_status['updated_existing_auditable' if existed_auditable_before_sync else 'written_new_auditable'] += 1
+                    else:
+                        by_status['written_not_auditable'] += 1
+                        if len(examples_written_not_auditable) < args.examples:
+                            examples_written_not_auditable.append({
+                                'cn': cn,
+                                'section': section,
+                                'nregistro': cima.nregistro,
+                                'row_cn': row.cn,
+                                'row_sync_status': row.sync_status,
+                                'has_text': bool((row.contenido_texto or '').strip()),
+                                'has_html': bool((row.contenido_html or '').strip()),
+                            })
                 elif row.sync_status in {'section_unavailable'}:
                     by_status['section_unavailable'] += 1
                 else:
@@ -138,7 +162,7 @@ def main(argv=None) -> int:
                 if len(examples) < args.examples:
                     examples.append({'cn': cn, 'section': section, 'status': row.sync_status})
 
-    out = {'dry_run': False, 'confirm_write': True, 'requested_sections': args.sections, 'candidate_mode': args.candidate_mode, 'processed_cn': len(cns), 'processed_operations': processed_ops, 'by_status': dict(by_status), 'examples': examples}
+    out = {'dry_run': False, 'confirm_write': True, 'requested_sections': args.sections, 'candidate_mode': args.candidate_mode, 'processed_cn': len(cns), 'processed_operations': processed_ops, 'by_status': dict(by_status), 'examples': examples, 'examples_written_not_auditable': examples_written_not_auditable}
     print(json.dumps(out, ensure_ascii=False, indent=2 if args.json_output else None))
     return 0
 

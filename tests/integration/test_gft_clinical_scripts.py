@@ -110,6 +110,53 @@ def test_sync_script_only_missing_skips_existing_ok_with_html_content(monkeypatc
     assert called == []
 
 
+def test_sync_script_counts_written_not_auditable_when_ok_without_content(monkeypatch, db_session):
+    from scripts import sync_gft_clinical_sections as mod
+    import contextlib, io, json
+
+    _seed_pub(db_session, '100030')
+    db_session.add(CimaMedicamentoCache(cn='100030', nregistro='NR30', sync_status='ok'))
+    db_session.commit()
+    _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    def fake_sync(**kwargs):
+        row = CimaFichaTecnicaCache(
+            cn=kwargs['cn'], nregistro=kwargs['nregistro'], tipo_documento=1, seccion=kwargs['seccion'], titulo=kwargs['seccion'], sync_status='ok', contenido_texto='', contenido_html=''
+        )
+        return row
+
+    monkeypatch.setattr(mod, 'sync_cima_segmented_section', fake_sync)
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--confirm-write', '--candidate-mode', 'syncable', '--sections', '4.2', '--only-missing', '--limit', '10', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['by_status']['written_not_auditable'] == 1
+    assert out['by_status'].get('written_new_auditable', 0) == 0
+
+
+def test_sync_script_counts_written_not_auditable_when_ok_with_wrong_cn(monkeypatch, db_session):
+    from scripts import sync_gft_clinical_sections as mod
+    import contextlib, io, json
+
+    _seed_pub(db_session, '100031')
+    db_session.add(CimaMedicamentoCache(cn='100031', nregistro='NR31', sync_status='ok'))
+    db_session.add(CimaFichaTecnicaCache(cn='999999', nregistro='NR31', tipo_documento=1, seccion='4.2', titulo='4.2', sync_status='ok', contenido_texto='texto'))
+    db_session.commit()
+    _create_view(db_session)
+    monkeypatch.setattr(mod, 'SessionLocal', lambda: db_session)
+
+    def fake_sync(**kwargs):
+        return db_session.query(CimaFichaTecnicaCache).filter(CimaFichaTecnicaCache.cn == '999999', CimaFichaTecnicaCache.seccion == '4.2').one()
+
+    monkeypatch.setattr(mod, 'sync_cima_segmented_section', fake_sync)
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        assert mod.main(['--confirm-write', '--candidate-mode', 'syncable', '--sections', '4.2', '--only-missing', '--limit', '10', '--json']) == 0
+    out = json.loads(b.getvalue())
+    assert out['by_status']['written_not_auditable'] == 1
+
+
 def test_summary_script_uses_public_frontier_and_skips_not_public(monkeypatch, db_session):
     from scripts import generate_gft_clinical_summaries as mod
 
