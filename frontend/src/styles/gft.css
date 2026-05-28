@@ -1109,3 +1109,70 @@
   margin: 0;
   color: #52616f;
 }
+
+.gft-bifimed-indicaciones {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.65rem;
+}
+
+.gft-bifimed-indicaciones__item {
+  border: 1px solid #d9e2ec;
+  border-radius: 12px;
+  background: #fdfefe;
+  padding: 0.7rem 0.8rem;
+}
+
+.gft-bifimed-indicaciones__item > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.7rem;
+  cursor: pointer;
+  font-weight: 700;
+  color: #17324d;
+}
+
+.gft-bifimed-indicaciones__badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.gft-bifimed-indicaciones__badge--yes {
+  background: #e8f6ef;
+  color: #1d6e53;
+}
+
+.gft-bifimed-indicaciones__badge--no {
+  background: #fdf0f0;
+  color: #8a2a2a;
+}
+
+.gft-bifimed-indicaciones__badge--unknown {
+  background: #eef2f7;
+  color: #52616f;
+}
+
+.gft-bifimed-indicaciones__content {
+  margin-top: 0.55rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.gft-bifimed-indicaciones__content p {
+  margin: 0;
+  color: #17324d;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.gft-bifimed-indicaciones__empty {
+  margin: 0.6rem 0 0;
+  color: #52616f;
+}
