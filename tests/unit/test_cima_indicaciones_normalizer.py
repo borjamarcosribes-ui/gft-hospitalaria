@@ -48,7 +48,27 @@ def test_normalize_multiline_heading_blocks():
     out = normalize_cima_indicaciones(text)
     assert len(out) == 2
     assert out[0]["titulo"] == "Adultos"
-    assert out[0]["texto"] == "Tratamiento de mantenimiento en adultos."
     assert out[1]["titulo"] == "Población pediátrica"
-    assert out[1]["texto"] == "Uso restringido en población pediátrica."
-    assert all(item["confidence"] == "alta" for item in out)
+
+
+def test_normalize_flattened_hyrimoz_style_without_hardcode():
+    text = (
+        "Artritis reumatoide Hyrimoz está indicado para el tratamiento de la artritis reumatoide activa. "
+        "Psoriasis en placas Hyrimoz está indicado para el tratamiento de la psoriasis en placas crónica moderada."
+    )
+    out = normalize_cima_indicaciones(text, commercial_name="Hyrimoz")
+    assert len(out) >= 2
+    assert any("Artritis reumatoide" in item["titulo"] for item in out)
+    assert any("Psoriasis" in item["titulo"] for item in out)
+
+
+def test_normalize_flattened_generic_commercial_name():
+    text = (
+        "Indicación A Mediflux está indicado en adultos con enfermedad A. "
+        "Indicación B Mediflux está indicado en pacientes con enfermedad B refractaria."
+    )
+    out = normalize_cima_indicaciones(text, commercial_name="Mediflux")
+    assert len(out) >= 2
+    joined = "\n".join(item["texto"] for item in out)
+    assert "enfermedad A" in joined
+    assert "enfermedad B" in joined

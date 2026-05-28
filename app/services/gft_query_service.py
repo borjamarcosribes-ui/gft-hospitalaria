@@ -373,7 +373,7 @@ def _row_to_detail(
 ) -> dict:
     item = _row_to_list_item(row, principios)
     item["observaciones_publicables"] = _row_get(row, "observaciones_publicables")
-    item["indicaciones_cima_normalizadas"] = normalize_cima_indicaciones(_row_get(row, "indicaciones_ficha_tecnica"))
+    item["indicaciones_cima_normalizadas"] = normalize_cima_indicaciones(_row_get(row, "indicaciones_ficha_tecnica"), _row_get(row, "nombre") or _row_get(row, "nombre_comercial_importado"))
     item["documentos"] = _build_document_links(row)
     if bifimed_row is not None:
         detalle = {
