@@ -887,6 +887,15 @@ def test_get_medicamento_by_cn_deduplicates_imported_document_fallback(db_sessio
 
 def test_get_medicamento_by_cn_includes_indicaciones_cima_normalizadas_as_list(db_session):
     _insert_base_medicamento(db_session, "111116", publicado=True)
+    medicamento = db_session.get(CimaMedicamentoCache, "111116")
+    assert medicamento is not None
+    medicamento.indicaciones_ficha_tecnica = (
+        "Adultos:\n"
+        "Tratamiento de mantenimiento en adultos.\n\n"
+        "Población pediátrica:\n"
+        "Uso restringido en población pediátrica."
+    )
+    db_session.commit()
     _create_view(db_session)
 
     result = get_medicamento_by_cn(db_session, "111116")
