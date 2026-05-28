@@ -20,6 +20,7 @@ class CimaMedicamentoCache(Base):
     url_prospecto: Mapped[str | None] = mapped_column(Text)
     fecha_ficha_tecnica: Mapped[date | None] = mapped_column(Date)
     fecha_prospecto: Mapped[date | None] = mapped_column(Date)
+    indicaciones_ficha_tecnica: Mapped[str | None] = mapped_column(Text)
     raw_data: Mapped[dict | None] = mapped_column(JSON)
     sync_status: Mapped[str] = mapped_column(String(32), nullable=False, default="not_implemented")
     sync_error: Mapped[str | None] = mapped_column(Text)
