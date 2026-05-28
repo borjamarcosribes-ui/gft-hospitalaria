@@ -9,6 +9,7 @@ from app.models.bifimed_cache import BifimedCache
 from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
 from app.models.principio_activo import PrincipioActivo
+from app.services.cima_indicaciones_normalizer import normalize_cima_indicaciones
 from app.services.normalization_service import normalize_cn
 
 
@@ -372,6 +373,7 @@ def _row_to_detail(
 ) -> dict:
     item = _row_to_list_item(row, principios)
     item["observaciones_publicables"] = _row_get(row, "observaciones_publicables")
+    item["indicaciones_cima_normalizadas"] = normalize_cima_indicaciones(_row_get(row, "indicaciones_ficha_tecnica"))
     item["documentos"] = _build_document_links(row)
     if bifimed_row is not None:
         detalle = {

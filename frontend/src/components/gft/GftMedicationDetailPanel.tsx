@@ -1,12 +1,12 @@
 import type {
   GFTAtcRef,
-  GFTDocumentoCimaRef,
   GFTFinanciacionDetalle,
   GFTMedicamentoDetail,
   GFTPrincipioActivoRef,
 } from '../../types/gft';
 import { GftDocumentLinks } from './GftDocumentLinks';
 import { GftBifimedIndicacionesList } from './GftBifimedIndicacionesList';
+import { GftCimaIndicacionesList } from './GftCimaIndicacionesList';
 
 interface GftMedicationDetailPanelProps {
   cn: string | null;
@@ -121,7 +121,10 @@ function GftClinicalUseInfo({ detail }: { detail: GFTMedicamentoDetail }) {
           <p>{cleanClinicalText('Resumen clínico automático', detail.resumen_clinico_auto?.resumen_general) ?? ''}</p>
         </details>
       ) : null}
-      <FieldDisclosure label="Indicaciones" value={firstNonEmpty(detail.resumen_clinico_auto?.indicaciones, detail.indicaciones_ficha_tecnica)} fallback="No localizado automáticamente." />
+      <details className="gft-detail__text-block" open>
+        <summary>Indicaciones terapéuticas (CIMA / ficha técnica)</summary>
+        <GftCimaIndicacionesList indicaciones={detail.indicaciones_cima_normalizadas} />
+      </details>
       <FieldDisclosure label="Posología" value={firstNonEmpty(detail.resumen_clinico_auto?.posologia)} fallback="No localizado automáticamente." />
       <FieldDisclosure label="Ajuste insuficiencia renal" value={firstNonEmpty(detail.resumen_clinico_auto?.ajuste_renal, detail.ajuste_insuficiencia_renal)} fallback="No localizado automáticamente." />
       <FieldDisclosure label="Ajuste insuficiencia hepática" value={firstNonEmpty(detail.resumen_clinico_auto?.ajuste_hepatico, detail.ajuste_insuficiencia_hepatica)} fallback="No localizado automáticamente." />
@@ -178,39 +181,6 @@ function GftFinanciacionDetail({ financiacion, cn }: { financiacion: GFTFinancia
         <summary>Indicaciones autorizadas BIFIMED</summary>
         <GftBifimedIndicacionesList indicaciones={financiacion.indicaciones_autorizadas} />
       </details>
-    </section>
-  );
-}
-
-function documentLabel(documento: GFTDocumentoCimaRef): string {
-  return documento.titulo ?? documento.nombre ?? documento.secc ?? `Documento ${formatValue(documento.tipo)}`;
-}
-
-function GftCimaDocuments({ documentos }: { documentos: GFTDocumentoCimaRef[] }) {
-  const availableDocuments = documentos.filter((documento) => documento.url || documento.urlHtml);
-
-  if (availableDocuments.length === 0) {
-    return null;
-  }
-
-  return (
-    <section className="gft-detail__section">
-      <h3>Documentos CIMA</h3>
-      <ul className="gft-detail-documents">
-        {availableDocuments.map((documento, index) => {
-          const href = documento.urlHtml ?? documento.url;
-          const date = formatDate(documento.fecha);
-
-          return (
-            <li key={`${href}-${index}`}>
-              <a href={href ?? undefined} target="_blank" rel="noreferrer">
-                {documentLabel(documento)}
-              </a>
-              {date ? <span>{date}</span> : null}
-            </li>
-          );
-        })}
-      </ul>
     </section>
   );
 }
@@ -277,7 +247,6 @@ export function GftMedicationDetailPanel({ cn, detail, loading, error, onClose }
             />
           </section>
 
-          <GftCimaDocuments documentos={detail.documentos} />
 
           {detail.observaciones_publicables ? (
             <section className="gft-detail__section gft-detail__section--note">

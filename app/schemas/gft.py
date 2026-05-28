@@ -67,6 +67,12 @@ class GFTFinanciacionDetalle(BaseModel):
     indicaciones_autorizadas: list[GFTIndicacionAutorizadaBifimed] | None = None
 
 
+class GFTCimaIndicacionNormalizada(BaseModel):
+    titulo: str
+    texto: str
+    confidence: str
+
+
 class GFTClinicalSummaryAuto(BaseModel):
     source_status: str | None = None
     generated_at: datetime | None = None
@@ -108,6 +114,7 @@ class GFTMedicamentoListItem(BaseModel):
 
 class GFTMedicamentoDetail(GFTMedicamentoListItem):
     observaciones_publicables: str | None = None
+    indicaciones_cima_normalizadas: list[GFTCimaIndicacionNormalizada] = Field(default_factory=list)
     documentos: list[GFTDocumentoCimaRef] = Field(default_factory=list)
     financiacion_detalle: GFTFinanciacionDetalle | None = None
     resumen_clinico_auto: GFTClinicalSummaryAuto | None = None
