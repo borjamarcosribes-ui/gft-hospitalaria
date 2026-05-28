@@ -78,6 +78,7 @@ def _line_title_and_text(line: str) -> tuple[str, str] | None:
 def _extract_by_commercial_name(clean_text: str, commercial_name: str | None) -> list[dict[str, str]]:
     if not commercial_name:
         return []
+
     name = re.sub(r"\s+", " ", commercial_name).strip()
     if len(name) < 3:
         return []
@@ -87,26 +88,45 @@ def _extract_by_commercial_name(clean_text: str, commercial_name: str | None) ->
     if len(matches) < 2:
         return []
 
-    starts: list[int] = []
-    for m in matches:
-        prefix = clean_text[: m.start()]
-        boundary = max(prefix.rfind("."), prefix.rfind(";"), prefix.rfind("\n"))
-        starts.append(0 if boundary < 0 else boundary + 1)
+    anchors: list[tuple[int, str]] = []
 
-    starts = sorted(set(starts))
-    if len(starts) < 2:
+    for match in matches:
+        prefix = clean_text[:match.start()]
+        boundary = max(prefix.rfind("."), prefix.rfind(";"), prefix.rfind("\n"))
+        title_start = 0 if boundary < 0 else boundary + 1
+
+        title = clean_text[title_start:match.start()]
+        title = _strip_marker(title)
+        title = re.sub(r"\s+", " ", title).strip(" .;:-\n\t")
+
+        if not title:
+            continue
+        if len(title) < 3 or len(title) > 120:
+            continue
+        if re.search(re.escape(name), title, flags=re.IGNORECASE):
+            continue
+        if re.search(r"\b(est[aá]\s+indicado|se\s+utiliza|indicado\s+para)\b", title, flags=re.IGNORECASE):
+            continue
+
+        anchors.append((title_start, title))
+
+    deduped: list[tuple[int, str]] = []
+    seen_starts: set[int] = set()
+    for start, title in anchors:
+        if start in seen_starts:
+            continue
+        seen_starts.add(start)
+        deduped.append((start, title))
+
+    if len(deduped) < 2:
         return []
 
     items: list[dict[str, str]] = []
-    for i, start in enumerate(starts):
-        end = starts[i + 1] if i + 1 < len(starts) else len(clean_text)
-        block = clean_text[start:end].strip(" ;\n")
+    for idx, (start, title) in enumerate(deduped):
+        end = deduped[idx + 1][0] if idx + 1 < len(deduped) else len(clean_text)
+        block = clean_text[start:end].strip(" ;\n\t")
         if len(block) < 20:
             continue
-        first_sentence = re.split(r"(?<=[.;])\s+", block, maxsplit=1)[0].strip()
-        title = re.sub(r"\s+", " ", first_sentence).strip(" .;:-")[:120]
-        if not title:
-            title = "Indicaciones terapéuticas"
         items.append({"titulo": title, "texto": block, "confidence": "media"})
 
     return items if len(items) >= 2 else []
