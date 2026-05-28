@@ -23,6 +23,10 @@ def _ensure_indicaciones_column(db_session):
     if "indicaciones_ficha_tecnica" not in columns:
         db_session.execute(text("ALTER TABLE cima_medicamento_cache ADD COLUMN indicaciones_ficha_tecnica TEXT"))
         db_session.commit()
+        columns = [row[1] for row in db_session.execute(text("PRAGMA table_info(cima_medicamento_cache)")).fetchall()]
+    assert "indicaciones_ficha_tecnica" in columns, (
+        "La columna indicaciones_ficha_tecnica debe existir en cima_medicamento_cache antes de crear v_gft_publicada"
+    )
 
 
 def _create_view(db_session):
