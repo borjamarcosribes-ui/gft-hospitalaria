@@ -31,6 +31,37 @@ def _strip_marker(line: str) -> str:
     return re.sub(r"^(?:[-•*·]\s+|\(?\d+[\).]\s+|[a-zA-Z]\)\s+)", "", line).strip()
 
 
+def _line_heading(line: str) -> str | None:
+    cleaned = _strip_marker(line)
+    if not cleaned.endswith(":"):
+        return None
+    heading = cleaned[:-1].strip()
+    if 2 <= len(heading) <= 90:
+        return heading
+    return None
+
+
+def _extract_multiline_heading_blocks(lines: list[str]) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    idx = 0
+    while idx < len(lines):
+        heading = _line_heading(lines[idx])
+        if not heading:
+            return []
+        idx += 1
+        body_lines: list[str] = []
+        while idx < len(lines) and _line_heading(lines[idx]) is None:
+            body = _strip_marker(lines[idx])
+            if body:
+                body_lines.append(body)
+            idx += 1
+        body_text = "\n".join(body_lines).strip()
+        if not body_text:
+            return []
+        items.append({"titulo": heading, "texto": body_text, "confidence": "alta"})
+    return items if len(items) >= 2 else []
+
+
 def _line_title_and_text(line: str) -> tuple[str, str] | None:
     line = _strip_marker(line)
     if not line:
@@ -52,7 +83,12 @@ def normalize_cima_indicaciones(raw_text: str | None) -> list[dict[str, str]]:
     lines = _split_candidate_lines(clean_text)
     items: list[dict[str, str]] = []
 
-    # 1) Líneas con patrón "Título: texto"
+    # 1) Encabezados multilinea: "Título:" en línea propia + cuerpo debajo
+    multiline_heading_items = _extract_multiline_heading_blocks(lines)
+    if multiline_heading_items:
+        return multiline_heading_items
+
+    # 2) Líneas con patrón "Título: texto"
     colon_items = [_line_title_and_text(line) for line in lines]
     colon_items = [item for item in colon_items if item]
     if len(colon_items) >= 2:
@@ -60,7 +96,7 @@ def normalize_cima_indicaciones(raw_text: str | None) -> list[dict[str, str]]:
             items.append({"titulo": title, "texto": text, "confidence": "alta"})
         return items
 
-    # 2) Bullets / numeración / guiones
+    # 3) Bullets / numeración / guiones
     bullet_lines = [line for line in lines if re.match(r"^(?:[-•*·]\s+|\(?\d+[\).]\s+|[a-zA-Z]\)\s+)", line)]
     if len(bullet_lines) >= 2:
         for line in bullet_lines:
@@ -69,7 +105,7 @@ def normalize_cima_indicaciones(raw_text: str | None) -> list[dict[str, str]]:
                 items.append({"titulo": text[:110], "texto": text, "confidence": "media"})
         return items
 
-    # 3) Bloques por línea independiente (adultos/pediátrica/patologías y similares)
+    # 4) Bloques por línea independiente
     if len(lines) >= 2:
         for line in lines:
             cleaned = _strip_marker(line)

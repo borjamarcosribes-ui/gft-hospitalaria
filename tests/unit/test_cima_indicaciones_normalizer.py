@@ -41,3 +41,14 @@ def test_normalize_biologic_multi_pathologies():
     out = normalize_cima_indicaciones(text)
     assert len(out) == 3
     assert out[1]["texto"].startswith("Colitis ulcerosa")
+
+
+def test_normalize_multiline_heading_blocks():
+    text = "Adultos:\nTratamiento de mantenimiento en adultos.\n\nPoblación pediátrica:\nUso restringido en población pediátrica."
+    out = normalize_cima_indicaciones(text)
+    assert len(out) == 2
+    assert out[0]["titulo"] == "Adultos"
+    assert out[0]["texto"] == "Tratamiento de mantenimiento en adultos."
+    assert out[1]["titulo"] == "Población pediátrica"
+    assert out[1]["texto"] == "Uso restringido en población pediátrica."
+    assert all(item["confidence"] == "alta" for item in out)
