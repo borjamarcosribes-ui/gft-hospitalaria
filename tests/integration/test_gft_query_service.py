@@ -50,7 +50,8 @@ def _create_view(db_session):
               b.aportacion_usuario,
               b.subgrupo_atc,
               g.restricciones_hospitalarias,
-              g.observaciones_internas
+              g.observaciones_internas,
+              c.indicaciones_ficha_tecnica
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
             LEFT JOIN bifimed_cache b ON b.cn = g.cn
@@ -157,14 +158,14 @@ def test_get_medicamento_by_cn_includes_financiacion_detalle_when_available(db_s
 
     assert result is not None
     assert result["situacion_financiacion"] == "Financiado"
-    assert result["financiacion_detalle"] == {
-        "situacion_financiacion": "Financiado",
-        "condiciones_financiacion_restringidas": "Diagnóstico hospitalario",
-        "condiciones_especiales_financiacion": "Visado",
-        "estado_nomenclator": "Alta",
-        "aportacion_usuario": "Reducida",
-        "subgrupo_atc": "N02BE",
-    }
+    assert result["financiacion_detalle"] is not None
+    assert result["financiacion_detalle"]["situacion_financiacion"] == "Financiado"
+    assert result["financiacion_detalle"]["condiciones_financiacion_restringidas"] == "Diagnóstico hospitalario"
+    assert result["financiacion_detalle"]["condiciones_especiales_financiacion"] == "Visado"
+    assert result["financiacion_detalle"]["estado_nomenclator"] == "Alta"
+    assert result["financiacion_detalle"]["aportacion_usuario"] == "Reducida"
+    assert result["financiacion_detalle"]["subgrupo_atc"] == "N02BE"
+    assert isinstance(result["financiacion_detalle"].get("indicaciones_autorizadas"), list)
 
 
 def test_get_medicamento_by_cn_includes_bifimed_last_synced_at_when_available(db_session):
@@ -739,7 +740,8 @@ def test_list_principios_activos_index_deduplicates_same_cn_same_principio(db_se
               b.aportacion_usuario,
               b.subgrupo_atc,
               g.restricciones_hospitalarias,
-              g.observaciones_internas
+              g.observaciones_internas,
+              c.indicaciones_ficha_tecnica
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
             LEFT JOIN bifimed_cache b ON b.cn = g.cn
@@ -769,7 +771,8 @@ def test_list_principios_activos_index_deduplicates_same_cn_same_principio(db_se
               b.aportacion_usuario,
               b.subgrupo_atc,
               g.restricciones_hospitalarias,
-              g.observaciones_internas
+              g.observaciones_internas,
+              c.indicaciones_ficha_tecnica
             FROM gft_estado_presentacion g
             LEFT JOIN cima_medicamento_cache c ON c.cn = g.cn
             LEFT JOIN bifimed_cache b ON b.cn = g.cn
@@ -867,3 +870,32 @@ def test_get_medicamento_by_cn_deduplicates_imported_document_fallback(db_sessio
     result = get_medicamento_by_cn(db_session, "333334")
     urls = [d.get("url") for d in result["documentos"]]
     assert urls.count("https://example.com/doc") == 1
+
+
+def test_get_medicamento_by_cn_includes_indicaciones_cima_normalizadas_as_list(db_session):
+    _insert_base_medicamento(db_session, "111116", publicado=True)
+    _create_view(db_session)
+
+    result = get_medicamento_by_cn(db_session, "111116")
+
+    assert result is not None
+    assert isinstance(result["indicaciones_cima_normalizadas"], list)
+    assert len(result["indicaciones_cima_normalizadas"]) == 2
+    assert result["indicaciones_cima_normalizadas"][0]["titulo"] == "Adultos"
+    joined = "\n".join(item["texto"] for item in result["indicaciones_cima_normalizadas"])
+    assert "Tratamiento de mantenimiento" in joined
+    assert "Uso restringido" in joined
+
+
+def test_get_medicamento_by_cn_returns_empty_indicaciones_cima_when_source_empty(db_session):
+    _insert_base_medicamento(db_session, "111117", publicado=True)
+    medicamento = db_session.get(CimaMedicamentoCache, "111117")
+    assert medicamento is not None
+    medicamento.indicaciones_ficha_tecnica = None
+    db_session.commit()
+    _create_view(db_session)
+
+    result = get_medicamento_by_cn(db_session, "111117")
+
+    assert result is not None
+    assert result["indicaciones_cima_normalizadas"] == []
