@@ -81,6 +81,7 @@ def _extract_by_commercial_name(clean_text: str, commercial_name: str | None) ->
     name = re.sub(r"\s+", " ", commercial_name).strip()
     if len(name) < 3:
         return []
+
     pattern = re.compile(re.escape(name), re.IGNORECASE)
     matches = list(pattern.finditer(clean_text))
     if len(matches) < 2:
@@ -88,10 +89,9 @@ def _extract_by_commercial_name(clean_text: str, commercial_name: str | None) ->
 
     starts: list[int] = []
     for m in matches:
-        prefix = clean_text[max(0, m.start() - 120):m.start()]
+        prefix = clean_text[: m.start()]
         boundary = max(prefix.rfind("."), prefix.rfind(";"), prefix.rfind("\n"))
-        start = m.start() if boundary < 0 else m.start() - (len(prefix) - boundary - 1)
-        starts.append(max(0, start))
+        starts.append(0 if boundary < 0 else boundary + 1)
 
     starts = sorted(set(starts))
     if len(starts) < 2:
@@ -104,7 +104,7 @@ def _extract_by_commercial_name(clean_text: str, commercial_name: str | None) ->
         if len(block) < 20:
             continue
         first_sentence = re.split(r"(?<=[.;])\s+", block, maxsplit=1)[0].strip()
-        title = re.sub(r"\s+", " ", first_sentence)[:120].strip(" .;:-")
+        title = re.sub(r"\s+", " ", first_sentence).strip(" .;:-")[:120]
         if not title:
             title = "Indicaciones terapéuticas"
         items.append({"titulo": title, "texto": block, "confidence": "media"})
@@ -139,10 +139,6 @@ def normalize_cima_indicaciones(raw_text: str | None, commercial_name: str | Non
                 items.append({"titulo": text[:110], "texto": text, "confidence": "media"})
         return items
 
-    name_based_items = _extract_by_commercial_name(clean_text, commercial_name)
-    if name_based_items:
-        return name_based_items
-
     if len(lines) >= 2:
         for line in lines:
             cleaned = _strip_marker(line)
@@ -153,5 +149,9 @@ def normalize_cima_indicaciones(raw_text: str | None, commercial_name: str | Non
             items.append({"titulo": title, "texto": cleaned, "confidence": "media"})
         if len(items) >= 2:
             return items
+
+    name_based_items = _extract_by_commercial_name(clean_text, commercial_name)
+    if name_based_items:
+        return name_based_items
 
     return [{"titulo": "Indicaciones terapéuticas", "texto": clean_text, "confidence": "baja"}]
