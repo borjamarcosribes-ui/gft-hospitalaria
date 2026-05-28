@@ -6,6 +6,7 @@ import type {
   GFTPrincipioActivoRef,
 } from '../../types/gft';
 import { GftDocumentLinks } from './GftDocumentLinks';
+import { GftBifimedIndicacionesList } from './GftBifimedIndicacionesList';
 
 interface GftMedicationDetailPanelProps {
   cn: string | null;
@@ -115,7 +116,7 @@ function GftClinicalUseInfo({ detail }: { detail: GFTMedicamentoDetail }) {
     <section className="gft-detail__section gft-detail__section--clinical">
       <h3>Información clínica de uso en guía</h3>
       {firstNonEmpty(detail.resumen_clinico_auto?.resumen_general) ? (
-        <details className="gft-detail__text-block" open>
+        <details className="gft-detail__text-block">
           <summary>Resumen clínico automático</summary>
           <p>{cleanClinicalText('Resumen clínico automático', detail.resumen_clinico_auto?.resumen_general) ?? ''}</p>
         </details>
@@ -175,13 +176,7 @@ function GftFinanciacionDetail({ financiacion, cn }: { financiacion: GFTFinancia
       </details>
       <details className="gft-detail__text-block">
         <summary>Indicaciones autorizadas BIFIMED</summary>
-        {(financiacion.indicaciones_autorizadas && financiacion.indicaciones_autorizadas.length > 0) ? financiacion.indicaciones_autorizadas.map((item, idx) => (
-          <div key={idx}>
-            <p><strong>Indicación autorizada:</strong> {formatValue(item.indicacion_autorizada)}</p>
-            <p><strong>Situación:</strong> {formatValue(item.situacion_expediente_indicacion)}</p>
-            <p><strong>Resolución:</strong> {formatValue(item.resolucion_expediente_financiacion_indicacion)} {item.financiada === true ? '· Financiada' : item.financiada === false ? '· No financiada' : ''}</p>
-          </div>
-        )) : <p>No constan indicaciones autorizadas específicas en BIFIMED.</p>}
+        <GftBifimedIndicacionesList indicaciones={financiacion.indicaciones_autorizadas} />
       </details>
     </section>
   );
