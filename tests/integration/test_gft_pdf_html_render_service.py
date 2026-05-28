@@ -104,8 +104,8 @@ def test_render_gft_pdf_html_renders_atc_groups_and_medications():
     assert "Dolor y fiebre" in html
     assert "Ajustar si procede" in html
     assert "Precaución en insuficiencia hepática" in html
-    assert "https://example.test/ficha/123456" in html
-    assert "https://example.test/prospecto/123456" in html
+    assert "Paracetamol Hospitalario — CN 123456" in html
+    assert "Restricciones hospitalarias:" in html
 
 
 def test_render_gft_pdf_html_preserves_no_informado_values():
@@ -150,7 +150,7 @@ def test_render_gft_pdf_html_escapes_malicious_html_content():
 
     assert '<script>alert("x")</script>' not in html
     assert '&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;' in html
-    assert 'https://example.test/?q=&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;' in html
+    assert 'https://example.test/?q=&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;' not in html
 
 
 def test_render_gft_pdf_html_excludes_forbidden_internal_field_names():
@@ -176,3 +176,29 @@ def test_render_gft_pdf_html_narrative_uses_auto_summary_values():
         )
     )
     assert "Ajuste renal automático" in html
+
+
+def test_render_gft_pdf_html_narrative_hides_document_urls():
+    html = render_gft_pdf_html(_export_data())
+    assert "https://example.test/ficha/123456" not in html
+    assert "https://example.test/prospecto/123456" not in html
+
+
+def test_render_gft_pdf_html_renders_bifimed_indicaciones_block():
+    html = render_gft_pdf_html(
+        _export_data(
+            _medication(
+                indicaciones_bifimed=[
+                    {
+                        "indicacion": "Tratamiento de mantenimiento en pacientes adultos.",
+                        "situacion_financiacion": "Financiado",
+                        "resolucion": "Uso autorizado en hospital.",
+                    }
+                ]
+            )
+        )
+    )
+    assert "Indicaciones BIFIMED:" in html
+    assert "Tratamiento de mantenimiento en pacientes adultos." in html
+    assert "Financiación: Financiada" in html
+    assert "Situación: Uso autorizado en hospital." in html

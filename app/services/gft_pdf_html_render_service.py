@@ -66,6 +66,57 @@ def _optional_sentence(label: str, value: object, *, max_chars: int | None = Non
     return f"{label}: {_e(text)}. "
 
 
+def _normalize_bifimed_financiacion(value: object) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return "No informado"
+    if "no" in text and "financi" in text:
+        return "No financiada"
+    if "financi" in text:
+        return "Financiada"
+    return "No informado"
+
+
+def _render_narrative_field(label: str, value: object, *, max_chars: int | None = None) -> str:
+    if not _has_informed_value(value):
+        return ""
+    text = str(value).strip()
+    if max_chars is not None:
+        text = _truncate(text, max_chars)
+    return f'<div class="med-field"><span class="label">{_e(label)}:</span> <span class="value">{_e(text)}</span></div>'
+
+
+def _render_bifimed_indicaciones(med: GFTPDFMedication) -> str:
+    if not med.indicaciones_bifimed:
+        return ""
+    items: list[str] = []
+    for item in med.indicaciones_bifimed:
+        if not isinstance(item, dict):
+            continue
+        texto = str(item.get("indicacion") or item.get("descripcion") or "").strip()
+        if not texto:
+            continue
+        financiacion = _normalize_bifimed_financiacion(item.get("situacion_financiacion"))
+        situacion = str(item.get("situacion") or item.get("resolucion") or "").strip()
+        meta = [f"Financiación: {financiacion}"]
+        if situacion:
+            meta.append(f"Situación: {situacion}")
+        items.append(
+            '<li class="bifimed-item">'
+            f'<div class="bifimed-text">{_e(texto)}</div>'
+            f'<div class="bifimed-meta">{" · ".join(_e(m) for m in meta)}</div>'
+            "</li>"
+        )
+    if not items:
+        return ""
+    return (
+        '<div class="med-field med-field-block">'
+        '<span class="label">Indicaciones BIFIMED:</span>'
+        f'<ul class="bifimed-list">{"".join(items)}</ul>'
+        "</div>"
+    )
+
+
 def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") -> str:
     mode = "table" if mode == "compact" else mode
     if mode not in {"narrative", "table", "full"}:
@@ -99,33 +150,29 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") 
                 embarazo = summary.get("embarazo") or med.precauciones_embarazo or _AUTO_NOT_FOUND
                 lactancia = summary.get("lactancia") or med.precauciones_lactancia or _AUTO_NOT_FOUND
                 restricciones = med.restricciones_hospitalarias or "No informado"
-                lead = f"<strong>{_e(med.nemonico)}</strong> — " if _has_informed_value(med.nemonico) else ""
-                links = []
-                if _has_informed_value(med.url_ficha_tecnica):
-                    links.append(f"Ficha técnica: {_e(str(med.url_ficha_tecnica).strip())}.")
-                if _has_informed_value(med.url_prospecto):
-                    links.append(f"Prospecto: {_e(str(med.url_prospecto).strip())}.")
-                observaciones = ""
-                if mode == "full" and _has_informed_value(med.observaciones_publicables):
-                    observaciones = f"Observaciones: {_e(_truncate(str(med.observaciones_publicables).strip(), 400))}. "
+                observaciones = (
+                    _render_narrative_field("Observaciones", med.observaciones_publicables, max_chars=400)
+                    if mode == "full"
+                    else ""
+                )
                 lines.append(
-                    "<p>"
-                    f"{lead}{_e(med.nombre_comercial)} (CN {_e(med.cn)}). "
-                    f"Principio activo: {_e(med.principio_activo)}. "
-                    f"{_optional_sentence('Nemónico', med.nemonico)}"
-                    f"{_optional_sentence('ATC', med.codigo_atc)}"
-                    f"{_optional_sentence('Forma farmacéutica', med.forma_farmaceutica)}"
-                    f"{_optional_sentence('Vía', med.via_administracion)}"
-                    f"{_optional_sentence('Financiación', med.situacion_financiacion_bifimed)}"
-                    f"{_optional_sentence('Indicaciones', indicaciones, max_chars=700)}"
-                    f"{_optional_sentence('Ajuste IR', renal, max_chars=400)}"
-                    f"{_optional_sentence('Ajuste IH', hepatica, max_chars=400)}"
-                    f"{_optional_sentence('Embarazo', embarazo, max_chars=400)}"
-                    f"{_optional_sentence('Lactancia', lactancia, max_chars=400)}"
-                    f"{_optional_sentence('Restricciones hospitalarias', restricciones, max_chars=400)}"
+                    '<article class="med-card">'
+                    f'<div class="med-title">{_e(med.nombre_comercial)} — CN {_e(med.cn)}</div>'
+                    f"{_render_narrative_field('Principio activo', med.principio_activo)}"
+                    f"{_render_narrative_field('Forma farmacéutica', med.forma_farmaceutica)}"
+                    f"{_render_narrative_field('Vía', med.via_administracion)}"
+                    f"{_render_narrative_field('Nemónico', med.nemonico)}"
+                    f"{_render_narrative_field('ATC', med.codigo_atc)}"
+                    f"{_render_narrative_field('Financiación BIFIMED', med.situacion_financiacion_bifimed)}"
+                    f"{_render_narrative_field('Indicaciones ficha técnica/CIMA', indicaciones, max_chars=700)}"
+                    f"{_render_bifimed_indicaciones(med)}"
+                    f"{_render_narrative_field('Ajuste por insuficiencia renal', renal, max_chars=400)}"
+                    f"{_render_narrative_field('Ajuste por insuficiencia hepática', hepatica, max_chars=400)}"
+                    f"{_render_narrative_field('Embarazo', embarazo, max_chars=400)}"
+                    f"{_render_narrative_field('Lactancia', lactancia, max_chars=400)}"
+                    f"{_render_narrative_field('Restricciones hospitalarias', restricciones, max_chars=400)}"
                     f"{observaciones}"
-                    f"{' '.join(links)}"
-                    "</p>"
+                    "</article>"
                 )
         lines.append("</section>")
         sections.append("\n".join(lines))
@@ -142,6 +189,15 @@ th,td {{ border: 1px solid #cfd8e3; padding: 2px 3px; vertical-align: top; word-
 th {{ background: #eef3f8; font-size: 9px; }}
 p {{ margin: 0.2rem 0; }}
 section {{ margin-bottom: 0.4rem; }}
+.med-card {{ border: 1px solid #d7e1ea; border-radius: 6px; padding: 6px 8px; margin: 0.35rem 0; break-inside: avoid; page-break-inside: avoid; background: #fff; }}
+.med-title {{ font-weight: 700; font-size: 11px; color: #0b395f; margin-bottom: 4px; }}
+.med-field {{ margin: 2px 0; line-height: 1.35; }}
+.med-field .label {{ font-weight: 600; color: #1f4f78; }}
+.med-field-block .label {{ display: block; margin-bottom: 2px; }}
+.bifimed-list {{ margin: 2px 0 0 14px; padding: 0; }}
+.bifimed-item {{ margin-bottom: 3px; }}
+.bifimed-text {{ margin-bottom: 1px; }}
+.bifimed-meta {{ color: #435466; font-size: 9px; }}
 </style></head><body>
 <h1>{_e(export_data.title)}</h1>
 <p>{_e(subtitle)}</p>

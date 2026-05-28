@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.models.bifimed_cache import BifimedCache
 from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.services.gft_query_service import _build_clinical_summary_payload
 from app.services.gft_query_service import _get_principios_for_cns, _parse_atc, _parse_vias, _row_get
@@ -34,6 +35,7 @@ class GFTPDFMedication:
     restricciones_hospitalarias: str = ""
     observaciones_publicables: str = ""
     resumen_clinico_auto: dict[str, Any] | None = None
+    indicaciones_bifimed: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -94,7 +96,11 @@ def _atc_group_data(atc_items: list[dict]) -> tuple[dict[str, str], dict[str, st
 
 
 def _row_to_medication(
-    row, principios: list[dict], mode: str, resumen_clinico_auto: dict[str, Any] | None = None
+    row,
+    principios: list[dict],
+    mode: str,
+    resumen_clinico_auto: dict[str, Any] | None = None,
+    indicaciones_bifimed: list[dict[str, Any]] | None = None,
 ) -> tuple[GFTPDFMedication, dict[str, str], dict[str, str] | None]:
     atc_items = _parse_atc(row["atc_json"])
     primary_atc = _primary_atc(atc_items)
@@ -123,6 +129,7 @@ def _row_to_medication(
         restricciones_hospitalarias=_public_text(row["restricciones_hospitalarias"]) if include_long_fields else "",
         observaciones_publicables=_public_text(_row_get(row, "observaciones_publicables")) if include_long_fields else "",
         resumen_clinico_auto=resumen_clinico_auto,
+        indicaciones_bifimed=indicaciones_bifimed or [],
         situacion_financiacion_bifimed=_public_text(_row_get(row, "situacion_financiacion")),
         url_ficha_tecnica=_public_text(row["url_ficha_tecnica"]),
         url_prospecto=_public_text(row["url_prospecto"]),
@@ -182,6 +189,10 @@ def build_gft_pdf_export_data(db: Session, mode: str = "narrative") -> GFTPDFExp
         row.cn: _build_clinical_summary_payload(row)
         for row in db.query(GftClinicalSummaryCache).filter(GftClinicalSummaryCache.cn.in_(cns)).all()
     }
+    bifimed_indicaciones_by_cn = {
+        row.cn: row.indicaciones_autorizadas_json or []
+        for row in db.query(BifimedCache).filter(BifimedCache.cn.in_(cns)).all()
+    }
 
     export_rows = []
     for row in rows:
@@ -192,6 +203,7 @@ def build_gft_pdf_export_data(db: Session, mode: str = "narrative") -> GFTPDFExp
                 principios_by_cn.get(cn, []),
                 mode=normalized_mode,
                 resumen_clinico_auto=summaries_by_cn.get(cn),
+                indicaciones_bifimed=bifimed_indicaciones_by_cn.get(cn, []),
             )
         )
 
