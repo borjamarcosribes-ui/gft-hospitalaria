@@ -18,7 +18,15 @@ from app.services.gft_query_service import (
 )
 
 
+def _ensure_indicaciones_column(db_session):
+    columns = [row[1] for row in db_session.execute(text("PRAGMA table_info(cima_medicamento_cache)")).fetchall()]
+    if "indicaciones_ficha_tecnica" not in columns:
+        db_session.execute(text("ALTER TABLE cima_medicamento_cache ADD COLUMN indicaciones_ficha_tecnica TEXT"))
+        db_session.commit()
+
+
 def _create_view(db_session):
+    _ensure_indicaciones_column(db_session)
     db_session.execute(text("DROP VIEW IF EXISTS v_gft_publicada"))
     db_session.execute(
         text(
@@ -711,6 +719,7 @@ def test_list_principios_activos_index_deduplicates_same_cn_same_principio(db_se
     db_session.commit()
     # The relation table primary key prevents duplicate CN/principio rows, so the
     # view is duplicated to exercise the service-level CN set deduplication.
+    _ensure_indicaciones_column(db_session)
     db_session.execute(text("DROP VIEW IF EXISTS v_gft_publicada"))
     db_session.execute(
         text(
