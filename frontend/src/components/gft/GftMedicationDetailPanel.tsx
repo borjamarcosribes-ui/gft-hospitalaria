@@ -171,11 +171,14 @@ export function splitLongClinicalText(value: string | null | undefined): string[
 function CimaIndicacionesCanonicalBlock({ canonical }: { canonical: GFTCanonicalPayload }) {
   const paragraphs = splitLongClinicalText(canonical.indicaciones_ficha_tecnica);
   return (
-    <section className="gft-detail__section gft-detail__section--cima">
-      <div className="gft-detail__section-heading">
-        <h3>Indicaciones ficha técnica / CIMA</h3>
-        <StatusBadge label={`CIMA ${statusLabel(canonical.estado_cima).toLowerCase()}`} tone={canonical.estado_cima === 'disponible' ? 'success' : 'neutral'} />
-      </div>
+    <details className="gft-detail__section gft-detail__section--cima gft-collapsible-section">
+      <summary className="gft-collapsible-section__summary">
+        <span className="gft-collapsible-section__heading">
+          <span className="gft-collapsible-section__title">Indicaciones ficha técnica / CIMA</span>
+          <StatusBadge label={statusLabel(canonical.estado_cima)} tone={canonical.estado_cima === 'disponible' ? 'success' : 'neutral'} />
+        </span>
+        <span className="gft-collapsible-section__action">Ver indicaciones</span>
+      </summary>
       <div className="gft-long-text" aria-label="Indicaciones completas de ficha técnica CIMA">
         {paragraphs.map((paragraph, index) => (
           <p key={index} className={!isInformative(paragraph) ? 'gft-long-text__missing' : undefined}>
@@ -183,8 +186,20 @@ function CimaIndicacionesCanonicalBlock({ canonical }: { canonical: GFTCanonical
           </p>
         ))}
       </div>
-    </section>
+    </details>
   );
+}
+
+function stripBifimedTitleClauses(value: string): string {
+  return value
+    .replace(/^.*?\best[áa] indicado(?:a)?\s+(?:para|en)\s+(?:el\s+)?tratamiento\s+(?:de|del|de la|de las|de los)\s+/i, '')
+    .replace(/^.*?\best[áa] indicado(?:a)?\s+(?:para|en)\s+/i, '')
+    .replace(/\s+(?:en pacientes|en adultos|en niños|en adolescentes|que han presentado|cuando|con una respuesta|ver secci[óo]n)\b.*$/i, '')
+    .replace(/\s+(?:activa|activo|moderada|moderado|grave|severa|severo)\b.*$/i, '')
+    .replace(/^[,;:.\s]+/, '')
+    .replace(/^(?:el|la|los|las)\s+/i, '')
+    .replace(/\s*[,;:]\s*$/, '')
+    .trim();
 }
 
 export function deriveBifimedIndicacionTitle(item: GFTCanonicalIndicacionBifimed): string {
@@ -194,9 +209,9 @@ export function deriveBifimedIndicacionTitle(item: GFTCanonicalIndicacionBifimed
   }
 
   const firstSentence = text.split(/(?<=[.!?])\s+/)[0] ?? text;
-  const cleanSentence = firstSentence.replace(/^(tratamiento|profilaxis|prevención)\s+(de|del|de la|en)?\s*/i, (match) => match.trim() ? match : '');
-  const title = cleanSentence.length <= 96 ? cleanSentence : `${cleanSentence.slice(0, 93).trim()}…`;
-  return title || text.slice(0, 96);
+  const candidate = stripBifimedTitleClauses(firstSentence) || firstSentence;
+  const title = candidate.length <= 72 ? candidate : `${candidate.slice(0, 69).trim()}…`;
+  return title || text.slice(0, 72);
 }
 
 function BifimedIndicacionesCanonicalList({ indicaciones }: { indicaciones: GFTCanonicalIndicacionBifimed[] }) {
@@ -207,22 +222,26 @@ function BifimedIndicacionesCanonicalList({ indicaciones }: { indicaciones: GFTC
   return (
     <div className="gft-bifimed-indicaciones" role="list" aria-label="Indicaciones BIFIMED">
       {indicaciones.map((item, index) => (
-        <details key={`${item.indicacion_autorizada ?? 'indicacion'}-${index}`} className="gft-bifimed-indicaciones__item" role="listitem">
-          <summary>
-            <span>{deriveBifimedIndicacionTitle(item)}</span>
-            <StatusBadge label="BIFIMED" tone="info" />
-          </summary>
-          <div className="gft-bifimed-indicaciones__content">
-            <p>{normalizeDisplayValue(item.indicacion_autorizada)}</p>
-            <p>
-              <strong>Situación expediente indicación:</strong> {normalizeDisplayValue(item.situacion_expediente_indicacion)}
-            </p>
-            <p>
-              <strong>Resolución expediente financiación indicación:</strong>{' '}
-              {normalizeDisplayValue(item.resolucion_expediente_financiacion_indicacion)}
-            </p>
-          </div>
-        </details>
+        <article key={`${item.indicacion_autorizada ?? 'indicacion'}-${index}`} className="gft-bifimed-indicaciones__entry" role="listitem">
+          <h5>{deriveBifimedIndicacionTitle(item)}</h5>
+          <details className="gft-bifimed-indicaciones__item">
+            <summary>Ver texto completo de la indicación</summary>
+            <div className="gft-bifimed-indicaciones__content">
+              <p>{normalizeDisplayValue(item.indicacion_autorizada)}</p>
+              {isInformative(item.situacion_expediente_indicacion) ? (
+                <p>
+                  <strong>Situación expediente indicación:</strong> {normalizeDisplayValue(item.situacion_expediente_indicacion)}
+                </p>
+              ) : null}
+              {isInformative(item.resolucion_expediente_financiacion_indicacion) ? (
+                <p>
+                  <strong>Resolución expediente financiación indicación:</strong>{' '}
+                  {normalizeDisplayValue(item.resolucion_expediente_financiacion_indicacion)}
+                </p>
+              ) : null}
+            </div>
+          </details>
+        </article>
       ))}
     </div>
   );
@@ -231,7 +250,10 @@ function BifimedIndicacionesCanonicalList({ indicaciones }: { indicaciones: GFTC
 function SourceCoveragePanel({ canonical }: { canonical: GFTCanonicalPayload }) {
   return (
     <details className="gft-source-coverage">
-      <summary>Calidad de datos y cobertura</summary>
+      <summary>
+        <span>Cobertura y calidad de datos</span>
+        <span>Ver detalles técnicos</span>
+      </summary>
       <dl className="gft-detail__grid gft-detail__grid--compact">
         <FieldRow label="Fuentes disponibles" value={canonical.fuentes_disponibles.join(', ')} />
         <FieldRow label="Campos faltantes" value={canonical.campos_faltantes.join(', ')} />
@@ -243,35 +265,51 @@ function SourceCoveragePanel({ canonical }: { canonical: GFTCanonicalPayload }) 
 }
 
 function documentLabel(documento: GFTDocumentoCimaRef): string {
-  return documento.titulo ?? documento.nombre ?? documento.secc ?? `Documento ${normalizeDisplayValue(documento.tipo)}`;
+  for (const value of [documento.titulo, documento.nombre, documento.secc]) {
+    if (typeof value !== 'string') continue;
+    const normalized = normalizeDisplayText(value)?.trim();
+    if (normalized && !/^(?:true|false|null|undefined)$/i.test(normalized)) {
+      return normalized;
+    }
+  }
+  return 'Documento CIMA';
+}
+
+function usableUrl(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = normalizeDisplayText(value)?.trim();
+  if (!normalized || /^(?:true|false|null|undefined)$/i.test(normalized)) {
+    return null;
+  }
+  return normalized;
 }
 
 function GftCimaDocuments({ documentos }: { documentos: GFTDocumentoCimaRef[] }) {
-  const availableDocuments = documentos.filter((documento) => documento.url || documento.urlHtml);
+  const availableDocuments = documentos
+    .map((documento) => ({ ...documento, href: usableUrl(documento.urlHtml) ?? usableUrl(documento.url) }))
+    .filter((documento) => documento.href);
 
   if (availableDocuments.length === 0) {
-    return null;
+    return <p className="gft-card__muted">No hay documentos CIMA enlazados.</p>;
   }
 
   return (
-    <section className="gft-detail__section">
-      <h3>Documentos CIMA</h3>
-      <ul className="gft-detail-documents">
-        {availableDocuments.map((documento, index) => {
-          const href = documento.urlHtml ?? documento.url;
-          const date = formatDate(documento.fecha);
+    <ul className="gft-detail-documents">
+      {availableDocuments.map((documento, index) => {
+        const date = formatDate(documento.fecha);
 
-          return (
-            <li key={`${href}-${index}`}>
-              <a href={href ?? undefined} target="_blank" rel="noreferrer">
-                {normalizeDisplayText(documentLabel(documento))}
-              </a>
-              {date ? <span>{date}</span> : null}
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+        return (
+          <li key={`${documento.href}-${index}`}>
+            <a href={documento.href ?? undefined} target="_blank" rel="noreferrer">
+              {documentLabel(documento)}
+            </a>
+            {date ? <span>{date}</span> : null}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -342,11 +380,17 @@ export function GftMedicationDetailPanel({ cn, detail, loading, error, onClose }
 
           <CimaIndicacionesCanonicalBlock canonical={canonical} />
 
-          <section className="gft-detail__section gft-detail__section--bifimed">
-            <div className="gft-detail__section-heading">
-              <h3>BIFIMED</h3>
-              <StatusBadge label={statusLabel(canonical.estado_bifimed)} tone={canonical.estado_bifimed === 'disponible' ? 'success' : canonical.estado_bifimed === 'sin_cache' ? 'warning' : 'neutral'} />
-            </div>
+          <details className="gft-detail__section gft-detail__section--bifimed gft-collapsible-section">
+            <summary className="gft-collapsible-section__summary">
+              <span className="gft-collapsible-section__heading">
+                <span className="gft-collapsible-section__title">BIFIMED</span>
+                <StatusBadge label={statusLabel(canonical.estado_bifimed)} tone={canonical.estado_bifimed === 'disponible' ? 'success' : canonical.estado_bifimed === 'sin_cache' ? 'warning' : 'neutral'} />
+                <span className="gft-collapsible-section__meta">
+                  Financiación: {normalizeDisplayValue(canonical.situacion_financiacion_bifimed)}
+                </span>
+              </span>
+              <span className="gft-collapsible-section__action">Ver financiación e indicaciones</span>
+            </summary>
             <dl className="gft-detail__grid">
               <FieldRow label="Situación de financiación BIFIMED" value={canonical.situacion_financiacion_bifimed} />
               <FieldRow label="Condiciones financiación restringidas" value={canonical.condiciones_financiacion_restringidas} />
@@ -362,7 +406,7 @@ export function GftMedicationDetailPanel({ cn, detail, loading, error, onClose }
                 <BifimedIndicacionesCanonicalList indicaciones={canonical.indicaciones_bifimed} />
               </div>
             ) : null}
-          </section>
+          </details>
 
           <section className="gft-detail__section gft-detail__section--clinical">
             <h3>Clínica</h3>
@@ -377,17 +421,25 @@ export function GftMedicationDetailPanel({ cn, detail, loading, error, onClose }
 
           <SourceCoveragePanel canonical={canonical} />
 
-          <section className="gft-detail__section">
-            <h3>Trazabilidad</h3>
+          <details className="gft-detail__section gft-collapsible-section gft-detail__section--traceability">
+            <summary className="gft-collapsible-section__summary">
+              <span className="gft-collapsible-section__heading">
+                <span className="gft-collapsible-section__title">Documentos y trazabilidad CIMA</span>
+                <span className="gft-collapsible-section__meta">
+                  Ficha técnica: {usableUrl(detail.url_ficha_tecnica ?? canonical.url_ficha_tecnica) ? 'disponible' : 'no informada'} · Prospecto:{' '}
+                  {usableUrl(detail.url_prospecto ?? canonical.url_prospecto) ? 'disponible' : 'no informado'}
+                </span>
+              </span>
+              <span className="gft-collapsible-section__action">Ver documentos</span>
+            </summary>
             <GftDocumentLinks
-              fichaTecnicaUrl={detail.url_ficha_tecnica ?? canonical.url_ficha_tecnica ?? null}
-              prospectoUrl={detail.url_prospecto ?? canonical.url_prospecto ?? null}
+              fichaTecnicaUrl={usableUrl(detail.url_ficha_tecnica ?? canonical.url_ficha_tecnica)}
+              prospectoUrl={usableUrl(detail.url_prospecto ?? canonical.url_prospecto)}
               fechaFichaTecnica={detail.fecha_ficha_tecnica}
               fechaProspecto={detail.fecha_prospecto}
             />
-          </section>
-
-          <GftCimaDocuments documentos={detail.documentos} />
+            <GftCimaDocuments documentos={detail.documentos} />
+          </details>
 
           {detail.observaciones_publicables ? (
             <section className="gft-detail__section gft-detail__section--note">

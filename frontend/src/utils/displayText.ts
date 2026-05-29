@@ -50,6 +50,10 @@ export function normalizeDisplayValue(value: string | number | boolean | null | 
     return 'No informado';
   }
 
+  if (typeof value === 'boolean') {
+    return value ? 'Sí' : 'No';
+  }
+
   const normalized = normalizeDisplayText(String(value).trim());
   return normalized?.trim() || 'No informado';
 }
