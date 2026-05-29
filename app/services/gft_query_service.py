@@ -2,7 +2,7 @@ import json
 from collections.abc import Mapping
 from datetime import datetime, timezone
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.models.bifimed_cache import BifimedCache
@@ -194,7 +194,8 @@ def _merge_atc_index_entry(
 
 
 def _get_principios_for_cns(db: Session, cns: list[str]) -> dict[str, list[dict]]:
-    if not cns:
+    normalized_cns = [str(cn or "").strip() for cn in cns if str(cn or "").strip()]
+    if not normalized_cns:
         return {}
 
     rows = (
@@ -206,14 +207,15 @@ def _get_principios_for_cns(db: Session, cns: list[str]) -> dict[str, list[dict]
             MedicamentoPrincipioActivo.orden,
         )
         .join(PrincipioActivo, PrincipioActivo.id == MedicamentoPrincipioActivo.principio_activo_id)
-        .filter(MedicamentoPrincipioActivo.cn.in_(cns))
+        .filter(func.trim(MedicamentoPrincipioActivo.cn).in_(normalized_cns))
         .order_by(MedicamentoPrincipioActivo.cn, MedicamentoPrincipioActivo.orden, PrincipioActivo.nombre_display)
         .all()
     )
 
     result: dict[str, list[dict]] = {}
     for row in rows:
-        result.setdefault(row.cn, []).append(
+        cn = str(row.cn or "").strip()
+        result.setdefault(cn, []).append(
             {
                 "id": row.id,
                 "slug": row.slug,

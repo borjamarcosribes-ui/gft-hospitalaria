@@ -281,6 +281,42 @@ def test_gft_pdf_export_uses_no_informado_for_empty_fields(db_session):
     assert medication.url_ficha_tecnica == "No informado"
 
 
+def test_gft_pdf_export_assigns_real_principio_activo_from_relation(db_session):
+    _insert_medicamento(db_session, "610001", principio_activo="Adalimumab")
+    _create_view(db_session)
+
+    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="narrative"))[0]
+
+    assert medication.principio_activo == "Adalimumab 610001"
+
+
+def test_gft_pdf_export_falls_back_to_public_row_principios_activos_json(db_session):
+    _insert_medicamento(db_session, "610002", principio_activo="Misoprostol")
+    db_session.query(MedicamentoPrincipioActivo).filter(MedicamentoPrincipioActivo.cn == "610002").delete()
+    db_session.commit()
+    _create_view(db_session)
+
+    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="narrative"))[0]
+
+    assert medication.principio_activo == "Misoprostol"
+
+
+def test_gft_pdf_export_matches_principio_activo_with_normalized_cn(db_session):
+    _insert_medicamento(db_session, "610003", principio_activo="Sirolimus")
+    association = (
+        db_session.query(MedicamentoPrincipioActivo)
+        .filter(MedicamentoPrincipioActivo.cn == "610003")
+        .one()
+    )
+    association.cn = " 610003 "
+    db_session.commit()
+    _create_view(db_session)
+
+    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="narrative"))[0]
+
+    assert medication.principio_activo == "Sirolimus 610003"
+
+
 def test_gft_pdf_export_includes_indicaciones_ficha_tecnica(db_session):
     _insert_medicamento(db_session, "400001")
     _add_indicaciones_cache(db_session, "400001", "Indicación pública para PDF")

@@ -9,10 +9,57 @@ from sqlalchemy.orm import Session
 from app.models.bifimed_cache import BifimedCache
 from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.services.gft_query_service import _build_clinical_summary_payload
-from app.services.gft_query_service import _get_principios_for_cns, _parse_atc, _parse_vias, _row_get
+from app.services.gft_query_service import _get_principios_for_cns, _parse_atc, _parse_json_value, _parse_vias, _row_get
 
 NO_INFORMADO = "No informado"
 EXPORT_TITLE = "Guía Farmacoterapéutica Hospitalaria"
+
+
+def _normalize_cn_value(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _principio_dict(nombre: object) -> dict | None:
+    text_value = str(nombre or "").strip()
+    if not text_value:
+        return None
+    return {"id": None, "slug": text_value.lower().replace(" ", "-"), "nombre": text_value}
+
+
+def _principios_from_json(value: object) -> list[dict]:
+    parsed = _parse_json_value(value)
+    if not isinstance(parsed, list):
+        return []
+
+    principios: list[dict] = []
+    for item in parsed:
+        if isinstance(item, str):
+            principio = _principio_dict(item)
+        elif isinstance(item, dict):
+            principio = _principio_dict(
+                item.get("nombre")
+                or item.get("nombre_display")
+                or item.get("principio_activo")
+                or item.get("descripcion")
+            )
+        else:
+            principio = None
+        if principio is not None:
+            principios.append(principio)
+    return principios
+
+
+def _principios_from_public_row(row) -> list[dict]:
+    for key in ("principios_activos_json", "principios_activos"):
+        principios = _principios_from_json(_row_get(row, key))
+        if principios:
+            return principios
+
+    for key in ("principio_activo", "principio_activo_importado"):
+        principio = _principio_dict(_row_get(row, key))
+        if principio is not None:
+            return [principio]
+    return []
 
 
 _BIFIMED_INDICACION_KEYS = {
@@ -222,6 +269,8 @@ def _row_to_medication(
     primary_atc = _primary_atc(atc_items)
     l1_data, l2_data = _atc_group_data(atc_items)
 
+    if not principios:
+        principios = _principios_from_public_row(row)
     principio_activo = _join_public_text(
         [str(principio.get("nombre") or "") for principio in principios if isinstance(principio, dict)]
     )
@@ -299,20 +348,22 @@ def build_gft_pdf_export_data(db: Session, mode: str = "narrative") -> GFTPDFExp
     if normalized_mode not in {"narrative", "table", "full"}:
         raise ValueError("Invalid mode. Allowed values: narrative, table, full, compact.")
     rows = db.execute(text("SELECT * FROM v_gft_publicada")).mappings().all()
-    cns = [str(row["cn"] or "").strip() for row in rows if str(row["cn"] or "").strip()]
-    principios_by_cn = _get_principios_for_cns(db, cns)
+    cns = [_normalize_cn_value(row["cn"]) for row in rows if _normalize_cn_value(row["cn"])]
+    principios_by_cn = {
+        _normalize_cn_value(cn): principios for cn, principios in _get_principios_for_cns(db, cns).items()
+    }
     summaries_by_cn = {
-        str(row.cn or "").strip(): _build_clinical_summary_payload(row)
-        for row in db.query(GftClinicalSummaryCache).filter(GftClinicalSummaryCache.cn.in_(cns)).all()
+        _normalize_cn_value(row.cn): _build_clinical_summary_payload(row)
+        for row in db.query(GftClinicalSummaryCache).filter(func.trim(GftClinicalSummaryCache.cn).in_(cns)).all()
     }
     bifimed_indicaciones_by_cn = {
-        str(row.cn or "").strip(): extract_bifimed_indicaciones_from_cache(row)
+        _normalize_cn_value(row.cn): extract_bifimed_indicaciones_from_cache(row)
         for row in db.query(BifimedCache).filter(func.trim(BifimedCache.cn).in_(cns)).all()
     }
 
     export_rows = []
     for row in rows:
-        cn = str(row["cn"] or "").strip()
+        cn = _normalize_cn_value(row["cn"])
         export_rows.append(
             _row_to_medication(
                 row,
