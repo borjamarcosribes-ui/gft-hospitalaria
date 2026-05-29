@@ -1,6 +1,7 @@
 import type {
   GFTAtcIndexResponse,
   GFTListResponse,
+  GFTCanonicalPayload,
   GFTMedicamentoDetail,
   GFTPrincipioActivoIndexResponse,
   ListMedicamentosParams,
@@ -69,8 +70,20 @@ export async function listMedicamentos(params: ListMedicamentosParams): Promise<
   return response.json() as Promise<GFTListResponse>;
 }
 
-export function getMedicamentoByCn(cn: string): Promise<GFTMedicamentoDetail> {
-  return fetchJson<GFTMedicamentoDetail>(`/gft/medicamentos/${encodeURIComponent(cn)}`);
+export async function getMedicamentoByCn(cn: string): Promise<GFTMedicamentoDetail> {
+  const encodedCn = encodeURIComponent(cn);
+  const detail = await fetchJson<GFTMedicamentoDetail>(`/gft/medicamentos/${encodedCn}`);
+
+  if (detail.canonical_payload) {
+    return detail;
+  }
+
+  try {
+    const canonicalPayload = await fetchJson<GFTCanonicalPayload>(`/gft/medicamentos/${encodedCn}/canonical`);
+    return { ...detail, canonical_payload: canonicalPayload };
+  } catch {
+    return detail;
+  }
 }
 
 export function listPrincipiosActivos(): Promise<GFTPrincipioActivoIndexResponse> {

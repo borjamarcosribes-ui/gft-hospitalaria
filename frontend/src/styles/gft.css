@@ -1176,3 +1176,173 @@
   margin: 0.6rem 0 0;
   color: #52616f;
 }
+
+.gft-detail__subtitle {
+  margin: 0.4rem 0 0;
+  color: #17324d;
+  font-size: 1.05rem;
+  font-weight: 750;
+}
+
+.gft-detail__meta {
+  margin: 0.35rem 0 0;
+  color: #52616f;
+  line-height: 1.45;
+}
+
+.gft-detail__badges,
+.gft-detail__section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.gft-detail__badges {
+  margin-top: 0.75rem;
+}
+
+.gft-detail__section-heading {
+  justify-content: space-between;
+  margin-bottom: 0.85rem;
+}
+
+.gft-detail__section-heading h3 {
+  margin-bottom: 0;
+}
+
+.gft-status-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.28rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.gft-status-badge--success {
+  background: #e7f6ef;
+  color: #1d6e53;
+}
+
+.gft-status-badge--neutral {
+  background: #eef2f7;
+  color: #52616f;
+}
+
+.gft-status-badge--warning {
+  background: #fff7dc;
+  color: #7a5b00;
+}
+
+.gft-status-badge--info {
+  background: #e8f2fb;
+  color: #1f5f8b;
+}
+
+.gft-detail__section--cima,
+.gft-detail__section--bifimed {
+  background: #ffffff;
+}
+
+.gft-long-text {
+  display: grid;
+  gap: 0.8rem;
+  max-width: 76ch;
+}
+
+.gft-long-text p {
+  margin: 0;
+  color: #17324d;
+  line-height: 1.68;
+  overflow-wrap: anywhere;
+}
+
+.gft-long-text__missing,
+.gft-clinical-field__missing {
+  color: #6b7885 !important;
+  font-style: italic;
+}
+
+.gft-missing-data-notice {
+  margin: 0.85rem 0 0;
+  border-left: 4px solid #d8b742;
+  border-radius: 12px;
+  background: #fffaf0;
+  padding: 0.75rem 0.9rem;
+  color: #5f4a0b;
+  line-height: 1.5;
+}
+
+.gft-detail__subsection {
+  margin-top: 1rem;
+}
+
+.gft-detail__subsection h4 {
+  margin: 0 0 0.65rem;
+  color: #17324d;
+  font-size: 0.96rem;
+}
+
+.gft-clinical-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.gft-clinical-field {
+  border: 1px solid #d9e2ec;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 0.9rem 1rem;
+}
+
+.gft-clinical-field h4 {
+  margin: 0;
+  color: #52616f;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.gft-clinical-field p {
+  margin: 0.45rem 0 0;
+  color: #17324d;
+  line-height: 1.58;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.gft-source-coverage {
+  border: 1px dashed #c9d8e4;
+  border-radius: 16px;
+  background: #f8fbfd;
+  padding: 0.9rem 1rem;
+}
+
+.gft-source-coverage > summary {
+  cursor: pointer;
+  color: #1f5f8b;
+  font-weight: 800;
+}
+
+.gft-source-coverage .gft-detail__grid {
+  margin-top: 0.9rem;
+}
+
+.gft-bifimed-indicaciones__item > summary .gft-status-badge {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  .gft-clinical-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gft-detail__section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
