@@ -10,7 +10,8 @@ from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
 from app.models.principio_activo import PrincipioActivo
-from app.services.gft_pdf_export_service import build_gft_pdf_export_data
+from app.services.gft_pdf_export_service import build_gft_pdf_export_data, extract_bifimed_indicaciones_from_cache
+from app.services.gft_pdf_html_render_service import render_gft_pdf_html
 
 
 def _create_view(db_session):
@@ -141,6 +142,14 @@ def _insert_medicamento(
         db_session.add(principio)
         db_session.flush()
         db_session.add(MedicamentoPrincipioActivo(cn=cn, principio_activo_id=principio.id, orden=1))
+    db_session.commit()
+
+
+def _update_bifimed_cache(db_session, cn: str, **values):
+    row = db_session.get(BifimedCache, cn)
+    assert row is not None
+    for key, value in values.items():
+        setattr(row, key, value)
     db_session.commit()
 
 
@@ -345,3 +354,148 @@ def test_gft_pdf_export_total_matches_structured_medicamentos(db_session):
     export_data = build_gft_pdf_export_data(db_session)
 
     assert export_data.total_medicamentos == len(_all_medicamentos(export_data)) == 2
+
+
+def test_extract_bifimed_indicaciones_uses_indicaciones_autorizadas_json():
+    row = BifimedCache(
+        cn="600001",
+        situacion_financiacion="Financiada",
+        indicaciones_autorizadas_json=[
+            {"indicacion_autorizada": "Tratamiento autorizado completo desde campo normalizado"}
+        ],
+        detalle_financiacion_json={"indicaciones": ["Tratamiento duplicado en detalle que no debe importar"]},
+        raw_data={"indicaciones": ["Tratamiento duplicado en raw que no debe importar"]},
+        sync_status="ok",
+    )
+
+    indicaciones = extract_bifimed_indicaciones_from_cache(row)
+
+    assert indicaciones == [
+        {
+            "indicacion_autorizada": "Tratamiento autorizado completo desde campo normalizado",
+            "situacion_financiacion": "Financiada",
+            "origen": "indicaciones_autorizadas_json",
+        }
+    ]
+
+
+def test_gft_pdf_export_extracts_bifimed_indicaciones_from_detalle_and_renders_them(db_session):
+    _insert_medicamento(db_session, "600002")
+    _update_bifimed_cache(
+        db_session,
+        "600002",
+        indicaciones_autorizadas_json=[],
+        detalle_financiacion_json={
+            "indicaciones": [
+                {"indicacion_autorizada": "Tratamiento BIFIMED completo extraído desde detalle financiación"}
+            ]
+        },
+        raw_data={},
+    )
+    _create_view(db_session)
+
+    export_data = build_gft_pdf_export_data(db_session, mode="narrative")
+    medication = _all_medicamentos(export_data)[0]
+    html = render_gft_pdf_html(export_data)
+
+    assert medication.indicaciones_bifimed[0]["origen"] == "detalle_financiacion_json"
+    assert "Tratamiento BIFIMED completo extraído desde detalle financiación" in html
+
+
+def test_gft_pdf_export_extracts_bifimed_indicaciones_from_raw_data_and_renders_them(db_session):
+    _insert_medicamento(db_session, "600003")
+    _update_bifimed_cache(
+        db_session,
+        "600003",
+        indicaciones_autorizadas_json=None,
+        detalle_financiacion_json={},
+        raw_data={
+            "respuesta": {
+                "indicacion_texto": "Tratamiento BIFIMED completo extraído desde raw data para pacientes concretos"
+            }
+        },
+    )
+    _create_view(db_session)
+
+    export_data = build_gft_pdf_export_data(db_session, mode="narrative")
+    medication = _all_medicamentos(export_data)[0]
+    html = render_gft_pdf_html(export_data)
+
+    assert medication.indicaciones_bifimed[0]["origen"] == "raw_data"
+    assert "Tratamiento BIFIMED completo extraído desde raw data para pacientes concretos" in html
+
+
+def test_gft_pdf_export_assigns_bifimed_indicaciones_to_multiple_distinct_cns(db_session):
+    _insert_medicamento(db_session, "600011", nombre="Medicamento A")
+    _insert_medicamento(db_session, "600012", nombre="Medicamento B")
+    _insert_medicamento(db_session, "600013", nombre="Medicamento C")
+    _update_bifimed_cache(
+        db_session,
+        "600011",
+        detalle_financiacion_json={"indicaciones": ["Tratamiento autorizado completo para medicamento A"]},
+    )
+    _update_bifimed_cache(
+        db_session,
+        "600012",
+        raw_data={"indicacion_autorizada": "Tratamiento autorizado completo para medicamento B"},
+    )
+    _update_bifimed_cache(
+        db_session,
+        "600013",
+        detalle_financiacion_json={
+            "bloques": [{"texto": "Condiciones de financiación completas para medicamento C"}]
+        },
+    )
+    _create_view(db_session)
+
+    medications_by_cn = {med.cn: med for med in _all_medicamentos(build_gft_pdf_export_data(db_session))}
+
+    assert medications_by_cn["600011"].indicaciones_bifimed[0]["indicacion_autorizada"] == (
+        "Tratamiento autorizado completo para medicamento A"
+    )
+    assert medications_by_cn["600012"].indicaciones_bifimed[0]["indicacion_autorizada"] == (
+        "Tratamiento autorizado completo para medicamento B"
+    )
+    assert medications_by_cn["600013"].indicaciones_bifimed[0]["indicacion_autorizada"] == (
+        "Condiciones de financiación completas para medicamento C"
+    )
+
+
+def test_extract_bifimed_indicaciones_deduplicates_and_rejects_false_positives():
+    row = BifimedCache(
+        cn="600020",
+        situacion_financiacion="Financiada",
+        indicaciones_autorizadas_json=[],
+        detalle_financiacion_json={
+            "indicaciones": ["Tratamiento autorizado completo duplicado para deduplicar"]
+        },
+        raw_data={
+            "financiado": "Si",
+            "financiacion": "No financiado",
+            "indicacion": "Tratamiento autorizado completo duplicado para deduplicar",
+        },
+        sync_status="ok",
+    )
+
+    indicaciones = extract_bifimed_indicaciones_from_cache(row)
+
+    assert indicaciones == [
+        {
+            "indicacion_autorizada": "Tratamiento autorizado completo duplicado para deduplicar",
+            "situacion_financiacion": "Financiada",
+            "origen": "detalle_financiacion_json",
+        }
+    ]
+
+
+def test_extract_bifimed_indicaciones_rejects_raw_data_with_only_financing_flags():
+    row = BifimedCache(
+        cn="600021",
+        situacion_financiacion="Financiada",
+        indicaciones_autorizadas_json=[],
+        detalle_financiacion_json={},
+        raw_data={"financiado": "Si", "financiacion": "No financiado", "estado": "Financiado"},
+        sync_status="ok",
+    )
+
+    assert extract_bifimed_indicaciones_from_cache(row) == []

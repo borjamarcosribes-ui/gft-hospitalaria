@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import re
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.models.bifimed_cache import BifimedCache
@@ -12,6 +13,121 @@ from app.services.gft_query_service import _get_principios_for_cns, _parse_atc, 
 
 NO_INFORMADO = "No informado"
 EXPORT_TITLE = "Guía Farmacoterapéutica Hospitalaria"
+
+
+_BIFIMED_INDICACION_KEYS = {
+    "indicacion_autorizada",
+    "indicaciones_autorizadas",
+    "indicaciones",
+    "indicacion",
+    "descripcion",
+    "texto",
+    "indicacion_texto",
+    "condiciones_financiacion",
+    "condiciones",
+    "financiacion",
+    "resolucion",
+}
+_BIFIMED_FALSE_POSITIVES = {
+    "si",
+    "sí",
+    "no",
+    "true",
+    "false",
+    "financiado",
+    "financiada",
+    "no financiado",
+    "no financiada",
+    "no informado",
+    "sin informacion",
+    "sin información",
+}
+_BIFIMED_INDICATION_HINTS = (
+    "indic",
+    "condicion",
+    "condición",
+    "financi",
+    "tratamiento",
+    "paciente",
+    "pacientes",
+    "terapia",
+    "uso",
+    "autoriz",
+    "aprob",
+    "diagn",
+)
+
+
+def _normalize_bifimed_text(value: object) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _normalize_bifimed_dedupe_key(value: str) -> str:
+    return _normalize_bifimed_text(value).casefold()
+
+
+def _is_bifimed_candidate_key(key: object) -> bool:
+    normalized_key = str(key or "").strip().casefold()
+    return any(candidate in normalized_key for candidate in _BIFIMED_INDICACION_KEYS)
+
+
+def _looks_like_bifimed_indicacion(text: str, *, candidate_context: bool) -> bool:
+    normalized_text = _normalize_bifimed_text(text)
+    normalized_key = normalized_text.casefold()
+    if len(normalized_text) < 20 or normalized_key in _BIFIMED_FALSE_POSITIVES:
+        return False
+    if candidate_context:
+        return True
+    return len(normalized_text) >= 35 and any(hint in normalized_key for hint in _BIFIMED_INDICATION_HINTS)
+
+
+def _iter_bifimed_indicacion_texts(value: object, *, candidate_context: bool = False):
+    if value is None:
+        return
+    if isinstance(value, str):
+        text_value = _normalize_bifimed_text(value)
+        if _looks_like_bifimed_indicacion(text_value, candidate_context=candidate_context):
+            yield text_value
+        return
+    if isinstance(value, list):
+        for item in value:
+            yield from _iter_bifimed_indicacion_texts(item, candidate_context=candidate_context)
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            key_is_candidate = _is_bifimed_candidate_key(key)
+            yield from _iter_bifimed_indicacion_texts(
+                item,
+                candidate_context=candidate_context or key_is_candidate,
+            )
+
+
+def extract_bifimed_indicaciones_from_cache(row: BifimedCache) -> list[dict]:
+    source_values = (
+        ("indicaciones_autorizadas_json", row.indicaciones_autorizadas_json),
+        ("detalle_financiacion_json", row.detalle_financiacion_json),
+        ("raw_data", row.raw_data),
+    )
+
+    for origin, value in source_values:
+        extracted: list[dict] = []
+        seen: set[str] = set()
+        candidate_context = origin == "indicaciones_autorizadas_json"
+        for text_value in _iter_bifimed_indicacion_texts(value, candidate_context=candidate_context):
+            dedupe_key = _normalize_bifimed_dedupe_key(text_value)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            extracted.append(
+                {
+                    "indicacion_autorizada": text_value,
+                    "situacion_financiacion": _public_text(row.situacion_financiacion),
+                    "origen": origin,
+                }
+            )
+        if extracted:
+            return extracted
+    return []
 
 
 @dataclass
@@ -186,12 +302,12 @@ def build_gft_pdf_export_data(db: Session, mode: str = "narrative") -> GFTPDFExp
     cns = [str(row["cn"] or "").strip() for row in rows if str(row["cn"] or "").strip()]
     principios_by_cn = _get_principios_for_cns(db, cns)
     summaries_by_cn = {
-        row.cn: _build_clinical_summary_payload(row)
+        str(row.cn or "").strip(): _build_clinical_summary_payload(row)
         for row in db.query(GftClinicalSummaryCache).filter(GftClinicalSummaryCache.cn.in_(cns)).all()
     }
     bifimed_indicaciones_by_cn = {
-        row.cn: row.indicaciones_autorizadas_json or []
-        for row in db.query(BifimedCache).filter(BifimedCache.cn.in_(cns)).all()
+        str(row.cn or "").strip(): extract_bifimed_indicaciones_from_cache(row)
+        for row in db.query(BifimedCache).filter(func.trim(BifimedCache.cn).in_(cns)).all()
     }
 
     export_rows = []
