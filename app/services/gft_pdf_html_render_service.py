@@ -114,6 +114,11 @@ def _render_narrative_field(label: str, value: object) -> str:
     return f'<div class="med-field"><span class="label">{_e(label)}:</span> <span class="value">{_e(text)}</span></div>'
 
 
+def _render_required_narrative_field(label: str, value: object) -> str:
+    text = str(value).strip() if _has_informed_value(value) else "No informado"
+    return f'<div class="med-field"><span class="label">{_e(label)}:</span> <span class="value">{_e(text)}</span></div>'
+
+
 def _render_bifimed_indicaciones(med: GFTPDFMedication) -> str:
     items: list[str] = []
     for item in _iter_bifimed_indicaciones(med.indicaciones_bifimed):
@@ -212,12 +217,12 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") 
                 lines.append(
                     '<article class="med-card">'
                     f'<div class="med-title">{_e(med.nombre_comercial)} — CN {_e(med.cn)}</div>'
-                    f"{_render_narrative_field('Principio activo', med.principio_activo)}"
-                    f"{_render_narrative_field('Forma farmacéutica', med.forma_farmaceutica)}"
-                    f"{_render_narrative_field('Vía', med.via_administracion)}"
-                    f"{_render_narrative_field('Nemónico', med.nemonico)}"
-                    f"{_render_narrative_field('ATC', med.codigo_atc)}"
-                    f"{_render_narrative_field('Financiación BIFIMED', med.situacion_financiacion_bifimed)}"
+                    f"{_render_required_narrative_field('Principio activo', med.principio_activo)}"
+                    f"{_render_required_narrative_field('Forma farmacéutica', med.forma_farmaceutica)}"
+                    f"{_render_required_narrative_field('Vía', med.via_administracion)}"
+                    f"{_render_required_narrative_field('Nemónico', med.nemonico)}"
+                    f"{_render_required_narrative_field('ATC', med.codigo_atc)}"
+                    f"{_render_required_narrative_field('Financiación BIFIMED', med.situacion_financiacion_bifimed)}"
                     f"{_render_narrative_field('Indicaciones ficha técnica/CIMA', indicaciones)}"
                     f"{_render_bifimed_indicaciones(med)}"
                     f"{_render_narrative_field('Ajuste por insuficiencia renal', renal)}"

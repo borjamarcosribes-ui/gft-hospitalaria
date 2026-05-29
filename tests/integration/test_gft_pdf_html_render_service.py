@@ -108,12 +108,43 @@ def test_render_gft_pdf_html_renders_atc_groups_and_medications():
     assert "Restricciones hospitalarias:" in html
 
 
-def test_render_gft_pdf_html_preserves_no_informado_values():
+def test_render_gft_pdf_html_renders_required_fields_even_when_no_informado():
     html = render_gft_pdf_html(
-        _export_data(_medication(forma_farmaceutica="No informado", url_ficha_tecnica="No informado"))
+        _export_data(
+            _medication(
+                principio_activo="No informado",
+                forma_farmaceutica="No informado",
+                via_administracion="",
+                nemonico=None,
+                codigo_atc="No informado",
+                situacion_financiacion_bifimed="No informado",
+                url_ficha_tecnica="No informado",
+            )
+        )
     )
 
-    assert "No informado" not in html
+    assert "Principio activo:" in html
+    assert "Forma farmacéutica:" in html
+    assert "Vía:" in html
+    assert "Nemónico:" in html
+    assert "ATC:" in html
+    assert "Financiación BIFIMED:" in html
+    assert html.count("No informado") >= 6
+
+
+def test_render_gft_pdf_html_required_fields_keep_expected_order():
+    html = render_gft_pdf_html(_export_data())
+
+    title_idx = html.index("Paracetamol Hospitalario — CN 123456")
+    principio_idx = html.index("Principio activo:")
+    forma_idx = html.index("Forma farmacéutica:")
+    via_idx = html.index("Vía:")
+    nemonico_idx = html.index("Nemónico:")
+    atc_idx = html.index("ATC:")
+    financiacion_idx = html.index("Financiación BIFIMED:")
+    cima_idx = html.index("Indicaciones ficha técnica/CIMA:")
+
+    assert title_idx < principio_idx < forma_idx < via_idx < nemonico_idx < atc_idx < financiacion_idx < cima_idx
 
 
 def test_render_gft_pdf_html_full_mode_includes_long_fields():

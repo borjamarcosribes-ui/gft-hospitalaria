@@ -356,6 +356,23 @@ def test_gft_pdf_export_total_matches_structured_medicamentos(db_session):
     assert export_data.total_medicamentos == len(_all_medicamentos(export_data)) == 2
 
 
+def test_gft_pdf_export_renders_required_bifimed_field_without_cache_and_no_fake_indications(db_session):
+    _insert_medicamento(db_session, "600030", principio_activo=None, situacion_financiacion=None)
+    _create_view(db_session)
+
+    export_data = build_gft_pdf_export_data(db_session, mode="narrative")
+    medication = _all_medicamentos(export_data)[0]
+    html = render_gft_pdf_html(export_data)
+
+    assert medication.indicaciones_bifimed == []
+    assert medication.principio_activo == "No informado"
+    assert medication.situacion_financiacion_bifimed == "No informado"
+    assert "Principio activo:" in html
+    assert "Financiación BIFIMED:" in html
+    assert "No informado" in html
+    assert "Indicaciones BIFIMED:" not in html
+
+
 def test_extract_bifimed_indicaciones_uses_indicaciones_autorizadas_json():
     row = BifimedCache(
         cn="600001",
