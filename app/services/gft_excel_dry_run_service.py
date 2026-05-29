@@ -9,7 +9,7 @@ import unicodedata
 
 import pandas as pd
 
-from app.services.normalization_service import NormalizationError, is_missing, normalize_cn, normalize_estado_editorial, normalize_text
+from app.services.normalization_service import NormalizationError, is_missing, normalize_cn_or_raise, normalize_estado_editorial, normalize_text
 
 
 @dataclass
@@ -225,7 +225,7 @@ def _build_column_diagnostics(
 
 def normalize_cn_for_gft_dry_run(value) -> str:
     try:
-        return normalize_cn(value)
+        return normalize_cn_or_raise(value)
     except NormalizationError:
         text = normalize_text(value)
         if text is None:

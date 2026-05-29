@@ -34,15 +34,27 @@ def _norm_key(value):
     return text
 
 
-def normalize_cn(value):
+def normalize_cn(value) -> str:
+    """Normalize CN values for safe internal joins without coercing to int.
+
+    The canonical GFT flow must tolerate missing, numeric and textual CN
+    representations.  Missing values return an empty string; significant
+    leading zeros are preserved.
+    """
     if is_missing(value):
-        raise NormalizationError("CN vacío")
-    text = normalize_text(value)
+        return ""
+    text = str(value).strip()
     if not text:
-        raise NormalizationError("CN vacío")
-    text = text.replace(" ", "")
+        return ""
     if text.endswith(".0") and text.replace(".", "", 1).isdigit():
         text = text[:-2]
+    return text
+
+
+def normalize_cn_or_raise(value) -> str:
+    text = normalize_cn(value)
+    if not text:
+        raise NormalizationError("CN vacío")
     if not text.isdigit():
         raise NormalizationError("CN inválido")
     return text

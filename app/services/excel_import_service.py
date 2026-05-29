@@ -10,7 +10,7 @@ from app.services.gft_excel_dry_run_service import (
     _validate_sheet_name,
 )
 from app.services.normalization_service import (
-    normalize_cn,
+    normalize_cn_or_raise,
     classify_observaciones_revision,
     normalize_estado_editorial,
     NormalizationError,
@@ -64,7 +64,7 @@ def process_excel_upload(
             errors, warnings = [], []
             cn_raw = _safe_value(row, cn_column)
             try:
-                cn = normalize_cn(cn_raw)
+                cn = normalize_cn_or_raise(cn_raw)
             except Exception as exc:
                 cn = None
                 errors.append(str(exc))

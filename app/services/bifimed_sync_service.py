@@ -5,11 +5,11 @@ from sqlalchemy.orm import Session
 from app.models.bifimed_cache import BifimedCache
 from app.models.import_row_staging import ImportRowStaging
 from app.services.bifimed_client import BifimedClient
-from app.services.normalization_service import normalize_cn
+from app.services.normalization_service import normalize_cn_or_raise
 
 
 def sync_bifimed_cn(db: Session, cn: str, force: bool = False) -> BifimedCache:
-    cn_norm = normalize_cn(cn)
+    cn_norm = normalize_cn_or_raise(cn)
     existing = db.get(BifimedCache, cn_norm)
 
     if existing and not force:

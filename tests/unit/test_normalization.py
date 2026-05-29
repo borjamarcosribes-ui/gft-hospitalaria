@@ -1,7 +1,7 @@
 import math
 import pytest
 from app.services.normalization_service import (
-    classify_observaciones_revision, normalize_cn, normalize_estado_editorial, normalize_principio_activo, NormalizationError
+    classify_observaciones_revision, normalize_cn, normalize_cn_or_raise, normalize_estado_editorial, normalize_principio_activo, NormalizationError
 )
 
 
@@ -24,14 +24,20 @@ def test_classify_cases():
 
 
 def test_normalize_cn_cases():
+    assert normalize_cn(None) == ""
     assert normalize_cn(123456) == "123456"
     assert normalize_cn("123456.0") == "123456"
     assert normalize_cn(" 123456 ") == "123456"
     assert normalize_cn("00123456") == "00123456"
+    assert normalize_cn(float('nan')) == ""
+
+
+def test_normalize_cn_or_raise_cases():
+    assert normalize_cn_or_raise("123456") == "123456"
     with pytest.raises(NormalizationError):
-        normalize_cn(None)
+        normalize_cn_or_raise(None)
     with pytest.raises(NormalizationError):
-        normalize_cn(float('nan'))
+        normalize_cn_or_raise("ABC")
 
 
 def test_normalize_estado_editorial():

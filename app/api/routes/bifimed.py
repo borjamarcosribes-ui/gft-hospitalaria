@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.models.bifimed_cache import BifimedCache
 from app.models.import_batch import ImportBatch
 from app.services.bifimed_sync_service import sync_bifimed_cn, sync_import_batch
-from app.services.normalization_service import NormalizationError, normalize_cn
+from app.services.normalization_service import NormalizationError, normalize_cn_or_raise
 
 router = APIRouter(
     prefix="/bifimed", tags=["bifimed"], dependencies=[Depends(require_admin_api_key)]
@@ -44,7 +44,7 @@ def sync_bifimed_cn_endpoint(
 @router.get("/cache/{cn}")
 def get_bifimed_cache(cn: str, db: Session = Depends(get_db)):
     try:
-        cn_norm = normalize_cn(cn)
+        cn_norm = normalize_cn_or_raise(cn)
     except NormalizationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     row = db.get(BifimedCache, cn_norm)
