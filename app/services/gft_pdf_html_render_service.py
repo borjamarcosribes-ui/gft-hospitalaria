@@ -50,6 +50,13 @@ def _has_informed_value(value: object) -> bool:
     return bool(text) and text.lower() != "no informado"
 
 
+def _first_informed_value(*values: object, default: str = "") -> object:
+    for value in values:
+        if _has_informed_value(value):
+            return value
+    return default
+
+
 def _normalize_bifimed_financiacion(value: object) -> str:
     text = str(value or "").strip().lower()
     if not text:
@@ -58,7 +65,46 @@ def _normalize_bifimed_financiacion(value: object) -> str:
         return "No financiada"
     if "financi" in text:
         return "Financiada"
+    if text in {"sí", "si", "true", "1"}:
+        return "Financiada"
+    if text in {"false", "0"}:
+        return "No financiada"
     return "No informado"
+
+
+def _iter_bifimed_indicaciones(raw_indicaciones: object):
+    if raw_indicaciones is None:
+        return
+    if isinstance(raw_indicaciones, str):
+        yield raw_indicaciones
+        return
+    if isinstance(raw_indicaciones, list):
+        for item in raw_indicaciones:
+            yield item
+        return
+    if isinstance(raw_indicaciones, dict):
+        for key in (
+            "indicaciones_autorizadas",
+            "indicaciones_aprobadas",
+            "indicaciones",
+            "items",
+            "resultados",
+            "data",
+        ):
+            value = raw_indicaciones.get(key)
+            if isinstance(value, list):
+                for item in value:
+                    yield item
+                return
+        yield raw_indicaciones
+
+
+def _bifimed_item_text(item: dict) -> str:
+    for key in ("indicacion_autorizada", "indicacion", "descripcion", "texto", "indicacion_texto"):
+        value = item.get(key)
+        if _has_informed_value(value):
+            return str(value).strip()
+    return ""
 
 
 def _render_narrative_field(label: str, value: object) -> str:
@@ -69,17 +115,33 @@ def _render_narrative_field(label: str, value: object) -> str:
 
 
 def _render_bifimed_indicaciones(med: GFTPDFMedication) -> str:
-    if not med.indicaciones_bifimed:
-        return ""
     items: list[str] = []
-    for item in med.indicaciones_bifimed:
-        if not isinstance(item, dict):
+    for item in _iter_bifimed_indicaciones(med.indicaciones_bifimed):
+        if isinstance(item, str):
+            texto = item.strip()
+            financiacion = "No informado"
+            situacion = ""
+        elif isinstance(item, dict):
+            texto = _bifimed_item_text(item)
+            financiacion = _normalize_bifimed_financiacion(
+                _first_informed_value(
+                    item.get("situacion_financiacion"),
+                    item.get("financiacion"),
+                    item.get("financiada"),
+                )
+            )
+            situacion = str(
+                _first_informed_value(
+                    item.get("situacion"),
+                    item.get("resolucion"),
+                    item.get("situacion_resolucion"),
+                    item.get("estado"),
+                )
+            ).strip()
+        else:
             continue
-        texto = str(item.get("indicacion") or item.get("descripcion") or "").strip()
         if not texto:
             continue
-        financiacion = _normalize_bifimed_financiacion(item.get("situacion_financiacion"))
-        situacion = str(item.get("situacion") or item.get("resolucion") or "").strip()
         meta = [f"Financiación: {financiacion}"]
         if situacion:
             meta.append(f"Situación: {situacion}")
@@ -126,11 +188,21 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") 
         else:
             for med in group.medicamentos:
                 summary = med.resumen_clinico_auto or {}
-                indicaciones = summary.get("indicaciones") or med.indicaciones_ficha_tecnica or "No informado"
-                renal = summary.get("ajuste_renal") or med.ajuste_insuficiencia_renal or _AUTO_NOT_FOUND
-                hepatica = summary.get("ajuste_hepatico") or med.ajuste_insuficiencia_hepatica or _AUTO_NOT_FOUND
-                embarazo = summary.get("embarazo") or med.precauciones_embarazo or _AUTO_NOT_FOUND
-                lactancia = summary.get("lactancia") or med.precauciones_lactancia or _AUTO_NOT_FOUND
+                indicaciones = _first_informed_value(
+                    med.indicaciones_ficha_tecnica, summary.get("indicaciones"), default="No informado"
+                )
+                renal = _first_informed_value(
+                    med.ajuste_insuficiencia_renal, summary.get("ajuste_renal"), default=_AUTO_NOT_FOUND
+                )
+                hepatica = _first_informed_value(
+                    med.ajuste_insuficiencia_hepatica, summary.get("ajuste_hepatico"), default=_AUTO_NOT_FOUND
+                )
+                embarazo = _first_informed_value(
+                    med.precauciones_embarazo, summary.get("embarazo"), default=_AUTO_NOT_FOUND
+                )
+                lactancia = _first_informed_value(
+                    med.precauciones_lactancia, summary.get("lactancia"), default=_AUTO_NOT_FOUND
+                )
                 restricciones = med.restricciones_hospitalarias or "No informado"
                 observaciones = (
                     _render_narrative_field("Observaciones", med.observaciones_publicables)

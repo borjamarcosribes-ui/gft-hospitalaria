@@ -166,16 +166,61 @@ def test_render_gft_pdf_html_is_deterministic_for_same_export_data():
     assert render_gft_pdf_html(export_data) == render_gft_pdf_html(export_data)
 
 
-def test_render_gft_pdf_html_narrative_uses_auto_summary_values():
+def test_render_gft_pdf_html_narrative_uses_auto_summary_values_as_fallback():
     html = render_gft_pdf_html(
         _export_data(
             _medication(
                 resumen_clinico_auto={"ajuste_renal": "Ajuste renal automático"},
-                ajuste_insuficiencia_renal="Ajuste renal editorial",
+                ajuste_insuficiencia_renal="No informado",
             )
         )
     )
     assert "Ajuste renal automático" in html
+
+
+def test_render_gft_pdf_html_narrative_prioritizes_full_cima_text_over_summary():
+    long_cima = "Indicación completa de ficha técnica. " + ("Detalle clínico extenso. " * 30) + "FRASE-FINAL-CIMA"
+
+    html = render_gft_pdf_html(
+        _export_data(
+            _medication(
+                resumen_clinico_auto={"indicaciones": "Resumen corto"},
+                indicaciones_ficha_tecnica=long_cima,
+            )
+        )
+    )
+
+    assert "FRASE-FINAL-CIMA" in html
+    assert long_cima in html
+    assert "Resumen corto" not in html
+
+
+def test_render_gft_pdf_html_narrative_prioritizes_full_source_clinical_fields_over_summary():
+    html = render_gft_pdf_html(
+        _export_data(
+            _medication(
+                resumen_clinico_auto={
+                    "ajuste_renal": "Resumen renal",
+                    "ajuste_hepatico": "Resumen hepático",
+                    "embarazo": "Resumen embarazo",
+                    "lactancia": "Resumen lactancia",
+                },
+                ajuste_insuficiencia_renal="Texto renal fuente completo",
+                ajuste_insuficiencia_hepatica="Texto hepático fuente completo",
+                precauciones_embarazo="Texto embarazo fuente completo",
+                precauciones_lactancia="Texto lactancia fuente completo",
+            )
+        )
+    )
+
+    assert "Texto renal fuente completo" in html
+    assert "Texto hepático fuente completo" in html
+    assert "Texto embarazo fuente completo" in html
+    assert "Texto lactancia fuente completo" in html
+    assert "Resumen renal" not in html
+    assert "Resumen hepático" not in html
+    assert "Resumen embarazo" not in html
+    assert "Resumen lactancia" not in html
 
 
 def test_render_gft_pdf_html_narrative_hides_document_urls():
@@ -241,11 +286,14 @@ def test_render_gft_pdf_html_narrative_uses_prominent_medication_title_structure
     assert ".med-title { font-weight: 700; font-size: 12px;" in html
 
 
-def test_render_gft_pdf_html_narrative_avoids_closed_card_borders():
+def test_render_gft_pdf_html_narrative_avoids_closed_card_borders_and_css_clamps():
     html = render_gft_pdf_html(_export_data())
 
     assert ".med-card { border-left: 3px solid #d8e7f2;" in html
     assert ".med-card { border: 1px solid" not in html
+    assert "max-height" not in html
+    assert "overflow: hidden" not in html
+    assert "line-clamp" not in html
 
 
 def test_render_gft_pdf_html_renders_complete_bifimed_indicaciones_without_truncation():
@@ -267,3 +315,52 @@ def test_render_gft_pdf_html_renders_complete_bifimed_indicaciones_without_trunc
     assert long_indicacion in html
     assert "FINAL-BIFIMED" in html
     assert "…" not in html
+
+
+def test_render_gft_pdf_html_renders_bifimed_indicacion_autorizada_key():
+    html = render_gft_pdf_html(
+        _export_data(
+            _medication(
+                indicaciones_bifimed=[
+                    {
+                        "indicacion_autorizada": "Tratamiento autorizado completo de prueba",
+                        "situacion_financiacion": "Financiada",
+                    }
+                ]
+            )
+        )
+    )
+
+    assert "Tratamiento autorizado completo de prueba" in html
+    assert "Financiación: Financiada" in html
+
+
+def test_render_gft_pdf_html_renders_bifimed_string_indication():
+    html = render_gft_pdf_html(
+        _export_data(_medication(indicaciones_bifimed=["Indicación BIFIMED como texto libre"]))
+    )
+
+    assert "Indicación BIFIMED como texto libre" in html
+    assert "Financiación: No informado" in html
+
+
+def test_render_gft_pdf_html_renders_bifimed_nested_indications_list():
+    html = render_gft_pdf_html(
+        _export_data(
+            _medication(
+                indicaciones_bifimed={
+                    "indicaciones_autorizadas": [
+                        {
+                            "texto": "Indicación BIFIMED anidada completa",
+                            "financiada": True,
+                            "estado": "Aprobada",
+                        }
+                    ]
+                }
+            )
+        )
+    )
+
+    assert "Indicación BIFIMED anidada completa" in html
+    assert "Financiación: Financiada" in html
+    assert "Situación: Aprobada" in html

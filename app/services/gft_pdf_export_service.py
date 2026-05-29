@@ -35,7 +35,7 @@ class GFTPDFMedication:
     restricciones_hospitalarias: str = ""
     observaciones_publicables: str = ""
     resumen_clinico_auto: dict[str, Any] | None = None
-    indicaciones_bifimed: list[dict[str, Any]] = field(default_factory=list)
+    indicaciones_bifimed: Any = field(default_factory=list)
 
 
 @dataclass
@@ -100,7 +100,7 @@ def _row_to_medication(
     principios: list[dict],
     mode: str,
     resumen_clinico_auto: dict[str, Any] | None = None,
-    indicaciones_bifimed: list[dict[str, Any]] | None = None,
+    indicaciones_bifimed: Any = None,
 ) -> tuple[GFTPDFMedication, dict[str, str], dict[str, str] | None]:
     atc_items = _parse_atc(row["atc_json"])
     primary_atc = _primary_atc(atc_items)
