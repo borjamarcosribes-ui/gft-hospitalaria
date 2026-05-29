@@ -1,5 +1,5 @@
-from html import escape
 from datetime import timezone
+from html import escape
 
 from app.services.gft_pdf_export_service import EXPORT_TITLE, GFTPDFATCGroup, GFTPDFExportData, GFTPDFMedication
 
@@ -43,28 +43,11 @@ def _render_compact_row(medication: GFTPDFMedication) -> str:
     )
 
 
-def _truncate(value: str, max_chars: int) -> str:
-    v = value.strip()
-    if len(v) <= max_chars:
-        return v
-    cut = v[: max_chars - 1].rsplit(". ", 1)[0].strip()
-    return (cut if cut else v[: max_chars - 1].rstrip()) + "…"
-
-
 def _has_informed_value(value: object) -> bool:
     if value is None:
         return False
     text = str(value).strip()
     return bool(text) and text.lower() != "no informado"
-
-
-def _optional_sentence(label: str, value: object, *, max_chars: int | None = None) -> str:
-    if not _has_informed_value(value):
-        return ""
-    text = str(value).strip()
-    if max_chars is not None:
-        text = _truncate(text, max_chars)
-    return f"{label}: {_e(text)}. "
 
 
 def _normalize_bifimed_financiacion(value: object) -> str:
@@ -78,12 +61,10 @@ def _normalize_bifimed_financiacion(value: object) -> str:
     return "No informado"
 
 
-def _render_narrative_field(label: str, value: object, *, max_chars: int | None = None) -> str:
+def _render_narrative_field(label: str, value: object) -> str:
     if not _has_informed_value(value):
         return ""
     text = str(value).strip()
-    if max_chars is not None:
-        text = _truncate(text, max_chars)
     return f'<div class="med-field"><span class="label">{_e(label)}:</span> <span class="value">{_e(text)}</span></div>'
 
 
@@ -152,7 +133,7 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") 
                 lactancia = summary.get("lactancia") or med.precauciones_lactancia or _AUTO_NOT_FOUND
                 restricciones = med.restricciones_hospitalarias or "No informado"
                 observaciones = (
-                    _render_narrative_field("Observaciones", med.observaciones_publicables, max_chars=400)
+                    _render_narrative_field("Observaciones", med.observaciones_publicables)
                     if mode == "full"
                     else ""
                 )
@@ -165,13 +146,13 @@ def render_gft_pdf_html(export_data: GFTPDFExportData, mode: str = "narrative") 
                     f"{_render_narrative_field('Nemónico', med.nemonico)}"
                     f"{_render_narrative_field('ATC', med.codigo_atc)}"
                     f"{_render_narrative_field('Financiación BIFIMED', med.situacion_financiacion_bifimed)}"
-                    f"{_render_narrative_field('Indicaciones ficha técnica/CIMA', indicaciones, max_chars=700)}"
+                    f"{_render_narrative_field('Indicaciones ficha técnica/CIMA', indicaciones)}"
                     f"{_render_bifimed_indicaciones(med)}"
-                    f"{_render_narrative_field('Ajuste por insuficiencia renal', renal, max_chars=400)}"
-                    f"{_render_narrative_field('Ajuste por insuficiencia hepática', hepatica, max_chars=400)}"
-                    f"{_render_narrative_field('Embarazo', embarazo, max_chars=400)}"
-                    f"{_render_narrative_field('Lactancia', lactancia, max_chars=400)}"
-                    f"{_render_narrative_field('Restricciones hospitalarias', restricciones, max_chars=400)}"
+                    f"{_render_narrative_field('Ajuste por insuficiencia renal', renal)}"
+                    f"{_render_narrative_field('Ajuste por insuficiencia hepática', hepatica)}"
+                    f"{_render_narrative_field('Embarazo', embarazo)}"
+                    f"{_render_narrative_field('Lactancia', lactancia)}"
+                    f"{_render_narrative_field('Restricciones hospitalarias', restricciones)}"
                     f"{observaciones}"
                     "</article>"
                 )
@@ -190,10 +171,11 @@ th,td {{ border: 1px solid #cfd8e3; padding: 2px 3px; vertical-align: top; word-
 th {{ background: #eef3f8; font-size: 9px; }}
 p {{ margin: 0.2rem 0; }}
 section {{ margin-bottom: 0.4rem; }}
-.med-card {{ border: 1px solid #d7e1ea; border-radius: 6px; padding: 6px 8px; margin: 0.35rem 0; break-inside: avoid; page-break-inside: avoid; background: #fff; }}
-.med-title {{ font-weight: 700; font-size: 11px; color: #0b395f; margin-bottom: 4px; }}
+.med-card {{ border-left: 3px solid #d8e7f2; padding: 6px 8px 6px 10px; margin: 0.55rem 0; break-inside: avoid; page-break-inside: avoid; background: #fbfdff; }}
+.med-title {{ font-weight: 700; font-size: 12px; color: #0b395f; margin-bottom: 5px; }}
 .med-field {{ margin: 2px 0; line-height: 1.35; }}
 .med-field .label {{ font-weight: 600; color: #1f4f78; }}
+.med-field .value {{ white-space: pre-line; }}
 .med-field-block .label {{ display: block; margin-bottom: 2px; }}
 .bifimed-list {{ margin: 2px 0 0 14px; padding: 0; }}
 .bifimed-item {{ margin-bottom: 3px; }}

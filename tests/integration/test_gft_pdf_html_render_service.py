@@ -202,3 +202,68 @@ def test_render_gft_pdf_html_renders_bifimed_indicaciones_block():
     assert "Tratamiento de mantenimiento en pacientes adultos." in html
     assert "Financiación: Financiada" in html
     assert "Situación: Uso autorizado en hospital." in html
+
+
+def test_render_gft_pdf_html_narrative_keeps_long_clinical_fields_complete_without_ellipsis():
+    long_cima = "Indicación CIMA inicial. " + ("Texto clínico completo sin recorte. " * 40) + "FINAL-CIMA"
+    long_renal = "Ajuste renal detallado. " + ("Control periódico de función renal. " * 25) + "FINAL-RENAL"
+    long_hepatica = "Ajuste hepático detallado. " + ("Vigilar transaminasas y respuesta clínica. " * 25) + "FINAL-HEPATICA"
+    long_embarazo = "Embarazo: " + ("evaluar beneficio/riesgo individual. " * 25) + "FINAL-EMBARAZO"
+    long_lactancia = "Lactancia: " + ("monitorizar tolerancia del lactante. " * 25) + "FINAL-LACTANCIA"
+    long_restricciones = "Restricciones: " + ("uso protocolizado por comisión. " * 25) + "FINAL-RESTRICCIONES"
+
+    html = render_gft_pdf_html(
+        _export_data(
+            _medication(
+                indicaciones_ficha_tecnica=long_cima,
+                ajuste_insuficiencia_renal=long_renal,
+                ajuste_insuficiencia_hepatica=long_hepatica,
+                precauciones_embarazo=long_embarazo,
+                precauciones_lactancia=long_lactancia,
+                restricciones_hospitalarias=long_restricciones,
+            )
+        )
+    )
+
+    assert long_cima in html
+    assert long_renal in html
+    assert long_hepatica in html
+    assert long_embarazo in html
+    assert long_lactancia in html
+    assert long_restricciones in html
+    assert "…" not in html
+
+
+def test_render_gft_pdf_html_narrative_uses_prominent_medication_title_structure():
+    html = render_gft_pdf_html(_export_data())
+
+    assert '<div class="med-title">Paracetamol Hospitalario — CN 123456</div>' in html
+    assert ".med-title { font-weight: 700; font-size: 12px;" in html
+
+
+def test_render_gft_pdf_html_narrative_avoids_closed_card_borders():
+    html = render_gft_pdf_html(_export_data())
+
+    assert ".med-card { border-left: 3px solid #d8e7f2;" in html
+    assert ".med-card { border: 1px solid" not in html
+
+
+def test_render_gft_pdf_html_renders_complete_bifimed_indicaciones_without_truncation():
+    long_indicacion = "Tratamiento de mantenimiento. " + ("Indicación autorizada con detalle clínico. " * 35) + "FINAL-BIFIMED"
+    html = render_gft_pdf_html(
+        _export_data(
+            _medication(
+                indicaciones_bifimed=[
+                    {
+                        "indicacion": long_indicacion,
+                        "situacion_financiacion": "Financiado",
+                        "resolucion": "Resolución completa disponible.",
+                    }
+                ]
+            )
+        )
+    )
+
+    assert long_indicacion in html
+    assert "FINAL-BIFIMED" in html
+    assert "…" not in html
