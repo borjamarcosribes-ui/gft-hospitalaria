@@ -295,7 +295,6 @@ def _build_financiacion_detalle(row) -> dict | None:
         "aportacion_usuario": _row_get(row, "aportacion_usuario"),
         "subgrupo_atc": _row_get(row, "subgrupo_atc"),
     }
-    detalle["indicaciones_autorizadas"] = []
     last_synced_at = _row_get(row, "bifimed_last_synced_at")
     if last_synced_at is not None:
         detalle["last_synced_at"] = last_synced_at
@@ -384,7 +383,8 @@ def _row_to_detail(
         }
         if bifimed_row.last_synced_at is not None:
             detalle["last_synced_at"] = bifimed_row.last_synced_at
-        detalle["indicaciones_autorizadas"] = bifimed_row.indicaciones_autorizadas_json or []
+        if bifimed_row.indicaciones_autorizadas_json:
+            detalle["indicaciones_autorizadas"] = bifimed_row.indicaciones_autorizadas_json
         item["financiacion_detalle"] = detalle
     else:
         item["financiacion_detalle"] = _build_financiacion_detalle(row)

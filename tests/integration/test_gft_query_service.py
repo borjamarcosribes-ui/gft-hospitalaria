@@ -167,6 +167,33 @@ def test_get_medicamento_by_cn_includes_financiacion_detalle_when_available(db_s
     }
 
 
+def test_get_medicamento_by_cn_includes_financiacion_indicaciones_only_when_present(db_session):
+    _insert_base_medicamento(db_session, "111116", publicado=True)
+    indicaciones = [
+        {
+            "indicacion_autorizada": "Tratamiento de artritis reumatoide activa grave.",
+            "situacion_expediente_indicacion": "Financiado",
+        }
+    ]
+    db_session.add(
+        BifimedCache(
+            cn="111116",
+            situacion_financiacion="Financiado",
+            condiciones_financiacion_restringidas="Diagnóstico hospitalario",
+            indicaciones_autorizadas_json=indicaciones,
+            sync_status="ok",
+        )
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    result = get_medicamento_by_cn(db_session, "111116")
+
+    assert result is not None
+    assert result["financiacion_detalle"] is not None
+    assert result["financiacion_detalle"]["indicaciones_autorizadas"] == indicaciones
+
+
 def test_get_medicamento_by_cn_includes_bifimed_last_synced_at_when_available(db_session):
     _insert_base_medicamento(db_session, "111115", publicado=True)
     synced_at = datetime(2026, 5, 22, 10, 30)
