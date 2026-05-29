@@ -11,7 +11,7 @@ from app.services.cima_segmented_sync_service import (
     sync_import_batch_segmented_sections,
 )
 from app.services.cima_sync_service import sync_cn, sync_import_batch
-from app.services.normalization_service import normalize_cn, NormalizationError
+from app.services.normalization_service import normalize_cn_or_raise, NormalizationError
 
 
 def _serialize_segmented_cache_row(row: CimaFichaTecnicaCache) -> dict:
@@ -48,7 +48,7 @@ def sync_cn_endpoint(cn: str, force: bool = False, db: Session = Depends(get_db)
 @router.get("/cache/{cn}")
 def get_cache(cn: str, db: Session = Depends(get_db)):
     try:
-        cn_norm = normalize_cn(cn)
+        cn_norm = normalize_cn_or_raise(cn)
     except NormalizationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     row = db.get(CimaMedicamentoCache, cn_norm)

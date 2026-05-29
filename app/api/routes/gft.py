@@ -11,6 +11,7 @@ from app.schemas.gft import (
 from app.services.gft_pdf_binary_service import GFTPDFRenderingError, render_gft_pdf_bytes
 from app.services.gft_pdf_export_service import build_gft_pdf_export_data
 from app.services.gft_pdf_html_render_service import render_gft_pdf_html
+from app.services.gft_canonical_payload_service import audit_gft_coverage, build_gft_canonical_payload
 from app.services.gft_query_service import (
     get_medicamento_by_cn,
     list_atc_index,
@@ -84,9 +85,25 @@ def gft_principios_activos_index(db: Session = Depends(get_db)):
     return list_principios_activos_index(db)
 
 
+@router.get("/audit/coverage")
+def gft_audit_coverage(db: Session = Depends(get_db)):
+    return audit_gft_coverage(db)
+
+
+@router.get("/medicamentos/{cn}/canonical")
+def gft_get_medicamento_canonical(cn: str, db: Session = Depends(get_db)):
+    result = build_gft_canonical_payload(db, cn)
+    if result is None:
+        raise HTTPException(status_code=404, detail="GFT medicamento not found")
+    return result
+
+
 @router.get("/medicamentos/{cn}", response_model=GFTMedicamentoDetail)
 def gft_get_medicamento(cn: str, db: Session = Depends(get_db)):
     result = get_medicamento_by_cn(db, cn)
     if result is None:
         raise HTTPException(status_code=404, detail="GFT medicamento not found")
+    canonical = build_gft_canonical_payload(db, cn)
+    if canonical is not None:
+        result["canonical_payload"] = canonical
     return result

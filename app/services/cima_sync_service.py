@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.import_row_staging import ImportRowStaging
 from app.services.cima_client import CimaClient, _coerce_cima_text
-from app.services.normalization_service import normalize_cn
+from app.services.normalization_service import normalize_cn_or_raise
 from app.services.principio_activo_service import (
     extract_principios_from_cima_data,
     upsert_principios_for_cn,
@@ -24,7 +24,7 @@ def _coerce_cache_text(value):
 
 
 def sync_cn(db: Session, cn: str, force: bool = False):
-    cn_norm = normalize_cn(cn)
+    cn_norm = normalize_cn_or_raise(cn)
     existing = db.get(CimaMedicamentoCache, cn_norm)
 
     if existing and not force:

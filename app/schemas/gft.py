@@ -111,6 +111,7 @@ class GFTMedicamentoDetail(GFTMedicamentoListItem):
     documentos: list[GFTDocumentoCimaRef] = Field(default_factory=list)
     financiacion_detalle: GFTFinanciacionDetalle | None = None
     resumen_clinico_auto: GFTClinicalSummaryAuto | None = None
+    canonical_payload: dict | None = None
 
 
 class GFTListResponse(BaseModel):
