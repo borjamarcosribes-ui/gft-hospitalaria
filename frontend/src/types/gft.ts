@@ -10,6 +10,52 @@ export interface GFTAtcRef {
   nivel: string | null;
 }
 
+
+export interface GFTCanonicalIndicacionBifimed {
+  indicacion_autorizada: string | null;
+  situacion_expediente_indicacion: string | null;
+  resolucion_expediente_financiacion_indicacion: string | null;
+  financiada?: boolean | null;
+}
+
+export interface GFTCanonicalPayload {
+  cn: string;
+  nombre_comercial: string | null;
+  incluido_gft?: boolean | null;
+  publicado?: boolean | null;
+  observaciones_revision?: string | null;
+  estado_publicacion?: string | null;
+  principio_activo: string | null;
+  forma_farmaceutica: string | null;
+  via_administracion: string | null;
+  nemonico: string | null;
+  codigo_atc: string | null;
+  descripcion_atc: string | null;
+  jerarquia_atc: GFTAtcRef[];
+  indicaciones_ficha_tecnica: string | null;
+  url_ficha_tecnica?: string | null;
+  url_prospecto?: string | null;
+  estado_cima: 'disponible' | 'no_informado' | string;
+  bifimed_cache_presente: boolean;
+  situacion_financiacion_bifimed: string | null;
+  condiciones_financiacion_restringidas: string | null;
+  condiciones_especiales_financiacion: string | null;
+  detalle_financiacion_json?: unknown;
+  indicaciones_bifimed: GFTCanonicalIndicacionBifimed[];
+  estado_bifimed: 'disponible' | 'no_informado' | 'sin_cache' | 'sin_indicaciones' | string;
+  ajuste_insuficiencia_renal: string | null;
+  ajuste_insuficiencia_hepatica: string | null;
+  precauciones_embarazo: string | null;
+  precauciones_lactancia: string | null;
+  restricciones_hospitalarias: string | null;
+  resumen_clinico_auto?: GFTResumenClinicoAuto | null;
+  estado_resumen_clinico?: string | null;
+  fuentes_disponibles: string[];
+  campos_faltantes: string[];
+  warnings: string[];
+  data_quality_flags: string[];
+}
+
 export interface GFTMedicamentoListItem {
   cn: string;
   nombre: string | null;
@@ -81,6 +127,7 @@ export interface GFTMedicamentoDetail extends GFTMedicamentoListItem {
   documentos: GFTDocumentoCimaRef[];
   financiacion_detalle: GFTFinanciacionDetalle | null;
   resumen_clinico_auto?: GFTResumenClinicoAuto | null;
+  canonical_payload?: GFTCanonicalPayload | null;
 }
 
 export interface GFTListResponse {
