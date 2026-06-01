@@ -1,0 +1,556 @@
+from __future__ import annotations
+
+import json
+import time
+from collections import Counter
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Iterable
+
+from sqlalchemy.orm import Session
+
+from app.models.bifimed_cache import BifimedCache
+from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
+from app.models.cima_medicamento_cache import CimaMedicamentoCache
+from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
+from app.services import bifimed_sync_service, cima_sync_service
+from app.services.gft_canonical_payload_service import audit_gft_coverage, build_gft_canonical_payload
+from app.services.gft_clinical_pipeline_service import TARGET_SECTIONS
+from app.services.gft_clinical_sections_auditability import build_auditable_section_scope_filters
+from app.services.gft_clinical_summary_service import build_clinical_summary
+from app.services.normalization_service import normalize_cn
+
+BACKFILL_STATUSES = {
+    "pending",
+    "skipped_existing",
+    "success",
+    "not_found",
+    "no_data",
+    "error",
+    "rate_limited",
+    "unchanged",
+}
+SOURCE_CHOICES = {"cima", "bifimed", "clinical", "all"}
+MODE_CHOICES = {"dry-run", "run"}
+DEFAULT_SLEEP_SECONDS = 0.5
+
+_CIMA_USEFUL_FIELDS = (
+    "nregistro",
+    "nombre",
+    "presentacion",
+    "forma_farmaceutica",
+    "forma_farmaceutica_simplificada",
+    "vias_administracion_json",
+    "atc_json",
+    "principios_activos_json",
+    "documentos_json",
+    "url_ficha_tecnica",
+    "url_prospecto",
+    "raw_data",
+)
+_BIFIMED_USEFUL_FIELDS = (
+    "situacion_financiacion",
+    "condiciones_financiacion_restringidas",
+    "condiciones_especiales_financiacion",
+    "estado_nomenclator",
+    "aportacion_usuario",
+    "subgrupo_atc",
+    "detalle_financiacion_json",
+    "indicaciones_autorizadas_json",
+    "raw_data",
+)
+_CLINICAL_USEFUL_FIELDS = (
+    "resumen_general",
+    "resumen_indicaciones",
+    "resumen_posologia",
+    "resumen_ajuste_renal",
+    "resumen_ajuste_hepatico",
+    "resumen_contraindicaciones",
+    "resumen_advertencias",
+    "resumen_embarazo",
+    "resumen_lactancia",
+)
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _has_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, dict, tuple, set)):
+        return bool(value)
+    return True
+
+
+def _snapshot(row: Any | None, fields: Iterable[str]) -> dict[str, Any]:
+    field_list = list(fields)
+    if row is None:
+        return {field: None for field in field_list}
+    return {field: getattr(row, field, None) for field in field_list}
+
+
+def _useful_fields(snapshot: dict[str, Any]) -> set[str]:
+    return {field for field, value in snapshot.items() if _has_value(value)}
+
+
+def _restore_useful_fields(row: Any, previous: dict[str, Any]) -> list[str]:
+    restored: list[str] = []
+    for field, value in previous.items():
+        if _has_value(value) and not _has_value(getattr(row, field, None)):
+            setattr(row, field, value)
+            restored.append(field)
+    return restored
+
+
+@dataclass(frozen=True)
+class BackfillCandidate:
+    cn: str
+    source: str
+    nombre: str | None = None
+    reason: str = "missing"
+
+    @property
+    def key(self) -> str:
+        return f"{self.source}:{self.cn}"
+
+
+def expand_sources(source: str) -> list[str]:
+    if source == "all":
+        return ["cima", "bifimed", "clinical"]
+    return [source]
+
+
+def select_backfill_candidates(
+    db: Session,
+    *,
+    source: str = "all",
+    only_missing: bool = True,
+    force: bool = False,
+    cn: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[BackfillCandidate]:
+    """Select published GFT CNs that need enrichment, using the canonical audit/payload.
+
+    When ``only_missing`` is false, every published CN is selected for the requested source(s).
+    Explicit ``cn`` values still have to be present in ``v_gft_publicada``; unpublished CNs return no
+    candidate.
+    """
+    requested_sources = expand_sources(source)
+    rows: list[dict[str, Any]] = []
+    if cn:
+        payload = build_gft_canonical_payload(db, cn)
+        if payload is None:
+            return []
+        rows = [payload]
+    else:
+        rows = audit_gft_coverage(db).get("items", [])
+
+    candidates: list[BackfillCandidate] = []
+    for item in rows:
+        item_cn = normalize_cn(item.get("cn"))
+        if not item_cn:
+            continue
+        payload = item if "estado_resumen_clinico" in item else build_gft_canonical_payload(db, item_cn)
+        if payload is None:
+            continue
+        nombre = payload.get("nombre_comercial") or payload.get("nombre")
+        missing_fields = set(payload.get("campos_faltantes") or [])
+        for item_source in requested_sources:
+            reason: str | None = None
+            if item_source == "cima":
+                if not only_missing or force:
+                    reason = "force_or_full_scan"
+                elif payload.get("estado_cima") != "disponible":
+                    reason = "sin_cima"
+                elif "indicaciones_ficha_tecnica" in missing_fields:
+                    reason = "sin_indicaciones_cima"
+            elif item_source == "bifimed":
+                if not only_missing or force:
+                    reason = "force_or_full_scan"
+                elif not payload.get("bifimed_cache_presente"):
+                    reason = "sin_bifimed_cache"
+                elif not payload.get("indicaciones_bifimed"):
+                    reason = "bifimed_sin_indicaciones"
+            elif item_source == "clinical":
+                if not only_missing or force:
+                    reason = "force_or_full_scan"
+                elif payload.get("estado_resumen_clinico") not in {"ok", "partial"}:
+                    reason = "sin_resumen_clinico"
+            if reason:
+                candidates.append(BackfillCandidate(cn=item_cn, source=item_source, nombre=nombre, reason=reason))
+
+    if offset:
+        candidates = candidates[max(0, offset) :]
+    if limit is not None:
+        candidates = candidates[: max(0, limit)]
+    return candidates
+
+
+def default_checkpoint_path(source: str) -> Path:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return Path("data/output") / f"backfill_{source}_{stamp}.json"
+
+
+def default_log_path(source: str) -> Path:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return Path("data/output") / f"backfill_{source}_{stamp}.jsonl"
+
+
+def initial_checkpoint(*, source: str, mode: str, candidates: list[BackfillCandidate]) -> dict[str, Any]:
+    return {
+        "started_at": utc_now_iso(),
+        "finished_at": None,
+        "source": source,
+        "mode": mode,
+        "total_candidates": len(candidates),
+        "processed": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "skipped": 0,
+        "last_cn": None,
+        "items": {
+            candidate.key: {
+                "cn": candidate.cn,
+                "source": candidate.source,
+                "nombre": candidate.nombre,
+                "status": "pending",
+                "reason": candidate.reason,
+            }
+            for candidate in candidates
+        },
+    }
+
+
+def load_checkpoint(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def write_checkpoint(path: Path, checkpoint: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as fh:
+        json.dump(checkpoint, fh, ensure_ascii=False, indent=2, default=str)
+    tmp_path.replace(path)
+
+
+def merge_resume_checkpoint(checkpoint: dict[str, Any], candidates: list[BackfillCandidate], *, source: str, mode: str) -> dict[str, Any]:
+    checkpoint.setdefault("started_at", utc_now_iso())
+    checkpoint["finished_at"] = None
+    checkpoint["source"] = checkpoint.get("source") or source
+    checkpoint["mode"] = mode
+    checkpoint["total_candidates"] = len(candidates)
+    items = checkpoint.setdefault("items", {})
+    for candidate in candidates:
+        items.setdefault(
+            candidate.key,
+            {
+                "cn": candidate.cn,
+                "source": candidate.source,
+                "nombre": candidate.nombre,
+                "status": "pending",
+                "reason": candidate.reason,
+            },
+        )
+    return checkpoint
+
+
+def append_jsonl(path: Path, record: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+
+
+def audit_snapshot(db: Session, path: Path) -> dict[str, Any]:
+    result = audit_gft_coverage(db)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(result, fh, ensure_ascii=False, indent=2, default=str)
+    return result
+
+
+def audit_path(kind: str) -> Path:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return Path("data/output") / f"backfill_audit_{kind}_{stamp}.json"
+
+
+def calculate_audit_delta(before: dict[str, Any] | None, after: dict[str, Any] | None) -> dict[str, dict[str, int]]:
+    if not before or not after:
+        return {}
+    before_summary = before.get("summary", {})
+    after_summary = after.get("summary", {})
+    keys = sorted(set(before_summary) | set(after_summary))
+    return {
+        key: {
+            "before": int(before_summary.get(key) or 0),
+            "after": int(after_summary.get(key) or 0),
+            "delta": int(after_summary.get(key) or 0) - int(before_summary.get(key) or 0),
+        }
+        for key in keys
+    }
+
+
+def _changed_fields(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    return [field for field, old in before.items() if after.get(field) != old]
+
+
+def _status_from_sync_status(sync_status: str | None, *, before_useful: set[str], after_useful: set[str]) -> str:
+    if sync_status == "ok":
+        if not after_useful:
+            return "no_data"
+        if before_useful == after_useful:
+            return "unchanged"
+        return "success"
+    if sync_status == "not_found":
+        return "not_found"
+    if sync_status in {"rate_limited", "timeout"}:
+        return "rate_limited"
+    return "error"
+
+
+def _existing_complete(db: Session, candidate: BackfillCandidate) -> bool:
+    payload = build_gft_canonical_payload(db, candidate.cn)
+    if payload is None:
+        return False
+    missing_fields = set(payload.get("campos_faltantes") or [])
+    if candidate.source == "cima":
+        return payload.get("estado_cima") == "disponible" and "indicaciones_ficha_tecnica" not in missing_fields
+    if candidate.source == "bifimed":
+        return bool(payload.get("bifimed_cache_presente")) and bool(payload.get("indicaciones_bifimed"))
+    if candidate.source == "clinical":
+        return payload.get("estado_resumen_clinico") in {"ok", "partial"}
+    return False
+
+
+def _run_cima(db: Session, candidate: BackfillCandidate, *, force: bool) -> tuple[str, list[str], str]:
+    existing = db.get(CimaMedicamentoCache, candidate.cn)
+    before = _snapshot(existing, _CIMA_USEFUL_FIELDS)
+    before_useful = _useful_fields(before)
+    row = cima_sync_service.sync_cn(db, candidate.cn, force=force)
+    restored = _restore_useful_fields(row, before)
+    if restored:
+        db.commit()
+    after = _snapshot(row, _CIMA_USEFUL_FIELDS)
+    status = _status_from_sync_status(row.sync_status, before_useful=before_useful, after_useful=_useful_fields(after))
+    changed = _changed_fields(before, after)
+    if restored and status in {"success", "no_data"}:
+        status = "unchanged"
+    message = f"cima sync_status={row.sync_status}"
+    if restored:
+        message += f"; restored useful fields: {', '.join(restored)}"
+    return status, changed, message
+
+
+def _run_bifimed(db: Session, candidate: BackfillCandidate, *, force: bool) -> tuple[str, list[str], str]:
+    existing = db.get(BifimedCache, candidate.cn)
+    before = _snapshot(existing, _BIFIMED_USEFUL_FIELDS)
+    before_useful = _useful_fields(before)
+    row = bifimed_sync_service.sync_bifimed_cn(db, candidate.cn, force=force)
+    restored = _restore_useful_fields(row, before)
+    if restored:
+        db.commit()
+    after = _snapshot(row, _BIFIMED_USEFUL_FIELDS)
+    status = _status_from_sync_status(row.sync_status, before_useful=before_useful, after_useful=_useful_fields(after))
+    changed = _changed_fields(before, after)
+    if restored and status in {"success", "no_data"}:
+        status = "unchanged"
+    message = f"bifimed sync_status={row.sync_status}"
+    if restored:
+        message += f"; restored useful fields: {', '.join(restored)}"
+    return status, changed, message
+
+
+def _run_clinical(db: Session, candidate: BackfillCandidate, *, force: bool) -> tuple[str, list[str], str]:
+    current = db.get(GftClinicalSummaryCache, candidate.cn)
+    before = _snapshot(current, (*_CLINICAL_USEFUL_FIELDS, "source_status", "source_hash"))
+    before_useful = _useful_fields({field: before.get(field) for field in _CLINICAL_USEFUL_FIELDS})
+    if current and not force and current.source_status in {"ok", "partial"}:
+        return "skipped_existing", [], "clinical summary already available"
+    cima = db.get(CimaMedicamentoCache, candidate.cn)
+    has_cima_ok = bool(cima and cima.sync_status == "ok")
+    has_nregistro = bool(cima and (cima.nregistro or "").strip())
+    filters = build_auditable_section_scope_filters(
+        [candidate.cn],
+        [cima.nregistro if cima and cima.nregistro else ""],
+        list(TARGET_SECTIONS),
+    )
+    rows = db.query(CimaFichaTecnicaCache).filter(filters).all()
+    summary = build_clinical_summary({r.seccion: (r.contenido_texto or "") for r in rows}, has_nregistro=has_nregistro, has_cima_ok=has_cima_ok)
+    source_status = summary.get("source_status", "error")
+    if source_status == "missing_source" and before_useful:
+        return "unchanged", [], "empty clinical source; preserved existing summary"
+    row = current or GftClinicalSummaryCache(cn=candidate.cn)
+    row.source_status = source_status
+    row.generated_at = datetime.now(timezone.utc)
+    row.source_sections_json = summary.get("source_sections_json")
+    row.source_hash = summary.get("source_hash")
+    row.resumen_general = summary.get("resumen_general")
+    row.resumen_indicaciones = summary.get("resumen_indicaciones")
+    row.resumen_posologia = summary.get("resumen_posologia")
+    row.resumen_ajuste_renal = summary.get("resumen_ajuste_renal")
+    row.resumen_ajuste_hepatico = summary.get("resumen_ajuste_hepatico")
+    row.resumen_contraindicaciones = summary.get("resumen_contraindicaciones")
+    row.resumen_advertencias = summary.get("resumen_advertencias")
+    row.resumen_embarazo = summary.get("resumen_embarazo")
+    row.resumen_lactancia = summary.get("resumen_lactancia")
+    row.resumen_fuente_json = summary.get("resumen_fuente_json")
+    row.warnings_json = summary.get("warnings_json")
+    if current is None:
+        db.add(row)
+    db.commit()
+    after = _snapshot(row, (*_CLINICAL_USEFUL_FIELDS, "source_status", "source_hash"))
+    after_useful = _useful_fields({field: after.get(field) for field in _CLINICAL_USEFUL_FIELDS})
+    if source_status in {"ok", "partial"} and after_useful:
+        status = "success" if before != after else "unchanged"
+    elif source_status == "missing_source":
+        status = "no_data"
+    else:
+        status = "error"
+    return status, _changed_fields(before, after), f"clinical source_status={source_status}"
+
+
+def execute_candidate(db: Session, candidate: BackfillCandidate, *, mode: str, only_missing: bool, force: bool) -> tuple[str, list[str], str]:
+    if mode == "dry-run":
+        return "pending", [], f"dry-run candidate reason={candidate.reason}"
+    if only_missing and not force and _existing_complete(db, candidate):
+        return "skipped_existing", [], "complete data already available; skipped without --force"
+    if candidate.source == "cima":
+        return _run_cima(db, candidate, force=force)
+    if candidate.source == "bifimed":
+        return _run_bifimed(db, candidate, force=force)
+    if candidate.source == "clinical":
+        return _run_clinical(db, candidate, force=force)
+    raise ValueError(f"Unsupported source: {candidate.source}")
+
+
+def _is_failure(status: str) -> bool:
+    return status in {"error", "rate_limited"}
+
+
+def recompute_checkpoint_counts(checkpoint: dict[str, Any]) -> None:
+    counts = Counter(item.get("status", "pending") for item in checkpoint.get("items", {}).values())
+    checkpoint["succeeded"] = counts["success"]
+    checkpoint["failed"] = counts["error"] + counts["rate_limited"]
+    checkpoint["skipped"] = counts["skipped_existing"]
+    checkpoint["processed"] = sum(counts[status] for status in BACKFILL_STATUSES if status != "pending")
+
+
+def run_backfill(
+    db: Session,
+    *,
+    source: str,
+    mode: str = "dry-run",
+    limit: int | None = None,
+    offset: int = 0,
+    cn: str | None = None,
+    resume: bool = False,
+    checkpoint_path: Path | None = None,
+    log_path: Path | None = None,
+    sleep_seconds: float = DEFAULT_SLEEP_SECONDS,
+    only_missing: bool = True,
+    force: bool = False,
+    stop_on_error: bool = False,
+    audit_before: bool = False,
+    audit_after: bool = False,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    candidates = select_backfill_candidates(db, source=source, only_missing=only_missing, force=force, cn=cn, limit=limit, offset=offset)
+    checkpoint_path = checkpoint_path or default_checkpoint_path(source)
+    log_path = log_path or default_log_path(source)
+
+    before_audit = None
+    before_path = None
+    if audit_before:
+        before_path = audit_path("before")
+        before_audit = audit_snapshot(db, before_path)
+
+    if resume and checkpoint_path.exists():
+        checkpoint = merge_resume_checkpoint(load_checkpoint(checkpoint_path), candidates, source=source, mode=mode)
+    else:
+        checkpoint = initial_checkpoint(source=source, mode=mode, candidates=candidates)
+    write_checkpoint(checkpoint_path, checkpoint)
+
+    stopped = False
+    for idx, candidate in enumerate(candidates):
+        item = checkpoint["items"].setdefault(candidate.key, {"cn": candidate.cn, "source": candidate.source, "status": "pending"})
+        if resume and item.get("status") in {"success", "skipped_existing"}:
+            continue
+        started = time.perf_counter()
+        status = "error"
+        changed_fields: list[str] = []
+        message = ""
+        error = None
+        try:
+            status, changed_fields, message = execute_candidate(db, candidate, mode=mode, only_missing=only_missing, force=force)
+        except Exception as exc:  # noqa: BLE001 - logged and optionally stops operator-controlled backfill
+            db.rollback()
+            error = f"{type(exc).__name__}: {exc}"[:500]
+            message = "candidate failed"
+            status = "rate_limited" if "rate" in error.lower() or "429" in error else "error"
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        item.update(
+            {
+                "cn": candidate.cn,
+                "source": candidate.source,
+                "nombre": candidate.nombre,
+                "status": status,
+                "reason": candidate.reason,
+                "message": message,
+                "changed_fields": changed_fields,
+                "error": error,
+                "updated_at": utc_now_iso(),
+            }
+        )
+        checkpoint["last_cn"] = candidate.cn
+        recompute_checkpoint_counts(checkpoint)
+        write_checkpoint(checkpoint_path, checkpoint)
+        append_jsonl(
+            log_path,
+            {
+                "timestamp": utc_now_iso(),
+                "cn": candidate.cn,
+                "nombre": candidate.nombre,
+                "source": candidate.source,
+                "action": "dry_run" if mode == "dry-run" else "sync",
+                "status": status,
+                "message": message,
+                "duration_ms": duration_ms,
+                "changed_fields": changed_fields or None,
+                "error": error,
+            },
+        )
+        if stop_on_error and _is_failure(status):
+            stopped = True
+            break
+        if idx < len(candidates) - 1 and sleep_seconds > 0:
+            sleeper(sleep_seconds)
+
+    after_audit = None
+    after_path = None
+    if audit_after:
+        after_path = audit_path("after")
+        after_audit = audit_snapshot(db, after_path)
+
+    checkpoint["finished_at"] = utc_now_iso()
+    recompute_checkpoint_counts(checkpoint)
+    write_checkpoint(checkpoint_path, checkpoint)
+    return {
+        "source": source,
+        "mode": mode,
+        "only_missing": only_missing,
+        "force": force,
+        "total_candidates": len(candidates),
+        "checkpoint_path": str(checkpoint_path),
+        "log_path": str(log_path),
+        "audit_before_path": str(before_path) if before_path else None,
+        "audit_after_path": str(after_path) if after_path else None,
+        "audit_delta": calculate_audit_delta(before_audit, after_audit),
+        "stopped_on_error": stopped,
+        "checkpoint": checkpoint,
+    }
