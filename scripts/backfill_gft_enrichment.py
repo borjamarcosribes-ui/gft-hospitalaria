@@ -6,13 +6,14 @@ import json
 from pathlib import Path
 
 from app.core.database import SessionLocal
-from app.services.gft_backfill_service import DEFAULT_SLEEP_SECONDS, MODE_CHOICES, SOURCE_CHOICES, run_backfill
+from app.services.gft_backfill_service import DEFAULT_SLEEP_SECONDS, MODE_CHOICES, SCOPE_CHOICES, SOURCE_CHOICES, run_backfill
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Backfill seguro y reanudable CIMA/BIFIMED/clinical para medicamentos publicados GFT.")
+    parser = argparse.ArgumentParser(description="Backfill seguro y reanudable CIMA/BIFIMED/clinical para GFT publicada o Excel/import maestro.")
     parser.add_argument("--source", choices=sorted(SOURCE_CHOICES), default="all")
     parser.add_argument("--mode", choices=sorted(MODE_CHOICES), default="dry-run")
+    parser.add_argument("--scope", choices=sorted(SCOPE_CHOICES), default="gft-publicada")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--cn")
@@ -40,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
             db,
             source=args.source,
             mode=args.mode,
+            scope=args.scope,
             limit=args.limit,
             offset=args.offset,
             cn=args.cn,

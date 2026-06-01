@@ -1,7 +1,10 @@
 import json
 from sqlalchemy import text
 
+import pytest
+
 from app.models.bifimed_cache import BifimedCache
+from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.services import bifimed_sync_service, cima_sync_service
 from app.services.gft_backfill_service import calculate_audit_delta, run_backfill, select_backfill_candidates
@@ -53,11 +56,11 @@ def _create_view(db_session, *, include_cima_urls=False):
     db_session.commit()
 
 
-def _add_gft(db_session, cn, *, published=True, url_ft=None):
+def _add_gft(db_session, cn, *, published=True, url_ft=None, estado_gft="incluido"):
     db_session.add(
         GFTEstadoPresentacion(
             cn=cn,
-            estado_gft="incluido",
+            estado_gft=estado_gft,
             estado_editorial="publicado" if published else "borrador",
             nemonico=f"N-{cn}",
             nombre_comercial_importado=f"Medicamento {cn}",
@@ -296,3 +299,129 @@ def test_dry_run_cima_prefers_missing_cache_over_incomplete_batch(db_session, tm
     assert len(items) == 3
     assert {item["reason"] for item in items} == {"sin_cima"}
     assert not any(item["reason"] == "sin_indicaciones_cima" for item in items)
+
+
+def test_cli_scope_defaults_and_valid_values_parse():
+    default_args = parse_args(["--source", "all"])
+    master_args = parse_args(["--source", "cima", "--scope", "all-imported"])
+    excel_args = parse_args(["--source", "bifimed", "--scope", "excel-master"])
+
+    assert default_args.scope == "gft-publicada"
+    assert master_args.scope == "all-imported"
+    assert excel_args.scope == "excel-master"
+
+
+def test_cli_invalid_scope_fails():
+    with pytest.raises(SystemExit):
+        parse_args(["--scope", "inventado"])
+
+
+def test_candidate_selection_all_imported_includes_unpublished_and_deduplicates_valid_cn(db_session):
+    _add_gft(db_session, "012345", published=True)
+    _add_gft(db_session, "222222", published=False)
+    _add_gft(db_session, "333333", published=False, estado_gft="excluido")
+    _add_gft(db_session, "ABC123", published=False)
+    db_session.commit()
+    _create_view(db_session)
+
+    candidates = select_backfill_candidates(db_session, source="cima", scope="all-imported")
+
+    assert [(candidate.cn, candidate.source, candidate.reason) for candidate in candidates] == [
+        ("012345", "cima", "sin_cima"),
+        ("222222", "cima", "sin_cima"),
+        ("333333", "cima", "sin_cima"),
+    ]
+    assert candidates[0].cn == "012345"
+
+
+def test_candidate_selection_all_imported_skips_existing_cima_cache_with_only_missing(db_session):
+    _add_gft(db_session, "700001", published=False)
+    _add_gft(db_session, "700002", published=False)
+    db_session.add(CimaMedicamentoCache(cn="700001", sync_status="ok"))
+    db_session.commit()
+
+    candidates = select_backfill_candidates(db_session, source="cima", scope="all-imported")
+
+    assert [(candidate.cn, candidate.reason) for candidate in candidates] == [("700002", "sin_cima")]
+
+
+def test_candidate_selection_all_imported_skips_existing_bifimed_cache_with_only_missing(db_session):
+    _add_gft(db_session, "710001", published=False)
+    _add_gft(db_session, "710002", published=False)
+    db_session.add(BifimedCache(cn="710001", sync_status="ok", detalle_financiacion_json={"indicaciones": []}))
+    db_session.commit()
+
+    candidates = select_backfill_candidates(db_session, source="bifimed", scope="all-imported")
+
+    assert [(candidate.cn, candidate.reason) for candidate in candidates] == [("710002", "sin_bifimed_cache")]
+
+
+def test_candidate_selection_all_imported_include_incomplete_cima(db_session):
+    _add_gft(db_session, "720001", published=False)
+    db_session.add(CimaMedicamentoCache(cn="720001", sync_status="ok", url_ficha_tecnica=None))
+    db_session.commit()
+
+    default_candidates = select_backfill_candidates(db_session, source="cima", scope="all-imported")
+    incomplete_candidates = select_backfill_candidates(
+        db_session,
+        source="cima",
+        scope="all-imported",
+        include_incomplete=True,
+    )
+
+    assert default_candidates == []
+    assert [(candidate.cn, candidate.reason) for candidate in incomplete_candidates] == [
+        ("720001", "cima_cache_incompleto")
+    ]
+
+
+def test_candidate_selection_all_imported_include_incomplete_bifimed(db_session):
+    _add_gft(db_session, "730001", published=False)
+    db_session.add(BifimedCache(cn="730001", sync_status="ok", detalle_financiacion_json={"indicaciones": []}))
+    db_session.commit()
+
+    default_candidates = select_backfill_candidates(db_session, source="bifimed", scope="all-imported")
+    incomplete_candidates = select_backfill_candidates(
+        db_session,
+        source="bifimed",
+        scope="all-imported",
+        include_incomplete=True,
+    )
+
+    assert default_candidates == []
+    assert [(candidate.cn, candidate.reason) for candidate in incomplete_candidates] == [
+        ("730001", "bifimed_sin_indicaciones")
+    ]
+
+
+def test_dry_run_all_imported_writes_scope_and_does_not_sync(db_session, tmp_path, monkeypatch):
+    _add_gft(db_session, "740001", published=False)
+    db_session.commit()
+    called = {"cima": 0}
+
+    def fake_sync(db, cn, force=False):
+        called["cima"] += 1
+        raise AssertionError("dry-run must not sync")
+
+    monkeypatch.setattr(cima_sync_service, "sync_cn", fake_sync)
+    checkpoint = tmp_path / "checkpoint.json"
+    log_path = tmp_path / "run.jsonl"
+
+    result = run_backfill(
+        db_session,
+        source="cima",
+        scope="all-imported",
+        mode="dry-run",
+        checkpoint_path=checkpoint,
+        log_path=log_path,
+        sleep_seconds=0,
+    )
+
+    checkpoint_payload = json.loads(checkpoint.read_text())
+    record = json.loads(log_path.read_text().splitlines()[0])
+    assert called["cima"] == 0
+    assert result["scope"] == "all-imported"
+    assert result["total_universe"] == 1
+    assert checkpoint_payload["scope"] == "all-imported"
+    assert checkpoint_payload["items"]["cima:740001"]["scope"] == "all-imported"
+    assert record["scope"] == "all-imported"
