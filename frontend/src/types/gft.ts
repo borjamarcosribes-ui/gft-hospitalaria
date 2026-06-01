@@ -60,6 +60,13 @@ export interface GFTFinanciacionDetalle {
   last_synced_at?: string | null;
   indicaciones_autorizadas?: GFTIndicacionAutorizadaBifimed[] | null;
 }
+
+export interface GFTCimaIndicacionNormalizada {
+  titulo: string;
+  texto: string;
+  confidence: 'alta' | 'media' | 'baja';
+}
+
 export interface GFTResumenClinicoAuto {
   source_status: string;
   generated_at: string | null;
@@ -78,6 +85,7 @@ export interface GFTResumenClinicoAuto {
 
 export interface GFTMedicamentoDetail extends GFTMedicamentoListItem {
   observaciones_publicables: string | null;
+  indicaciones_cima_normalizadas: GFTCimaIndicacionNormalizada[];
   documentos: GFTDocumentoCimaRef[];
   financiacion_detalle: GFTFinanciacionDetalle | null;
   resumen_clinico_auto?: GFTResumenClinicoAuto | null;
