@@ -14,12 +14,13 @@ from app.models.bifimed_cache import BifimedCache
 from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
+from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.services import bifimed_sync_service, cima_sync_service
 from app.services.gft_canonical_payload_service import audit_gft_coverage, build_gft_canonical_payload
 from app.services.gft_clinical_pipeline_service import TARGET_SECTIONS
 from app.services.gft_clinical_sections_auditability import build_auditable_section_scope_filters
 from app.services.gft_clinical_summary_service import build_clinical_summary
-from app.services.normalization_service import normalize_cn
+from app.services.normalization_service import NormalizationError, normalize_cn, normalize_cn_or_raise
 
 BACKFILL_STATUSES = {
     "pending",
@@ -33,6 +34,11 @@ BACKFILL_STATUSES = {
 }
 SOURCE_CHOICES = {"cima", "bifimed", "clinical", "all"}
 MODE_CHOICES = {"dry-run", "run"}
+SCOPE_GFT_PUBLICADA = "gft-publicada"
+SCOPE_ALL_IMPORTED = "all-imported"
+SCOPE_EXCEL_MASTER = "excel-master"
+SCOPE_CHOICES = {SCOPE_GFT_PUBLICADA, SCOPE_EXCEL_MASTER, SCOPE_ALL_IMPORTED}
+MASTER_SCOPES = {SCOPE_EXCEL_MASTER, SCOPE_ALL_IMPORTED}
 DEFAULT_SLEEP_SECONDS = 0.5
 
 _CIMA_USEFUL_FIELDS = (
@@ -119,32 +125,67 @@ class BackfillCandidate:
         return f"{self.source}:{self.cn}"
 
 
-def expand_sources(source: str) -> list[str]:
+def expand_sources(source: str, *, scope: str = SCOPE_GFT_PUBLICADA) -> list[str]:
     if source == "all":
+        # Clinical summaries are derived from published-GFT payload/section coverage. For
+        # master-import scopes, keep the mass cache operation limited to source caches.
+        if scope in MASTER_SCOPES:
+            return ["cima", "bifimed"]
         return ["cima", "bifimed", "clinical"]
     return [source]
 
 
-def select_backfill_candidates(
+def _has_bifimed_indications(row: BifimedCache | None) -> bool:
+    if row is None:
+        return False
+    if _has_value(row.indicaciones_autorizadas_json):
+        return True
+    detalle = row.detalle_financiacion_json
+    if isinstance(detalle, dict):
+        return _has_value(detalle.get("indicaciones"))
+    return False
+
+
+def _has_cima_incomplete_cache(row: CimaMedicamentoCache | None) -> bool:
+    if row is None:
+        return False
+    if row.sync_status != "ok":
+        return True
+    return not _has_value(row.url_ficha_tecnica)
+
+
+def _master_universe_rows(db: Session) -> tuple[list[dict[str, Any]], int]:
+    rows = db.query(GFTEstadoPresentacion).order_by(GFTEstadoPresentacion.cn).all()
+    by_cn: dict[str, dict[str, Any]] = {}
+    skipped_invalid_cn = 0
+    for row in rows:
+        try:
+            cn = normalize_cn_or_raise(row.cn)
+        except NormalizationError:
+            skipped_invalid_cn += 1
+            continue
+        by_cn.setdefault(
+            cn,
+            {
+                "cn": cn,
+                "nombre": row.nombre_comercial_importado or row.nemonico,
+                "estado_gft": row.estado_gft,
+                "estado_editorial": row.estado_editorial,
+            },
+        )
+    return [by_cn[cn] for cn in sorted(by_cn)], skipped_invalid_cn
+
+
+def _select_published_gft_candidates(
     db: Session,
     *,
-    source: str = "all",
-    only_missing: bool = True,
-    include_incomplete: bool = False,
-    force: bool = False,
-    cn: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
+    source: str,
+    only_missing: bool,
+    include_incomplete: bool,
+    force: bool,
+    cn: str | None,
 ) -> list[BackfillCandidate]:
-    """Select published GFT CNs that need enrichment, using the canonical audit/payload.
-
-    When ``only_missing`` is false, every published CN is selected for the requested source(s).
-    With the default ``only_missing`` mode, incomplete-but-cached rows are only selected when
-    ``include_incomplete`` is enabled; this keeps mass backfills focused on truly absent caches.
-    Explicit ``cn`` values still have to be present in ``v_gft_publicada``; unpublished CNs return no
-    candidate.
-    """
-    requested_sources = expand_sources(source)
+    requested_sources = expand_sources(source, scope=SCOPE_GFT_PUBLICADA)
     rows: list[dict[str, Any]] = []
     if cn:
         payload = build_gft_canonical_payload(db, cn)
@@ -189,6 +230,101 @@ def select_backfill_candidates(
                     reason = "resumen_clinico_incompleto"
             if reason:
                 candidates.append(BackfillCandidate(cn=item_cn, source=item_source, nombre=nombre, reason=reason))
+    return candidates
+
+
+def _select_master_candidates(
+    db: Session,
+    *,
+    source: str,
+    only_missing: bool,
+    include_incomplete: bool,
+    force: bool,
+    cn: str | None,
+) -> list[BackfillCandidate]:
+    requested_sources = expand_sources(source, scope=SCOPE_ALL_IMPORTED)
+    rows, _skipped_invalid_cn = _master_universe_rows(db)
+    if cn:
+        try:
+            requested_cn = normalize_cn_or_raise(cn)
+        except NormalizationError:
+            return []
+        rows = [row for row in rows if row["cn"] == requested_cn]
+
+    cima_by_cn = {row.cn: row for row in db.query(CimaMedicamentoCache).all()}
+    bifimed_by_cn = {row.cn: row for row in db.query(BifimedCache).all()}
+
+    candidates: list[BackfillCandidate] = []
+    for item in rows:
+        item_cn = item["cn"]
+        nombre = item.get("nombre")
+        for item_source in requested_sources:
+            reason: str | None = None
+            if item_source == "cima":
+                cache = cima_by_cn.get(item_cn)
+                if not only_missing or force:
+                    reason = "force_or_full_scan"
+                elif cache is None:
+                    reason = "sin_cima"
+                elif include_incomplete and _has_cima_incomplete_cache(cache):
+                    reason = "cima_cache_incompleto"
+            elif item_source == "bifimed":
+                cache = bifimed_by_cn.get(item_cn)
+                if not only_missing or force:
+                    reason = "force_or_full_scan"
+                elif cache is None:
+                    reason = "sin_bifimed_cache"
+                elif include_incomplete and not _has_bifimed_indications(cache):
+                    reason = "bifimed_sin_indicaciones"
+            elif item_source == "clinical":
+                # Clinical backfill remains scoped to the published-GFT payload.
+                reason = None
+            if reason:
+                candidates.append(BackfillCandidate(cn=item_cn, source=item_source, nombre=nombre, reason=reason))
+    return candidates
+
+
+def select_backfill_candidates(
+    db: Session,
+    *,
+    source: str = "all",
+    scope: str = SCOPE_GFT_PUBLICADA,
+    only_missing: bool = True,
+    include_incomplete: bool = False,
+    force: bool = False,
+    cn: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[BackfillCandidate]:
+    """Select CNs that need enrichment for the requested backfill scope.
+
+    ``gft-publicada`` preserves the existing behavior: only published GFT rows are
+    selected from the canonical payload/audit. ``excel-master`` and ``all-imported``
+    use the canonical applied import table (``gft_estado_presentacion``) so CIMA and
+    BIFIMED cache can be filled for non-published articles without changing GFT
+    publication rules.
+    """
+    if scope not in SCOPE_CHOICES:
+        raise ValueError(f"Unsupported scope: {scope}")
+
+    if scope == SCOPE_GFT_PUBLICADA:
+        candidates = _select_published_gft_candidates(
+            db,
+            source=source,
+            only_missing=only_missing,
+            include_incomplete=include_incomplete,
+            force=force,
+            cn=cn,
+        )
+    else:
+        candidates = _select_master_candidates(
+            db,
+            source=source,
+            only_missing=only_missing,
+            include_incomplete=include_incomplete,
+            force=force,
+            cn=cn,
+        )
 
     if offset:
         candidates = candidates[max(0, offset) :]
@@ -197,23 +333,75 @@ def select_backfill_candidates(
     return candidates
 
 
-def default_checkpoint_path(source: str) -> Path:
+def _safe_scope_for_path(scope: str) -> str:
+    return scope.replace("/", "-")
+
+
+def default_checkpoint_path(source: str, *, scope: str = SCOPE_GFT_PUBLICADA) -> Path:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    return Path("data/output") / f"backfill_{source}_{stamp}.json"
+    return Path("data/output") / f"backfill_{source}_{_safe_scope_for_path(scope)}_{stamp}.json"
 
 
-def default_log_path(source: str) -> Path:
+def default_log_path(source: str, *, scope: str = SCOPE_GFT_PUBLICADA) -> Path:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    return Path("data/output") / f"backfill_{source}_{stamp}.jsonl"
+    return Path("data/output") / f"backfill_{source}_{_safe_scope_for_path(scope)}_{stamp}.jsonl"
 
 
-def initial_checkpoint(*, source: str, mode: str, candidates: list[BackfillCandidate]) -> dict[str, Any]:
+def build_backfill_coverage_summary(db: Session, *, scope: str) -> dict[str, int]:
+    if scope in MASTER_SCOPES:
+        rows, skipped_invalid_cn = _master_universe_rows(db)
+        cns = [row["cn"] for row in rows]
+        cima_by_cn = {row.cn: row for row in db.query(CimaMedicamentoCache).filter(CimaMedicamentoCache.cn.in_(cns)).all()} if cns else {}
+        bifimed_by_cn = {row.cn: row for row in db.query(BifimedCache).filter(BifimedCache.cn.in_(cns)).all()} if cns else {}
+        total_publicados = sum(1 for row in rows if row.get("estado_gft") == "incluido" and row.get("estado_editorial") == "publicado")
+        return {
+            "total_universe": len(cns),
+            "total_con_cima_cache": sum(1 for cn in cns if cn in cima_by_cn),
+            "total_sin_cima_cache": sum(1 for cn in cns if cn not in cima_by_cn),
+            "total_con_bifimed_cache": sum(1 for cn in cns if cn in bifimed_by_cn),
+            "total_sin_bifimed_cache": sum(1 for cn in cns if cn not in bifimed_by_cn),
+            "total_con_indicaciones_bifimed": sum(1 for row in bifimed_by_cn.values() if _has_bifimed_indications(row)),
+            "total_skipped_invalid_cn": skipped_invalid_cn,
+            "total_publicados_gft": total_publicados,
+            "total_no_publicados": len(cns) - total_publicados,
+        }
+
+    audit = audit_gft_coverage(db)
+    summary = audit.get("summary", {})
+    total_publicados = int(summary.get("total_medicamentos_publicados") or summary.get("total") or len(audit.get("items", [])))
+    return {
+        "total_universe": total_publicados,
+        "total_con_cima_cache": int(summary.get("con_cima") or 0),
+        "total_sin_cima_cache": int(summary.get("sin_cima") or 0),
+        "total_con_bifimed_cache": int(summary.get("con_bifimed_cache") or 0),
+        "total_sin_bifimed_cache": int(summary.get("sin_bifimed_cache") or 0),
+        "total_con_indicaciones_bifimed": int(summary.get("con_indicaciones_bifimed") or 0),
+        "total_skipped_invalid_cn": 0,
+        "total_publicados_gft": total_publicados,
+        "total_no_publicados": 0,
+    }
+
+
+def initial_checkpoint(
+    *,
+    source: str,
+    scope: str,
+    mode: str,
+    only_missing: bool,
+    include_incomplete: bool,
+    candidates: list[BackfillCandidate],
+    coverage_summary: dict[str, int],
+) -> dict[str, Any]:
     return {
         "started_at": utc_now_iso(),
         "finished_at": None,
         "source": source,
+        "scope": scope,
         "mode": mode,
+        "only_missing": only_missing,
+        "include_incomplete": include_incomplete,
         "total_candidates": len(candidates),
+        **coverage_summary,
         "processed": 0,
         "succeeded": 0,
         "failed": 0,
@@ -223,6 +411,7 @@ def initial_checkpoint(*, source: str, mode: str, candidates: list[BackfillCandi
             candidate.key: {
                 "cn": candidate.cn,
                 "source": candidate.source,
+                "scope": scope,
                 "nombre": candidate.nombre,
                 "status": "pending",
                 "reason": candidate.reason,
@@ -245,12 +434,26 @@ def write_checkpoint(path: Path, checkpoint: dict[str, Any]) -> None:
     tmp_path.replace(path)
 
 
-def merge_resume_checkpoint(checkpoint: dict[str, Any], candidates: list[BackfillCandidate], *, source: str, mode: str) -> dict[str, Any]:
+def merge_resume_checkpoint(
+    checkpoint: dict[str, Any],
+    candidates: list[BackfillCandidate],
+    *,
+    source: str,
+    scope: str,
+    mode: str,
+    only_missing: bool,
+    include_incomplete: bool,
+    coverage_summary: dict[str, int],
+) -> dict[str, Any]:
     checkpoint.setdefault("started_at", utc_now_iso())
     checkpoint["finished_at"] = None
     checkpoint["source"] = checkpoint.get("source") or source
+    checkpoint["scope"] = scope
     checkpoint["mode"] = mode
+    checkpoint["only_missing"] = only_missing
+    checkpoint["include_incomplete"] = include_incomplete
     checkpoint["total_candidates"] = len(candidates)
+    checkpoint.update(coverage_summary)
     items = checkpoint.setdefault("items", {})
     for candidate in candidates:
         items.setdefault(
@@ -258,6 +461,7 @@ def merge_resume_checkpoint(checkpoint: dict[str, Any], candidates: list[Backfil
             {
                 "cn": candidate.cn,
                 "source": candidate.source,
+                "scope": scope,
                 "nombre": candidate.nombre,
                 "status": "pending",
                 "reason": candidate.reason,
@@ -451,6 +655,7 @@ def run_backfill(
     *,
     source: str,
     mode: str = "dry-run",
+    scope: str = SCOPE_GFT_PUBLICADA,
     limit: int | None = None,
     offset: int = 0,
     cn: str | None = None,
@@ -469,6 +674,7 @@ def run_backfill(
     candidates = select_backfill_candidates(
         db,
         source=source,
+        scope=scope,
         only_missing=only_missing,
         include_incomplete=include_incomplete,
         force=force,
@@ -476,8 +682,9 @@ def run_backfill(
         limit=limit,
         offset=offset,
     )
-    checkpoint_path = checkpoint_path or default_checkpoint_path(source)
-    log_path = log_path or default_log_path(source)
+    checkpoint_path = checkpoint_path or default_checkpoint_path(source, scope=scope)
+    log_path = log_path or default_log_path(source, scope=scope)
+    coverage_summary = build_backfill_coverage_summary(db, scope=scope)
 
     before_audit = None
     before_path = None
@@ -486,9 +693,26 @@ def run_backfill(
         before_audit = audit_snapshot(db, before_path)
 
     if resume and checkpoint_path.exists():
-        checkpoint = merge_resume_checkpoint(load_checkpoint(checkpoint_path), candidates, source=source, mode=mode)
+        checkpoint = merge_resume_checkpoint(
+            load_checkpoint(checkpoint_path),
+            candidates,
+            source=source,
+            scope=scope,
+            mode=mode,
+            only_missing=only_missing,
+            include_incomplete=include_incomplete,
+            coverage_summary=coverage_summary,
+        )
     else:
-        checkpoint = initial_checkpoint(source=source, mode=mode, candidates=candidates)
+        checkpoint = initial_checkpoint(
+            source=source,
+            scope=scope,
+            mode=mode,
+            only_missing=only_missing,
+            include_incomplete=include_incomplete,
+            candidates=candidates,
+            coverage_summary=coverage_summary,
+        )
     write_checkpoint(checkpoint_path, checkpoint)
 
     stopped = False
@@ -513,6 +737,7 @@ def run_backfill(
             {
                 "cn": candidate.cn,
                 "source": candidate.source,
+                "scope": scope,
                 "nombre": candidate.nombre,
                 "status": status,
                 "reason": candidate.reason,
@@ -532,6 +757,7 @@ def run_backfill(
                 "cn": candidate.cn,
                 "nombre": candidate.nombre,
                 "source": candidate.source,
+                "scope": scope,
                 "action": "dry_run" if mode == "dry-run" else "sync",
                 "status": status,
                 "message": message,
@@ -558,11 +784,13 @@ def run_backfill(
     write_checkpoint(checkpoint_path, checkpoint)
     return {
         "source": source,
+        "scope": scope,
         "mode": mode,
         "only_missing": only_missing,
         "include_incomplete": include_incomplete,
         "force": force,
         "total_candidates": len(candidates),
+        **coverage_summary,
         "checkpoint_path": str(checkpoint_path),
         "log_path": str(log_path),
         "audit_before_path": str(before_path) if before_path else None,
