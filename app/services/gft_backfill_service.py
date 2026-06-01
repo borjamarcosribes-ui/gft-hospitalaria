@@ -130,6 +130,7 @@ def select_backfill_candidates(
     *,
     source: str = "all",
     only_missing: bool = True,
+    include_incomplete: bool = False,
     force: bool = False,
     cn: str | None = None,
     limit: int | None = None,
@@ -138,6 +139,8 @@ def select_backfill_candidates(
     """Select published GFT CNs that need enrichment, using the canonical audit/payload.
 
     When ``only_missing`` is false, every published CN is selected for the requested source(s).
+    With the default ``only_missing`` mode, incomplete-but-cached rows are only selected when
+    ``include_incomplete`` is enabled; this keeps mass backfills focused on truly absent caches.
     Explicit ``cn`` values still have to be present in ``v_gft_publicada``; unpublished CNs return no
     candidate.
     """
@@ -168,20 +171,22 @@ def select_backfill_candidates(
                     reason = "force_or_full_scan"
                 elif payload.get("estado_cima") != "disponible":
                     reason = "sin_cima"
-                elif "indicaciones_ficha_tecnica" in missing_fields:
+                elif include_incomplete and "indicaciones_ficha_tecnica" in missing_fields:
                     reason = "sin_indicaciones_cima"
             elif item_source == "bifimed":
                 if not only_missing or force:
                     reason = "force_or_full_scan"
                 elif not payload.get("bifimed_cache_presente"):
                     reason = "sin_bifimed_cache"
-                elif not payload.get("indicaciones_bifimed"):
+                elif include_incomplete and not payload.get("indicaciones_bifimed"):
                     reason = "bifimed_sin_indicaciones"
             elif item_source == "clinical":
                 if not only_missing or force:
                     reason = "force_or_full_scan"
-                elif payload.get("estado_resumen_clinico") not in {"ok", "partial"}:
+                elif payload.get("estado_resumen_clinico") in {None, "", "no_informado"}:
                     reason = "sin_resumen_clinico"
+                elif include_incomplete and payload.get("estado_resumen_clinico") not in {"ok", "partial"}:
+                    reason = "resumen_clinico_incompleto"
             if reason:
                 candidates.append(BackfillCandidate(cn=item_cn, source=item_source, nombre=nombre, reason=reason))
 
@@ -458,9 +463,19 @@ def run_backfill(
     stop_on_error: bool = False,
     audit_before: bool = False,
     audit_after: bool = False,
+    include_incomplete: bool = False,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
-    candidates = select_backfill_candidates(db, source=source, only_missing=only_missing, force=force, cn=cn, limit=limit, offset=offset)
+    candidates = select_backfill_candidates(
+        db,
+        source=source,
+        only_missing=only_missing,
+        include_incomplete=include_incomplete,
+        force=force,
+        cn=cn,
+        limit=limit,
+        offset=offset,
+    )
     checkpoint_path = checkpoint_path or default_checkpoint_path(source)
     log_path = log_path or default_log_path(source)
 
@@ -522,6 +537,7 @@ def run_backfill(
                 "message": message,
                 "duration_ms": duration_ms,
                 "changed_fields": changed_fields or None,
+                "reason": candidate.reason,
                 "error": error,
             },
         )
@@ -544,6 +560,7 @@ def run_backfill(
         "source": source,
         "mode": mode,
         "only_missing": only_missing,
+        "include_incomplete": include_incomplete,
         "force": force,
         "total_candidates": len(candidates),
         "checkpoint_path": str(checkpoint_path),

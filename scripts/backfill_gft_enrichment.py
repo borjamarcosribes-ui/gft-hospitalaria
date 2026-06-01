@@ -21,6 +21,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--log-path", type=Path)
     parser.add_argument("--sleep", type=float, default=DEFAULT_SLEEP_SECONDS)
     parser.add_argument("--only-missing", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--include-incomplete",
+        action="store_true",
+        help="Incluye candidatos ya cacheados pero incompletos (p. ej. sin indicaciones) para diagnóstico.",
+    )
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--stop-on-error", action="store_true")
     parser.add_argument("--audit-before", action="store_true")
@@ -43,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
             log_path=args.log_path,
             sleep_seconds=args.sleep,
             only_missing=args.only_missing,
+            include_incomplete=args.include_incomplete,
             force=args.force,
             stop_on_error=args.stop_on_error,
             audit_before=args.audit_before,
