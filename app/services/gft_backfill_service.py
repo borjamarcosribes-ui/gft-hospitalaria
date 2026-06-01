@@ -24,14 +24,14 @@ from app.services.normalization_service import NormalizationError, normalize_cn,
 
 BACKFILL_STATUSES = {
     "pending",
-    "skipped_existing",
+    "skipped",
     "success",
     "not_found",
     "no_data",
     "error",
-    "rate_limited",
     "unchanged",
 }
+TERMINAL_BACKFILL_STATUSES = {"success", "not_found", "no_data", "unchanged", "skipped", "error"}
 SOURCE_CHOICES = {"cima", "bifimed", "clinical", "all"}
 MODE_CHOICES = {"dry-run", "run"}
 SCOPE_GFT_PUBLICADA = "gft-publicada"
@@ -406,6 +406,9 @@ def initial_checkpoint(
         "succeeded": 0,
         "failed": 0,
         "skipped": 0,
+        "not_found": 0,
+        "no_data": 0,
+        "unchanged": 0,
         "last_cn": None,
         "items": {
             candidate.key: {
@@ -476,8 +479,20 @@ def append_jsonl(path: Path, record: dict[str, Any]) -> None:
         fh.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
 
 
-def audit_snapshot(db: Session, path: Path) -> dict[str, Any]:
-    result = audit_gft_coverage(db)
+def audit_snapshot(db: Session, path: Path, *, scope: str) -> dict[str, Any]:
+    gft_audit = audit_gft_coverage(db)
+    if scope in MASTER_SCOPES:
+        result = {
+            "scope": scope,
+            "summary": build_backfill_coverage_summary(db, scope=scope),
+            "gft_publicada": gft_audit,
+            "note": (
+                "Los CN con estado not_found/no_data quedan trazados en checkpoint/log de la ejecución; "
+                "pueden reaparecer en ejecuciones futuras si no existe un estado persistente global."
+            ),
+        }
+    else:
+        result = gft_audit
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         json.dump(result, fh, ensure_ascii=False, indent=2, default=str)
@@ -509,7 +524,13 @@ def _changed_fields(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
     return [field for field, old in before.items() if after.get(field) != old]
 
 
-def _status_from_sync_status(sync_status: str | None, *, before_useful: set[str], after_useful: set[str]) -> str:
+def _status_from_sync_status(
+    sync_status: str | None,
+    *,
+    before_useful: set[str],
+    after_useful: set[str],
+    sync_error: str | None = None,
+) -> str:
     if sync_status == "ok":
         if not after_useful:
             return "no_data"
@@ -518,8 +539,10 @@ def _status_from_sync_status(sync_status: str | None, *, before_useful: set[str]
         return "success"
     if sync_status == "not_found":
         return "not_found"
-    if sync_status in {"rate_limited", "timeout"}:
-        return "rate_limited"
+    if sync_status == "no_data":
+        return "no_data"
+    if sync_status == "error" and not sync_error and not after_useful:
+        return "no_data"
     return "error"
 
 
@@ -546,11 +569,21 @@ def _run_cima(db: Session, candidate: BackfillCandidate, *, force: bool) -> tupl
     if restored:
         db.commit()
     after = _snapshot(row, _CIMA_USEFUL_FIELDS)
-    status = _status_from_sync_status(row.sync_status, before_useful=before_useful, after_useful=_useful_fields(after))
+    sync_error = getattr(row, "sync_error", None)
+    status = _status_from_sync_status(
+        row.sync_status,
+        before_useful=before_useful,
+        after_useful=_useful_fields(after),
+        sync_error=sync_error,
+    )
     changed = _changed_fields(before, after)
+    if status == "unchanged" and changed:
+        status = "success"
     if restored and status in {"success", "no_data"}:
         status = "unchanged"
     message = f"cima sync_status={row.sync_status}"
+    if status == "error" and sync_error:
+        message += f"; sync_error={sync_error}"
     if restored:
         message += f"; restored useful fields: {', '.join(restored)}"
     return status, changed, message
@@ -565,11 +598,21 @@ def _run_bifimed(db: Session, candidate: BackfillCandidate, *, force: bool) -> t
     if restored:
         db.commit()
     after = _snapshot(row, _BIFIMED_USEFUL_FIELDS)
-    status = _status_from_sync_status(row.sync_status, before_useful=before_useful, after_useful=_useful_fields(after))
+    sync_error = getattr(row, "sync_error", None)
+    status = _status_from_sync_status(
+        row.sync_status,
+        before_useful=before_useful,
+        after_useful=_useful_fields(after),
+        sync_error=sync_error,
+    )
     changed = _changed_fields(before, after)
+    if status == "unchanged" and changed:
+        status = "success"
     if restored and status in {"success", "no_data"}:
         status = "unchanged"
     message = f"bifimed sync_status={row.sync_status}"
+    if status == "error" and sync_error:
+        message += f"; sync_error={sync_error}"
     if restored:
         message += f"; restored useful fields: {', '.join(restored)}"
     return status, changed, message
@@ -580,7 +623,7 @@ def _run_clinical(db: Session, candidate: BackfillCandidate, *, force: bool) -> 
     before = _snapshot(current, (*_CLINICAL_USEFUL_FIELDS, "source_status", "source_hash"))
     before_useful = _useful_fields({field: before.get(field) for field in _CLINICAL_USEFUL_FIELDS})
     if current and not force and current.source_status in {"ok", "partial"}:
-        return "skipped_existing", [], "clinical summary already available"
+        return "skipped", [], "clinical summary already available"
     cima = db.get(CimaMedicamentoCache, candidate.cn)
     has_cima_ok = bool(cima and cima.sync_status == "ok")
     has_nregistro = bool(cima and (cima.nregistro or "").strip())
@@ -628,7 +671,7 @@ def execute_candidate(db: Session, candidate: BackfillCandidate, *, mode: str, o
     if mode == "dry-run":
         return "pending", [], f"dry-run candidate reason={candidate.reason}"
     if only_missing and not force and _existing_complete(db, candidate):
-        return "skipped_existing", [], "complete data already available; skipped without --force"
+        return "skipped", [], "complete data already available; skipped without --force"
     if candidate.source == "cima":
         return _run_cima(db, candidate, force=force)
     if candidate.source == "bifimed":
@@ -639,15 +682,24 @@ def execute_candidate(db: Session, candidate: BackfillCandidate, *, mode: str, o
 
 
 def _is_failure(status: str) -> bool:
-    return status in {"error", "rate_limited"}
+    return status == "error"
+
+
+def _normalize_legacy_status(status: str | None) -> str:
+    if status in {"skipped_existing", "rate_limited"}:
+        return "skipped" if status == "skipped_existing" else "error"
+    return status or "pending"
 
 
 def recompute_checkpoint_counts(checkpoint: dict[str, Any]) -> None:
-    counts = Counter(item.get("status", "pending") for item in checkpoint.get("items", {}).values())
+    counts = Counter(_normalize_legacy_status(item.get("status", "pending")) for item in checkpoint.get("items", {}).values())
     checkpoint["succeeded"] = counts["success"]
-    checkpoint["failed"] = counts["error"] + counts["rate_limited"]
-    checkpoint["skipped"] = counts["skipped_existing"]
-    checkpoint["processed"] = sum(counts[status] for status in BACKFILL_STATUSES if status != "pending")
+    checkpoint["failed"] = counts["error"]
+    checkpoint["skipped"] = counts["skipped"]
+    checkpoint["not_found"] = counts["not_found"]
+    checkpoint["no_data"] = counts["no_data"]
+    checkpoint["unchanged"] = counts["unchanged"]
+    checkpoint["processed"] = sum(counts[status] for status in TERMINAL_BACKFILL_STATUSES)
 
 
 def run_backfill(
@@ -690,7 +742,7 @@ def run_backfill(
     before_path = None
     if audit_before:
         before_path = audit_path("before")
-        before_audit = audit_snapshot(db, before_path)
+        before_audit = audit_snapshot(db, before_path, scope=scope)
 
     if resume and checkpoint_path.exists():
         checkpoint = merge_resume_checkpoint(
@@ -718,7 +770,7 @@ def run_backfill(
     stopped = False
     for idx, candidate in enumerate(candidates):
         item = checkpoint["items"].setdefault(candidate.key, {"cn": candidate.cn, "source": candidate.source, "status": "pending"})
-        if resume and item.get("status") in {"success", "skipped_existing"}:
+        if resume and _normalize_legacy_status(item.get("status")) in TERMINAL_BACKFILL_STATUSES - {"error"}:
             continue
         started = time.perf_counter()
         status = "error"
@@ -731,7 +783,7 @@ def run_backfill(
             db.rollback()
             error = f"{type(exc).__name__}: {exc}"[:500]
             message = "candidate failed"
-            status = "rate_limited" if "rate" in error.lower() or "429" in error else "error"
+            status = "error"
         duration_ms = int((time.perf_counter() - started) * 1000)
         item.update(
             {
@@ -743,7 +795,7 @@ def run_backfill(
                 "reason": candidate.reason,
                 "message": message,
                 "changed_fields": changed_fields,
-                "error": error,
+                "error": error or (message if status == "error" else None),
                 "updated_at": utc_now_iso(),
             }
         )
@@ -764,7 +816,7 @@ def run_backfill(
                 "duration_ms": duration_ms,
                 "changed_fields": changed_fields or None,
                 "reason": candidate.reason,
-                "error": error,
+                "error": error or (message if status == "error" else None),
             },
         )
         if stop_on_error and _is_failure(status):
@@ -777,7 +829,7 @@ def run_backfill(
     after_path = None
     if audit_after:
         after_path = audit_path("after")
-        after_audit = audit_snapshot(db, after_path)
+        after_audit = audit_snapshot(db, after_path, scope=scope)
 
     checkpoint["finished_at"] = utc_now_iso()
     recompute_checkpoint_counts(checkpoint)
