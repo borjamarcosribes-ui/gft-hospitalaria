@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+
 from sqlalchemy import text
 
 import pytest
@@ -7,7 +9,7 @@ from app.models.bifimed_cache import BifimedCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.services import bifimed_sync_service, cima_sync_service
-from app.services.gft_backfill_service import calculate_audit_delta, run_backfill, select_backfill_candidates
+from app.services.gft_backfill_service import build_backfill_coverage_summary, calculate_audit_delta, run_backfill, select_backfill_candidates
 from scripts.backfill_gft_enrichment import parse_args
 
 
@@ -337,7 +339,7 @@ def test_candidate_selection_all_imported_includes_unpublished_and_deduplicates_
 def test_candidate_selection_all_imported_skips_existing_cima_cache_with_only_missing(db_session):
     _add_gft(db_session, "700001", published=False)
     _add_gft(db_session, "700002", published=False)
-    db_session.add(CimaMedicamentoCache(cn="700001", sync_status="ok"))
+    db_session.add(CimaMedicamentoCache(cn="700001", sync_status="ok", nombre="CIMA útil"))
     db_session.commit()
 
     candidates = select_backfill_candidates(db_session, source="cima", scope="all-imported")
@@ -358,7 +360,7 @@ def test_candidate_selection_all_imported_skips_existing_bifimed_cache_with_only
 
 def test_candidate_selection_all_imported_include_incomplete_cima(db_session):
     _add_gft(db_session, "720001", published=False)
-    db_session.add(CimaMedicamentoCache(cn="720001", sync_status="ok", url_ficha_tecnica=None))
+    db_session.add(CimaMedicamentoCache(cn="720001", sync_status="ok", nombre="CIMA útil", url_ficha_tecnica=None))
     db_session.commit()
 
     default_candidates = select_backfill_candidates(db_session, source="cima", scope="all-imported")
@@ -425,3 +427,255 @@ def test_dry_run_all_imported_writes_scope_and_does_not_sync(db_session, tmp_pat
     assert checkpoint_payload["scope"] == "all-imported"
     assert checkpoint_payload["items"]["cima:740001"]["scope"] == "all-imported"
     assert record["scope"] == "all-imported"
+
+
+def _terminal_sum(checkpoint):
+    return sum(checkpoint.get(key, 0) for key in ("succeeded", "failed", "skipped", "not_found", "no_data", "unchanged"))
+
+
+def test_run_all_imported_cima_not_found_is_terminal_not_failed(db_session, tmp_path, monkeypatch):
+    _add_gft(db_session, "800001", published=False)
+    db_session.commit()
+
+    def fake_sync(db, cn, force=False):
+        row = CimaMedicamentoCache(cn=cn, sync_status="not_found", sync_error=None)
+        db.add(row)
+        db.commit()
+        return row
+
+    monkeypatch.setattr(cima_sync_service, "sync_cn", fake_sync)
+    result = run_backfill(
+        db_session,
+        source="cima",
+        scope="all-imported",
+        mode="run",
+        checkpoint_path=tmp_path / "checkpoint.json",
+        log_path=tmp_path / "run.jsonl",
+        sleep_seconds=0,
+    )
+
+    checkpoint = result["checkpoint"]
+    item = checkpoint["items"]["cima:800001"]
+    record = json.loads((tmp_path / "run.jsonl").read_text().splitlines()[0])
+    assert item["status"] == "not_found"
+    assert item["error"] is None
+    assert checkpoint["processed"] == 1
+    assert checkpoint["not_found"] == 1
+    assert checkpoint["failed"] == 0
+    assert checkpoint["processed"] == _terminal_sum(checkpoint)
+    assert record["scope"] == "all-imported"
+    assert record["reason"] == "sin_cima"
+    assert record["status"] == "not_found"
+    assert record["message"] == "cima sync_status=not_found"
+    assert record["error"] is None
+    row = db_session.get(CimaMedicamentoCache, "800001")
+    assert row.nombre is None
+    assert row.url_ficha_tecnica is None
+    assert row.url_prospecto is None
+    assert row.raw_data is None
+
+
+def test_run_all_imported_cima_no_data_and_technical_error_are_classified(db_session, tmp_path, monkeypatch):
+    _add_gft(db_session, "800002", published=False)
+    _add_gft(db_session, "800003", published=False)
+    db_session.commit()
+
+    def fake_sync(db, cn, force=False):
+        if cn == "800002":
+            row = CimaMedicamentoCache(cn=cn, sync_status="no_data", sync_error=None)
+            db.add(row)
+            db.commit()
+            return row
+        raise TimeoutError("cima timeout")
+
+    monkeypatch.setattr(cima_sync_service, "sync_cn", fake_sync)
+    result = run_backfill(
+        db_session,
+        source="cima",
+        scope="all-imported",
+        mode="run",
+        checkpoint_path=tmp_path / "checkpoint.json",
+        log_path=tmp_path / "run.jsonl",
+        sleep_seconds=0,
+    )
+
+    checkpoint = result["checkpoint"]
+    assert checkpoint["items"]["cima:800002"]["status"] == "no_data"
+    assert checkpoint["items"]["cima:800002"]["error"] is None
+    assert checkpoint["items"]["cima:800003"]["status"] == "error"
+    assert "TimeoutError: cima timeout" in checkpoint["items"]["cima:800003"]["error"]
+    assert checkpoint["no_data"] == 1
+    assert checkpoint["failed"] == 1
+    assert checkpoint["processed"] == _terminal_sum(checkpoint)
+
+
+def test_run_all_imported_bifimed_not_found_no_data_and_summary_balance(db_session, tmp_path, monkeypatch):
+    _add_gft(db_session, "810001", published=False)
+    _add_gft(db_session, "810002", published=False)
+    db_session.commit()
+
+    def fake_sync(db, cn, force=False):
+        status = "not_found" if cn == "810001" else "no_data"
+        row = BifimedCache(cn=cn, sync_status=status, sync_error=None)
+        db.add(row)
+        db.commit()
+        return row
+
+    monkeypatch.setattr(bifimed_sync_service, "sync_bifimed_cn", fake_sync)
+    result = run_backfill(
+        db_session,
+        source="bifimed",
+        scope="all-imported",
+        mode="run",
+        checkpoint_path=tmp_path / "checkpoint.json",
+        log_path=tmp_path / "run.jsonl",
+        sleep_seconds=0,
+    )
+
+    checkpoint = result["checkpoint"]
+    assert checkpoint["items"]["bifimed:810001"]["status"] == "not_found"
+    assert checkpoint["items"]["bifimed:810002"]["status"] == "no_data"
+    assert checkpoint["not_found"] == 1
+    assert checkpoint["no_data"] == 1
+    assert checkpoint["failed"] == 0
+    assert checkpoint["processed"] == _terminal_sum(checkpoint)
+    for cn in ("810001", "810002"):
+        row = db_session.get(BifimedCache, cn)
+        assert row.situacion_financiacion is None
+        assert row.detalle_financiacion_json is None
+        assert row.indicaciones_autorizadas_json is None
+
+
+def test_checkpoint_counts_explain_one_hundred_not_found(monkeypatch):
+    from app.services.gft_backfill_service import recompute_checkpoint_counts
+
+    checkpoint = {"items": {f"cima:{idx:06d}": {"status": "not_found"} for idx in range(100)}}
+    recompute_checkpoint_counts(checkpoint)
+
+    assert checkpoint["processed"] == 100
+    assert checkpoint["not_found"] == 100
+    assert checkpoint["failed"] == 0
+    assert checkpoint["processed"] == _terminal_sum(checkpoint)
+
+
+def test_all_imported_audit_includes_master_summary_and_gft_publicada_stays_compatible(db_session, tmp_path, monkeypatch):
+    _add_gft(db_session, "820001", published=True)
+    _add_gft(db_session, "820002", published=False)
+    db_session.add(CimaMedicamentoCache(cn="820001", sync_status="ok", nombre="CIMA"))
+    db_session.add(BifimedCache(cn="820002", sync_status="ok", detalle_financiacion_json={"indicaciones": [{"x": "y"}]}))
+    db_session.commit()
+    _create_view(db_session)
+
+    def fake_sync(db, cn, force=False):
+        row = CimaMedicamentoCache(cn=cn, sync_status="not_found", sync_error=None)
+        db.add(row)
+        db.commit()
+        return row
+
+    monkeypatch.setattr(cima_sync_service, "sync_cn", fake_sync)
+    result = run_backfill(
+        db_session,
+        source="cima",
+        scope="all-imported",
+        mode="run",
+        audit_before=True,
+        audit_after=True,
+        checkpoint_path=tmp_path / "checkpoint.json",
+        log_path=tmp_path / "run.jsonl",
+        sleep_seconds=0,
+    )
+
+    before = json.loads(Path(result["audit_before_path"]).read_text())
+    assert before["scope"] == "all-imported"
+    assert before["summary"]["total_universe"] == 2
+    assert before["summary"]["total_con_cima_cache"] == 1
+    assert before["summary"]["total_sin_cima_cache"] == 1
+    assert before["summary"]["total_con_cima_cache_util"] == 1
+    assert before["summary"]["total_cima_error"] == 0
+    assert before["summary"]["total_con_bifimed_cache"] == 1
+    assert before["summary"]["total_sin_bifimed_cache"] == 1
+    assert before["summary"]["total_con_bifimed_cache_util"] == 1
+    assert before["summary"]["total_con_indicaciones_bifimed"] == 1
+    assert before["summary"]["total_publicados_gft"] == 1
+    assert before["summary"]["total_no_publicados"] == 1
+    assert "gft_publicada" in before
+    assert "total_universe" in result["audit_delta"]
+
+    published = run_backfill(
+        db_session,
+        source="bifimed",
+        scope="gft-publicada",
+        mode="dry-run",
+        audit_before=True,
+        checkpoint_path=tmp_path / "published-checkpoint.json",
+        log_path=tmp_path / "published.jsonl",
+        sleep_seconds=0,
+    )
+    published_before = json.loads(Path(published["audit_before_path"]).read_text())
+    assert "summary" in published_before
+    assert "gft_publicada" not in published_before
+
+
+def test_all_imported_cima_timeout_remains_retryable_and_not_useful_cache(db_session, tmp_path, monkeypatch):
+    _add_gft(db_session, "830001", published=False)
+    db_session.commit()
+
+    def fake_sync(db, cn, force=False):
+        row = db.get(CimaMedicamentoCache, cn) or CimaMedicamentoCache(cn=cn)
+        row.sync_status = "error"
+        row.sync_error = "timeout"
+        if db.get(CimaMedicamentoCache, cn) is None:
+            db.add(row)
+        db.commit()
+        return row
+
+    monkeypatch.setattr(cima_sync_service, "sync_cn", fake_sync)
+    result = run_backfill(
+        db_session,
+        source="cima",
+        scope="all-imported",
+        mode="run",
+        checkpoint_path=tmp_path / "checkpoint.json",
+        log_path=tmp_path / "run.jsonl",
+        sleep_seconds=0,
+        audit_before=True,
+        audit_after=True,
+    )
+
+    checkpoint = result["checkpoint"]
+    item = checkpoint["items"]["cima:830001"]
+    after_summary = json.loads(Path(result["audit_after_path"]).read_text())["summary"]
+    assert item["status"] == "error"
+    assert item["error"] == "cima sync_status=error; sync_error=timeout"
+    assert checkpoint["failed"] == 1
+    assert checkpoint["processed"] == _terminal_sum(checkpoint)
+    assert result["audit_delta"]["total_con_cima_cache"]["delta"] == 1
+    assert result["audit_delta"]["total_con_cima_cache_util"]["delta"] == 0
+    assert result["audit_delta"]["total_cima_error"]["delta"] == 1
+    assert after_summary["total_con_cima_cache_util"] == 0
+    assert after_summary["total_cima_error"] == 1
+    assert after_summary["total_sin_cima_cache_util_o_pendiente"] == 1
+
+    future_candidates = select_backfill_candidates(db_session, source="cima", scope="all-imported")
+    assert [(candidate.cn, candidate.reason) for candidate in future_candidates] == [("830001", "cima_error_reintentable")]
+
+
+def test_all_imported_negative_rows_are_distinct_from_useful_cache(db_session):
+    _add_gft(db_session, "840001", published=False)
+    _add_gft(db_session, "840002", published=False)
+    db_session.add(CimaMedicamentoCache(cn="840001", sync_status="not_found", sync_error=None))
+    db_session.add(BifimedCache(cn="840002", sync_status="not_found", sync_error=None))
+    db_session.commit()
+
+    summary = build_backfill_coverage_summary(db_session, scope="all-imported")
+    cima_candidates = select_backfill_candidates(db_session, source="cima", scope="all-imported")
+    bifimed_candidates = select_backfill_candidates(db_session, source="bifimed", scope="all-imported")
+
+    assert summary["total_con_cima_cache"] == 1
+    assert summary["total_con_cima_cache_util"] == 0
+    assert summary["total_cima_not_found"] == 1
+    assert summary["total_con_bifimed_cache"] == 1
+    assert summary["total_con_bifimed_cache_util"] == 0
+    assert summary["total_bifimed_not_found"] == 1
+    assert [(candidate.cn, candidate.reason) for candidate in cima_candidates] == [("840002", "sin_cima")]
+    assert [(candidate.cn, candidate.reason) for candidate in bifimed_candidates] == [("840001", "sin_bifimed_cache")]

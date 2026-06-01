@@ -61,6 +61,9 @@ def main(argv: list[str] | None = None) -> int:
     printable["succeeded"] = result["checkpoint"].get("succeeded", 0)
     printable["failed"] = result["checkpoint"].get("failed", 0)
     printable["skipped"] = result["checkpoint"].get("skipped", 0)
+    printable["not_found"] = result["checkpoint"].get("not_found", 0)
+    printable["no_data"] = result["checkpoint"].get("no_data", 0)
+    printable["unchanged"] = result["checkpoint"].get("unchanged", 0)
     print(json.dumps(printable, ensure_ascii=False, indent=2, default=str))
     return 0
 

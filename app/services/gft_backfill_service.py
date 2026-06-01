@@ -24,14 +24,14 @@ from app.services.normalization_service import NormalizationError, normalize_cn,
 
 BACKFILL_STATUSES = {
     "pending",
-    "skipped_existing",
+    "skipped",
     "success",
     "not_found",
     "no_data",
     "error",
-    "rate_limited",
     "unchanged",
 }
+TERMINAL_BACKFILL_STATUSES = {"success", "not_found", "no_data", "unchanged", "skipped", "error"}
 SOURCE_CHOICES = {"cima", "bifimed", "clinical", "all"}
 MODE_CHOICES = {"dry-run", "run"}
 SCOPE_GFT_PUBLICADA = "gft-publicada"
@@ -146,12 +146,58 @@ def _has_bifimed_indications(row: BifimedCache | None) -> bool:
     return False
 
 
+def _has_cima_useful_cache(row: CimaMedicamentoCache | None) -> bool:
+    if row is None or row.sync_status != "ok":
+        return False
+    return bool(_useful_fields(_snapshot(row, _CIMA_USEFUL_FIELDS)))
+
+
+def _has_bifimed_useful_cache(row: BifimedCache | None) -> bool:
+    if row is None or row.sync_status != "ok":
+        return False
+    return bool(_useful_fields(_snapshot(row, _BIFIMED_USEFUL_FIELDS)))
+
+
+def _is_negative_sync_status(sync_status: str | None) -> bool:
+    return sync_status in {"not_found", "no_data"}
+
+
 def _has_cima_incomplete_cache(row: CimaMedicamentoCache | None) -> bool:
     if row is None:
+        return False
+    if _is_negative_sync_status(row.sync_status):
         return False
     if row.sync_status != "ok":
         return True
     return not _has_value(row.url_ficha_tecnica)
+
+
+def _cima_status_bucket(row: CimaMedicamentoCache | None) -> str:
+    if row is None:
+        return "missing"
+    if _has_cima_useful_cache(row):
+        return "useful"
+    if row.sync_status == "not_found":
+        return "not_found"
+    if row.sync_status == "no_data" or (row.sync_status == "error" and not row.sync_error):
+        return "no_data"
+    if row.sync_status == "error":
+        return "error"
+    return "pending"
+
+
+def _bifimed_status_bucket(row: BifimedCache | None) -> str:
+    if row is None:
+        return "missing"
+    if _has_bifimed_useful_cache(row):
+        return "useful"
+    if row.sync_status == "not_found":
+        return "not_found"
+    if row.sync_status == "no_data" or (row.sync_status == "error" and not row.sync_error):
+        return "no_data"
+    if row.sync_status == "error":
+        return "error"
+    return "pending"
 
 
 def _master_universe_rows(db: Session) -> tuple[list[dict[str, Any]], int]:
@@ -262,19 +308,25 @@ def _select_master_candidates(
             reason: str | None = None
             if item_source == "cima":
                 cache = cima_by_cn.get(item_cn)
+                bucket = _cima_status_bucket(cache)
                 if not only_missing or force:
                     reason = "force_or_full_scan"
-                elif cache is None:
+                elif bucket in {"missing", "pending"}:
                     reason = "sin_cima"
+                elif bucket == "error":
+                    reason = "cima_error_reintentable"
                 elif include_incomplete and _has_cima_incomplete_cache(cache):
                     reason = "cima_cache_incompleto"
             elif item_source == "bifimed":
                 cache = bifimed_by_cn.get(item_cn)
+                bucket = _bifimed_status_bucket(cache)
                 if not only_missing or force:
                     reason = "force_or_full_scan"
-                elif cache is None:
+                elif bucket in {"missing", "pending"}:
                     reason = "sin_bifimed_cache"
-                elif include_incomplete and not _has_bifimed_indications(cache):
+                elif bucket == "error":
+                    reason = "bifimed_error_reintentable"
+                elif include_incomplete and cache is not None and cache.sync_status == "ok" and not _has_bifimed_indications(cache):
                     reason = "bifimed_sin_indicaciones"
             elif item_source == "clinical":
                 # Clinical backfill remains scoped to the published-GFT payload.
@@ -354,12 +406,26 @@ def build_backfill_coverage_summary(db: Session, *, scope: str) -> dict[str, int
         cima_by_cn = {row.cn: row for row in db.query(CimaMedicamentoCache).filter(CimaMedicamentoCache.cn.in_(cns)).all()} if cns else {}
         bifimed_by_cn = {row.cn: row for row in db.query(BifimedCache).filter(BifimedCache.cn.in_(cns)).all()} if cns else {}
         total_publicados = sum(1 for row in rows if row.get("estado_gft") == "incluido" and row.get("estado_editorial") == "publicado")
+        cima_buckets = Counter(_cima_status_bucket(cima_by_cn.get(cn)) for cn in cns)
+        bifimed_buckets = Counter(_bifimed_status_bucket(bifimed_by_cn.get(cn)) for cn in cns)
         return {
             "total_universe": len(cns),
+            # Legacy row-presence metrics: include ok/not_found/no_data/error rows stored for traceability.
             "total_con_cima_cache": sum(1 for cn in cns if cn in cima_by_cn),
             "total_sin_cima_cache": sum(1 for cn in cns if cn not in cima_by_cn),
             "total_con_bifimed_cache": sum(1 for cn in cns if cn in bifimed_by_cn),
             "total_sin_bifimed_cache": sum(1 for cn in cns if cn not in bifimed_by_cn),
+            # Useful-cache metrics: only real source data, never timeout/error/not_found trace rows.
+            "total_con_cima_cache_util": cima_buckets["useful"],
+            "total_cima_not_found": cima_buckets["not_found"],
+            "total_cima_no_data": cima_buckets["no_data"],
+            "total_cima_error": cima_buckets["error"],
+            "total_sin_cima_cache_util_o_pendiente": len(cns) - cima_buckets["useful"] - cima_buckets["not_found"] - cima_buckets["no_data"],
+            "total_con_bifimed_cache_util": bifimed_buckets["useful"],
+            "total_bifimed_not_found": bifimed_buckets["not_found"],
+            "total_bifimed_no_data": bifimed_buckets["no_data"],
+            "total_bifimed_error": bifimed_buckets["error"],
+            "total_sin_bifimed_cache_util_o_pendiente": len(cns) - bifimed_buckets["useful"] - bifimed_buckets["not_found"] - bifimed_buckets["no_data"],
             "total_con_indicaciones_bifimed": sum(1 for row in bifimed_by_cn.values() if _has_bifimed_indications(row)),
             "total_skipped_invalid_cn": skipped_invalid_cn,
             "total_publicados_gft": total_publicados,
@@ -375,6 +441,16 @@ def build_backfill_coverage_summary(db: Session, *, scope: str) -> dict[str, int
         "total_sin_cima_cache": int(summary.get("sin_cima") or 0),
         "total_con_bifimed_cache": int(summary.get("con_bifimed_cache") or 0),
         "total_sin_bifimed_cache": int(summary.get("sin_bifimed_cache") or 0),
+        "total_con_cima_cache_util": int(summary.get("con_cima") or 0),
+        "total_cima_not_found": 0,
+        "total_cima_no_data": 0,
+        "total_cima_error": 0,
+        "total_sin_cima_cache_util_o_pendiente": int(summary.get("sin_cima") or 0),
+        "total_con_bifimed_cache_util": int(summary.get("con_bifimed_cache") or 0),
+        "total_bifimed_not_found": 0,
+        "total_bifimed_no_data": 0,
+        "total_bifimed_error": 0,
+        "total_sin_bifimed_cache_util_o_pendiente": int(summary.get("sin_bifimed_cache") or 0),
         "total_con_indicaciones_bifimed": int(summary.get("con_indicaciones_bifimed") or 0),
         "total_skipped_invalid_cn": 0,
         "total_publicados_gft": total_publicados,
@@ -406,6 +482,9 @@ def initial_checkpoint(
         "succeeded": 0,
         "failed": 0,
         "skipped": 0,
+        "not_found": 0,
+        "no_data": 0,
+        "unchanged": 0,
         "last_cn": None,
         "items": {
             candidate.key: {
@@ -476,8 +555,20 @@ def append_jsonl(path: Path, record: dict[str, Any]) -> None:
         fh.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
 
 
-def audit_snapshot(db: Session, path: Path) -> dict[str, Any]:
-    result = audit_gft_coverage(db)
+def audit_snapshot(db: Session, path: Path, *, scope: str) -> dict[str, Any]:
+    gft_audit = audit_gft_coverage(db)
+    if scope in MASTER_SCOPES:
+        result = {
+            "scope": scope,
+            "summary": build_backfill_coverage_summary(db, scope=scope),
+            "gft_publicada": gft_audit,
+            "note": (
+                "Los CN con estado not_found/no_data quedan trazados en checkpoint/log de la ejecución; "
+                "pueden reaparecer en ejecuciones futuras si no existe un estado persistente global."
+            ),
+        }
+    else:
+        result = gft_audit
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         json.dump(result, fh, ensure_ascii=False, indent=2, default=str)
@@ -509,7 +600,13 @@ def _changed_fields(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
     return [field for field, old in before.items() if after.get(field) != old]
 
 
-def _status_from_sync_status(sync_status: str | None, *, before_useful: set[str], after_useful: set[str]) -> str:
+def _status_from_sync_status(
+    sync_status: str | None,
+    *,
+    before_useful: set[str],
+    after_useful: set[str],
+    sync_error: str | None = None,
+) -> str:
     if sync_status == "ok":
         if not after_useful:
             return "no_data"
@@ -518,8 +615,10 @@ def _status_from_sync_status(sync_status: str | None, *, before_useful: set[str]
         return "success"
     if sync_status == "not_found":
         return "not_found"
-    if sync_status in {"rate_limited", "timeout"}:
-        return "rate_limited"
+    if sync_status == "no_data":
+        return "no_data"
+    if sync_status == "error" and not sync_error and not after_useful:
+        return "no_data"
     return "error"
 
 
@@ -541,16 +640,26 @@ def _run_cima(db: Session, candidate: BackfillCandidate, *, force: bool) -> tupl
     existing = db.get(CimaMedicamentoCache, candidate.cn)
     before = _snapshot(existing, _CIMA_USEFUL_FIELDS)
     before_useful = _useful_fields(before)
-    row = cima_sync_service.sync_cn(db, candidate.cn, force=force)
+    row = cima_sync_service.sync_cn(db, candidate.cn, force=force or (existing is not None and existing.sync_status == "error"))
     restored = _restore_useful_fields(row, before)
     if restored:
         db.commit()
     after = _snapshot(row, _CIMA_USEFUL_FIELDS)
-    status = _status_from_sync_status(row.sync_status, before_useful=before_useful, after_useful=_useful_fields(after))
+    sync_error = getattr(row, "sync_error", None)
+    status = _status_from_sync_status(
+        row.sync_status,
+        before_useful=before_useful,
+        after_useful=_useful_fields(after),
+        sync_error=sync_error,
+    )
     changed = _changed_fields(before, after)
+    if status == "unchanged" and changed:
+        status = "success"
     if restored and status in {"success", "no_data"}:
         status = "unchanged"
     message = f"cima sync_status={row.sync_status}"
+    if status == "error" and sync_error:
+        message += f"; sync_error={sync_error}"
     if restored:
         message += f"; restored useful fields: {', '.join(restored)}"
     return status, changed, message
@@ -560,16 +669,26 @@ def _run_bifimed(db: Session, candidate: BackfillCandidate, *, force: bool) -> t
     existing = db.get(BifimedCache, candidate.cn)
     before = _snapshot(existing, _BIFIMED_USEFUL_FIELDS)
     before_useful = _useful_fields(before)
-    row = bifimed_sync_service.sync_bifimed_cn(db, candidate.cn, force=force)
+    row = bifimed_sync_service.sync_bifimed_cn(db, candidate.cn, force=force or (existing is not None and existing.sync_status == "error"))
     restored = _restore_useful_fields(row, before)
     if restored:
         db.commit()
     after = _snapshot(row, _BIFIMED_USEFUL_FIELDS)
-    status = _status_from_sync_status(row.sync_status, before_useful=before_useful, after_useful=_useful_fields(after))
+    sync_error = getattr(row, "sync_error", None)
+    status = _status_from_sync_status(
+        row.sync_status,
+        before_useful=before_useful,
+        after_useful=_useful_fields(after),
+        sync_error=sync_error,
+    )
     changed = _changed_fields(before, after)
+    if status == "unchanged" and changed:
+        status = "success"
     if restored and status in {"success", "no_data"}:
         status = "unchanged"
     message = f"bifimed sync_status={row.sync_status}"
+    if status == "error" and sync_error:
+        message += f"; sync_error={sync_error}"
     if restored:
         message += f"; restored useful fields: {', '.join(restored)}"
     return status, changed, message
@@ -580,7 +699,7 @@ def _run_clinical(db: Session, candidate: BackfillCandidate, *, force: bool) -> 
     before = _snapshot(current, (*_CLINICAL_USEFUL_FIELDS, "source_status", "source_hash"))
     before_useful = _useful_fields({field: before.get(field) for field in _CLINICAL_USEFUL_FIELDS})
     if current and not force and current.source_status in {"ok", "partial"}:
-        return "skipped_existing", [], "clinical summary already available"
+        return "skipped", [], "clinical summary already available"
     cima = db.get(CimaMedicamentoCache, candidate.cn)
     has_cima_ok = bool(cima and cima.sync_status == "ok")
     has_nregistro = bool(cima and (cima.nregistro or "").strip())
@@ -628,7 +747,7 @@ def execute_candidate(db: Session, candidate: BackfillCandidate, *, mode: str, o
     if mode == "dry-run":
         return "pending", [], f"dry-run candidate reason={candidate.reason}"
     if only_missing and not force and _existing_complete(db, candidate):
-        return "skipped_existing", [], "complete data already available; skipped without --force"
+        return "skipped", [], "complete data already available; skipped without --force"
     if candidate.source == "cima":
         return _run_cima(db, candidate, force=force)
     if candidate.source == "bifimed":
@@ -639,15 +758,24 @@ def execute_candidate(db: Session, candidate: BackfillCandidate, *, mode: str, o
 
 
 def _is_failure(status: str) -> bool:
-    return status in {"error", "rate_limited"}
+    return status == "error"
+
+
+def _normalize_legacy_status(status: str | None) -> str:
+    if status in {"skipped_existing", "rate_limited"}:
+        return "skipped" if status == "skipped_existing" else "error"
+    return status or "pending"
 
 
 def recompute_checkpoint_counts(checkpoint: dict[str, Any]) -> None:
-    counts = Counter(item.get("status", "pending") for item in checkpoint.get("items", {}).values())
+    counts = Counter(_normalize_legacy_status(item.get("status", "pending")) for item in checkpoint.get("items", {}).values())
     checkpoint["succeeded"] = counts["success"]
-    checkpoint["failed"] = counts["error"] + counts["rate_limited"]
-    checkpoint["skipped"] = counts["skipped_existing"]
-    checkpoint["processed"] = sum(counts[status] for status in BACKFILL_STATUSES if status != "pending")
+    checkpoint["failed"] = counts["error"]
+    checkpoint["skipped"] = counts["skipped"]
+    checkpoint["not_found"] = counts["not_found"]
+    checkpoint["no_data"] = counts["no_data"]
+    checkpoint["unchanged"] = counts["unchanged"]
+    checkpoint["processed"] = sum(counts[status] for status in TERMINAL_BACKFILL_STATUSES)
 
 
 def run_backfill(
@@ -690,7 +818,7 @@ def run_backfill(
     before_path = None
     if audit_before:
         before_path = audit_path("before")
-        before_audit = audit_snapshot(db, before_path)
+        before_audit = audit_snapshot(db, before_path, scope=scope)
 
     if resume and checkpoint_path.exists():
         checkpoint = merge_resume_checkpoint(
@@ -718,7 +846,7 @@ def run_backfill(
     stopped = False
     for idx, candidate in enumerate(candidates):
         item = checkpoint["items"].setdefault(candidate.key, {"cn": candidate.cn, "source": candidate.source, "status": "pending"})
-        if resume and item.get("status") in {"success", "skipped_existing"}:
+        if resume and _normalize_legacy_status(item.get("status")) in TERMINAL_BACKFILL_STATUSES - {"error"}:
             continue
         started = time.perf_counter()
         status = "error"
@@ -731,7 +859,7 @@ def run_backfill(
             db.rollback()
             error = f"{type(exc).__name__}: {exc}"[:500]
             message = "candidate failed"
-            status = "rate_limited" if "rate" in error.lower() or "429" in error else "error"
+            status = "error"
         duration_ms = int((time.perf_counter() - started) * 1000)
         item.update(
             {
@@ -743,7 +871,7 @@ def run_backfill(
                 "reason": candidate.reason,
                 "message": message,
                 "changed_fields": changed_fields,
-                "error": error,
+                "error": error or (message if status == "error" else None),
                 "updated_at": utc_now_iso(),
             }
         )
@@ -764,7 +892,7 @@ def run_backfill(
                 "duration_ms": duration_ms,
                 "changed_fields": changed_fields or None,
                 "reason": candidate.reason,
-                "error": error,
+                "error": error or (message if status == "error" else None),
             },
         )
         if stop_on_error and _is_failure(status):
@@ -777,7 +905,7 @@ def run_backfill(
     after_path = None
     if audit_after:
         after_path = audit_path("after")
-        after_audit = audit_snapshot(db, after_path)
+        after_audit = audit_snapshot(db, after_path, scope=scope)
 
     checkpoint["finished_at"] = utc_now_iso()
     recompute_checkpoint_counts(checkpoint)
