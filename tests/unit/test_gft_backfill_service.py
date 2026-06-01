@@ -73,7 +73,6 @@ def _add_gft(db_session, cn, *, published=True, url_ft=None):
 def test_candidate_selection_only_published_and_missing_sources(db_session):
     _add_gft(db_session, "100001", published=True)
     _add_gft(db_session, "100002", published=False)
-    db_session.add(BifimedCache(cn="100001", sync_status="ok", detalle_financiacion_json={"indicaciones": []}))
     db_session.commit()
     _create_view(db_session)
 
@@ -82,7 +81,7 @@ def test_candidate_selection_only_published_and_missing_sources(db_session):
 
     assert all(candidate.cn == "100001" for candidate in candidates)
     assert ("100001", "cima", "sin_cima") in keys
-    assert ("100001", "bifimed", "bifimed_sin_indicaciones") in keys
+    assert ("100001", "bifimed", "sin_bifimed_cache") in keys
     assert ("100001", "clinical", "sin_resumen_clinico") in keys
     assert not any(candidate.cn == "100002" for candidate in candidates)
 
@@ -99,14 +98,46 @@ def test_candidate_selection_detects_missing_bifimed_cache_and_respects_only_mis
     assert [(candidate.cn, candidate.reason) for candidate in full_scan] == [("200001", "force_or_full_scan")]
 
 
-def test_candidate_selection_detects_cima_without_indications(db_session):
+def test_candidate_selection_skips_cima_without_indications_by_default(db_session):
     _add_gft(db_session, "200002", published=True, url_ft="https://example.test/ft/200002")
     db_session.commit()
     _create_view(db_session)
 
     candidates = select_backfill_candidates(db_session, source="cima")
 
-    assert [(candidate.cn, candidate.reason) for candidate in candidates] == [("200002", "sin_indicaciones_cima")]
+    assert candidates == []
+
+
+def test_candidate_selection_includes_cima_without_indications_when_requested(db_session):
+    _add_gft(db_session, "200003", published=True, url_ft="https://example.test/ft/200003")
+    db_session.commit()
+    _create_view(db_session)
+
+    candidates = select_backfill_candidates(db_session, source="cima", include_incomplete=True)
+
+    assert [(candidate.cn, candidate.reason) for candidate in candidates] == [("200003", "sin_indicaciones_cima")]
+
+
+def test_candidate_selection_skips_bifimed_without_indications_by_default(db_session):
+    _add_gft(db_session, "200004", published=True)
+    db_session.add(BifimedCache(cn="200004", sync_status="ok", detalle_financiacion_json={"indicaciones": []}))
+    db_session.commit()
+    _create_view(db_session)
+
+    candidates = select_backfill_candidates(db_session, source="bifimed")
+
+    assert candidates == []
+
+
+def test_candidate_selection_includes_bifimed_without_indications_when_requested(db_session):
+    _add_gft(db_session, "200005", published=True)
+    db_session.add(BifimedCache(cn="200005", sync_status="ok", detalle_financiacion_json={"indicaciones": []}))
+    db_session.commit()
+    _create_view(db_session)
+
+    candidates = select_backfill_candidates(db_session, source="bifimed", include_incomplete=True)
+
+    assert [(candidate.cn, candidate.reason) for candidate in candidates] == [("200005", "bifimed_sin_indicaciones")]
 
 
 def test_dry_run_does_not_call_sync_and_writes_checkpoint_and_log(db_session, tmp_path, monkeypatch):
@@ -233,4 +264,35 @@ def test_cli_defaults_and_source_all_parse():
     assert args.source == "all"
     assert args.mode == "dry-run"
     assert args.only_missing is True
+    assert args.include_incomplete is False
     assert args.force is False
+
+
+def test_cli_include_incomplete_parse():
+    args = parse_args(["--source", "bifimed", "--include-incomplete"])
+
+    assert args.include_incomplete is True
+
+
+def test_dry_run_cima_prefers_missing_cache_over_incomplete_batch(db_session, tmp_path):
+    for idx in range(10):
+        _add_gft(db_session, f"6100{idx:02d}", published=True, url_ft=f"https://example.test/ft/6100{idx:02d}")
+    for idx in range(3):
+        _add_gft(db_session, f"6200{idx:02d}", published=True)
+    db_session.commit()
+    _create_view(db_session)
+
+    result = run_backfill(
+        db_session,
+        source="cima",
+        mode="dry-run",
+        limit=50,
+        checkpoint_path=tmp_path / "checkpoint.json",
+        log_path=tmp_path / "run.jsonl",
+        sleep_seconds=0,
+    )
+
+    items = result["checkpoint"]["items"].values()
+    assert len(items) == 3
+    assert {item["reason"] for item in items} == {"sin_cima"}
+    assert not any(item["reason"] == "sin_indicaciones_cima" for item in items)
