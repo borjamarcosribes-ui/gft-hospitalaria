@@ -11,15 +11,16 @@ from typing import Any, Callable, Iterable
 from sqlalchemy.orm import Session
 
 from app.models.bifimed_cache import BifimedCache
-from app.models.cima_ficha_tecnica_cache import CimaFichaTecnicaCache
 from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.models.gft_estado_presentacion import GFTEstadoPresentacion
 from app.services import bifimed_sync_service, cima_sync_service
 from app.services.gft_canonical_payload_service import audit_gft_coverage, build_gft_canonical_payload
-from app.services.gft_clinical_pipeline_service import TARGET_SECTIONS
-from app.services.gft_clinical_sections_auditability import build_auditable_section_scope_filters
-from app.services.gft_clinical_summary_service import build_clinical_summary
+from app.services.cima_clinical_extraction_service import (
+    NO_INFORMADO as CLINICAL_NO_INFORMADO,
+    clinical_extraction_hash,
+    extract_clinical_fields_from_cima_row,
+)
 from app.services.normalization_service import NormalizationError, normalize_cn, normalize_cn_or_raise
 
 BACKFILL_STATUSES = {
@@ -575,41 +576,55 @@ def _run_bifimed(db: Session, candidate: BackfillCandidate, *, force: bool) -> t
     return status, changed, message
 
 
+def _clinical_text_or_none(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text == CLINICAL_NO_INFORMADO:
+        return None
+    return text
+
+
 def _run_clinical(db: Session, candidate: BackfillCandidate, *, force: bool) -> tuple[str, list[str], str]:
     current = db.get(GftClinicalSummaryCache, candidate.cn)
     before = _snapshot(current, (*_CLINICAL_USEFUL_FIELDS, "source_status", "source_hash"))
     before_useful = _useful_fields({field: before.get(field) for field in _CLINICAL_USEFUL_FIELDS})
     if current and not force and current.source_status in {"ok", "partial"}:
         return "skipped_existing", [], "clinical summary already available"
+
     cima = db.get(CimaMedicamentoCache, candidate.cn)
-    has_cima_ok = bool(cima and cima.sync_status == "ok")
-    has_nregistro = bool(cima and (cima.nregistro or "").strip())
-    filters = build_auditable_section_scope_filters(
-        [candidate.cn],
-        [cima.nregistro if cima and cima.nregistro else ""],
-        list(TARGET_SECTIONS),
-    )
-    rows = db.query(CimaFichaTecnicaCache).filter(filters).all()
-    summary = build_clinical_summary({r.seccion: (r.contenido_texto or "") for r in rows}, has_nregistro=has_nregistro, has_cima_ok=has_cima_ok)
-    source_status = summary.get("source_status", "error")
-    if source_status == "missing_source" and before_useful:
+    result = extract_clinical_fields_from_cima_row(cima)
+    source_status = result.status
+    if source_status == "no_data" and before_useful:
         return "unchanged", [], "empty clinical source; preserved existing summary"
+
     row = current or GftClinicalSummaryCache(cn=candidate.cn)
+
+    def new_or_existing(new_value: str | None, field: str) -> str | None:
+        value = _clinical_text_or_none(new_value)
+        if value is not None:
+            return value
+        previous = before.get(field)
+        if _has_value(previous):
+            return previous
+        return None
+
     row.source_status = source_status
     row.generated_at = datetime.now(timezone.utc)
-    row.source_sections_json = summary.get("source_sections_json")
-    row.source_hash = summary.get("source_hash")
-    row.resumen_general = summary.get("resumen_general")
-    row.resumen_indicaciones = summary.get("resumen_indicaciones")
-    row.resumen_posologia = summary.get("resumen_posologia")
-    row.resumen_ajuste_renal = summary.get("resumen_ajuste_renal")
-    row.resumen_ajuste_hepatico = summary.get("resumen_ajuste_hepatico")
-    row.resumen_contraindicaciones = summary.get("resumen_contraindicaciones")
-    row.resumen_advertencias = summary.get("resumen_advertencias")
-    row.resumen_embarazo = summary.get("resumen_embarazo")
-    row.resumen_lactancia = summary.get("resumen_lactancia")
-    row.resumen_fuente_json = summary.get("resumen_fuente_json")
-    row.warnings_json = summary.get("warnings_json")
+    row.source_sections_json = result.extracted_sections
+    row.source_hash = clinical_extraction_hash(result)
+    row.resumen_general = None
+    row.resumen_indicaciones = new_or_existing(result.indicaciones_ficha_tecnica, "resumen_indicaciones")
+    row.resumen_posologia = new_or_existing(None, "resumen_posologia")
+    row.resumen_ajuste_renal = new_or_existing(result.ajuste_insuficiencia_renal, "resumen_ajuste_renal")
+    row.resumen_ajuste_hepatico = new_or_existing(result.ajuste_insuficiencia_hepatica, "resumen_ajuste_hepatico")
+    row.resumen_contraindicaciones = new_or_existing(None, "resumen_contraindicaciones")
+    row.resumen_advertencias = new_or_existing(None, "resumen_advertencias")
+    row.resumen_embarazo = new_or_existing(result.precauciones_embarazo, "resumen_embarazo")
+    row.resumen_lactancia = new_or_existing(result.precauciones_lactancia, "resumen_lactancia")
+    row.resumen_fuente_json = result.to_summary_source()
+    row.warnings_json = result.warnings
+    row.error_message = result.error
     if current is None:
         db.add(row)
     db.commit()
@@ -617,11 +632,16 @@ def _run_clinical(db: Session, candidate: BackfillCandidate, *, force: bool) -> 
     after_useful = _useful_fields({field: after.get(field) for field in _CLINICAL_USEFUL_FIELDS})
     if source_status in {"ok", "partial"} and after_useful:
         status = "success" if before != after else "unchanged"
-    elif source_status == "missing_source":
+    elif source_status == "no_data":
         status = "no_data"
     else:
         status = "error"
-    return status, _changed_fields(before, after), f"clinical source_status={source_status}"
+    message = f"clinical source_status={source_status}"
+    if source_status == "partial":
+        message += "; clinical partial extraction"
+    if result.error:
+        message += f"; error={result.error[:120]}"
+    return status, _changed_fields(before, after), message
 
 
 def execute_candidate(db: Session, candidate: BackfillCandidate, *, mode: str, only_missing: bool, force: bool) -> tuple[str, list[str], str]:

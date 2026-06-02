@@ -425,3 +425,113 @@ def test_dry_run_all_imported_writes_scope_and_does_not_sync(db_session, tmp_pat
     assert checkpoint_payload["scope"] == "all-imported"
     assert checkpoint_payload["items"]["cima:740001"]["scope"] == "all-imported"
     assert record["scope"] == "all-imported"
+
+
+def test_backfill_clinical_with_mocked_html_extraction_success_no_data_and_error(db_session, tmp_path, monkeypatch):
+    from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
+
+    for cn in ("800001", "800002", "800003"):
+        _add_gft(db_session, cn, published=True)
+        db_session.add(
+            CimaMedicamentoCache(
+                cn=cn,
+                sync_status="ok",
+                nregistro=f"NR{cn}",
+                documentos_json=[{"tipo": 1, "urlHtml": f"https://example.test/{cn}.html"}],
+            )
+        )
+    db_session.commit()
+    _create_view(db_session)
+
+    def fake_fetch(url):
+        if url.endswith("800001.html"):
+            return """
+            <h2>4.1 Indicaciones terapéuticas</h2><p>Indicación de ficha técnica suficientemente completa.</p>
+            <h2>4.6 Fertilidad, embarazo y lactancia</h2><p>Embarazo: usar solo si es necesario.</p>
+            """
+        if url.endswith("800002.html"):
+            return "<h1>1. Nombre del medicamento</h1><p>Sin datos clínicos objetivo.</p>"
+        raise RuntimeError("fallo técnico controlado")
+
+    monkeypatch.setattr("app.services.cima_clinical_extraction_service.fetch_html", fake_fetch)
+
+    result = run_backfill(
+        db_session,
+        source="clinical",
+        mode="run",
+        only_missing=False,
+        checkpoint_path=tmp_path / "checkpoint.json",
+        log_path=tmp_path / "run.jsonl",
+        sleep_seconds=0,
+    )
+
+    items = result["checkpoint"]["items"]
+    assert items["clinical:800001"]["status"] == "success"
+    assert items["clinical:800002"]["status"] == "no_data"
+    assert items["clinical:800003"]["status"] == "error"
+    summary = db_session.get(GftClinicalSummaryCache, "800001")
+    assert summary.source_status == "partial"
+    assert summary.resumen_indicaciones == "Indicación de ficha técnica suficientemente completa."
+    assert summary.resumen_fuente_json["source_type"] == "cima_ficha_tecnica_html"
+
+
+def test_canonical_payload_uses_auto_clinical_fallback_and_preserves_manual_fields(db_session):
+    from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
+    from app.services.gft_canonical_payload_service import build_gft_canonical_payload
+
+    _add_gft(db_session, "810001", published=True)
+    db_session.add(
+        GftClinicalSummaryCache(
+            cn="810001",
+            source_status="partial",
+            resumen_indicaciones="Indicación automática desde sección 4.1.",
+            resumen_ajuste_renal="Texto automático renal.",
+            resumen_ajuste_hepatico="Texto automático hepático.",
+            resumen_embarazo="Texto automático embarazo.",
+            resumen_lactancia="Texto automático lactancia.",
+            resumen_fuente_json={"source_type": "cima_ficha_tecnica_html"},
+        )
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    payload = build_gft_canonical_payload(db_session, "810001")
+
+    assert payload["indicaciones_ficha_tecnica"] == "Indicación automática desde sección 4.1."
+    assert payload["ajuste_insuficiencia_renal"] == "Texto automático renal."
+    assert payload["precauciones_lactancia"] == "Texto automático lactancia."
+    assert "indicaciones_ficha_tecnica" not in payload["campos_faltantes"]
+    assert "ajuste_insuficiencia_renal" not in payload["campos_faltantes"]
+    assert payload["estado_resumen_clinico"] == "partial"
+    assert payload["resumen_clinico_auto"] is not None
+
+    row = db_session.get(GFTEstadoPresentacion, "810001")
+    row.ajuste_insuficiencia_renal = "Criterio manual renal prevalente."
+    db_session.commit()
+    payload = build_gft_canonical_payload(db_session, "810001")
+
+    assert payload["ajuste_insuficiencia_renal"] == "Criterio manual renal prevalente."
+
+
+def test_canonical_payload_does_not_replace_manual_with_empty_auto_extraction(db_session):
+    from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
+    from app.services.gft_canonical_payload_service import build_gft_canonical_payload
+
+    _add_gft(db_session, "820001", published=True)
+    row = db_session.get(GFTEstadoPresentacion, "820001")
+    row.precauciones_embarazo = "Precaución manual de embarazo."
+    db_session.add(
+        GftClinicalSummaryCache(
+            cn="820001",
+            source_status="no_data",
+            resumen_embarazo=None,
+            resumen_lactancia=None,
+        )
+    )
+    db_session.commit()
+    _create_view(db_session)
+
+    payload = build_gft_canonical_payload(db_session, "820001")
+
+    assert payload["precauciones_embarazo"] == "Precaución manual de embarazo."
+    assert payload["precauciones_lactancia"] == "No informado"
