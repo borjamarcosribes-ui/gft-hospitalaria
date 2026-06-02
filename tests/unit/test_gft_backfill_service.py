@@ -535,3 +535,83 @@ def test_canonical_payload_does_not_replace_manual_with_empty_auto_extraction(db
 
     assert payload["precauciones_embarazo"] == "Precaución manual de embarazo."
     assert payload["precauciones_lactancia"] == "No informado"
+
+
+def test_all_imported_coverage_separates_useful_not_found_and_errors(db_session, tmp_path):
+    for cn in ("830001", "830002", "830003", "830004"):
+        _add_gft(db_session, cn, published=False)
+    db_session.add(CimaMedicamentoCache(cn="830001", sync_status="ok", nregistro="NR830001", url_ficha_tecnica="https://example.test/ft"))
+    db_session.add(CimaMedicamentoCache(cn="830002", sync_status="not_found"))
+    db_session.add(CimaMedicamentoCache(cn="830003", sync_status="error", sync_error="timeout"))
+    db_session.add(BifimedCache(cn="830001", sync_status="ok", situacion_financiacion="Financiado"))
+    db_session.add(BifimedCache(cn="830002", sync_status="not_found"))
+    db_session.add(BifimedCache(cn="830003", sync_status="error", sync_error="timeout"))
+    db_session.commit()
+
+    summary = run_backfill(
+        db_session,
+        source="all",
+        scope="all-imported",
+        mode="dry-run",
+        checkpoint_path=tmp_path / "coverage_checkpoint.json",
+        log_path=tmp_path / "coverage_log.jsonl",
+        sleep_seconds=0,
+    )["checkpoint"]
+
+    assert summary["total_con_cima_cache"] == 3
+    assert summary["total_con_cima_cache_util"] == 1
+    assert summary["total_cima_not_found"] == 1
+    assert summary["total_cima_error"] == 1
+    assert summary["total_con_bifimed_cache"] == 3
+    assert summary["total_con_bifimed_cache_util"] == 1
+    assert summary["total_bifimed_not_found"] == 1
+    assert summary["total_bifimed_error"] == 1
+
+
+def test_all_imported_retries_error_cache_but_not_not_found_by_default(db_session):
+    for cn in ("840001", "840002", "840003"):
+        _add_gft(db_session, cn, published=False)
+    db_session.add(CimaMedicamentoCache(cn="840001", sync_status="error", sync_error="timeout"))
+    db_session.add(CimaMedicamentoCache(cn="840002", sync_status="not_found"))
+    db_session.add(BifimedCache(cn="840001", sync_status="error", sync_error="timeout"))
+    db_session.add(BifimedCache(cn="840002", sync_status="not_found"))
+    db_session.commit()
+
+    candidates = select_backfill_candidates(db_session, source="all", scope="all-imported")
+    keys = {(candidate.cn, candidate.source, candidate.reason) for candidate in candidates}
+
+    assert ("840001", "cima", "cima_error_reintentable") in keys
+    assert ("840001", "bifimed", "bifimed_error_reintentable") in keys
+    assert ("840003", "cima", "sin_cima") in keys
+    assert ("840003", "bifimed", "sin_bifimed_cache") in keys
+    assert not any(candidate.cn == "840002" for candidate in candidates)
+
+
+def test_run_maps_timeout_sync_status_to_retryable_error_not_useful_cache(db_session, tmp_path, monkeypatch):
+    _add_gft(db_session, "850001", published=False)
+    db_session.add(CimaMedicamentoCache(cn="850001", sync_status="error", sync_error="previous timeout"))
+    db_session.commit()
+
+    def fake_sync(db, cn, force=False):
+        row = db.get(CimaMedicamentoCache, cn)
+        row.sync_status = "timeout"
+        row.sync_error = "timeout"
+        db.commit()
+        return row
+
+    monkeypatch.setattr(cima_sync_service, "sync_cn", fake_sync)
+    result = run_backfill(
+        db_session,
+        source="cima",
+        scope="all-imported",
+        mode="run",
+        checkpoint_path=tmp_path / "checkpoint.json",
+        log_path=tmp_path / "run.jsonl",
+        sleep_seconds=0,
+    )
+
+    item = result["checkpoint"]["items"]["cima:850001"]
+    assert item["status"] == "error"
+    assert result["checkpoint"]["failed"] == 1
+    assert result["checkpoint"]["total_con_cima_cache_util"] == 0
+    assert result["checkpoint"]["total_cima_error"] == 1
