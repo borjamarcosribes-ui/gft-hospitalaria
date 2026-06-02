@@ -169,6 +169,15 @@ def _has_cima_incomplete_cache(row: CimaMedicamentoCache | None) -> bool:
     return not _has_value(row.url_ficha_tecnica)
 
 
+def _payload_lacks_cima_indications(payload: dict[str, Any], missing_fields: set[str] | None = None) -> bool:
+    value = str(payload.get("indicaciones_ficha_tecnica") or "").strip()
+    missing = missing_fields or set()
+    return (
+        "indicaciones_ficha_tecnica" in missing
+        or value in {"", "No informado", "No localizado autom?ticamente en las secciones analizadas."}
+    )
+
+
 def _master_universe_rows(db: Session) -> tuple[list[dict[str, Any]], int]:
     rows = db.query(GFTEstadoPresentacion).order_by(GFTEstadoPresentacion.cn).all()
     by_cn: dict[str, dict[str, Any]] = {}
@@ -227,14 +236,17 @@ def _select_published_gft_candidates(
                 if not only_missing or force:
                     reason = "force_or_full_scan"
                 elif cache is None:
-                    reason = "sin_cima" if payload.get("estado_cima") != "disponible" else None
+                    if payload.get("estado_cima") != "disponible":
+                        reason = "sin_cima"
+                    elif include_incomplete and _payload_lacks_cima_indications(payload, missing_fields):
+                        reason = "sin_indicaciones_cima"
                 elif _is_retryable_sync_status(cache.sync_status):
                     reason = "cima_error_reintentable"
                 elif cache.sync_status == "not_found":
                     reason = None
                 elif payload.get("estado_cima") != "disponible" and cache.sync_status != "ok":
                     reason = "sin_cima"
-                elif include_incomplete and "indicaciones_ficha_tecnica" in missing_fields:
+                elif include_incomplete and _payload_lacks_cima_indications(payload, missing_fields):
                     reason = "sin_indicaciones_cima"
             elif item_source == "bifimed":
                 cache = db.get(BifimedCache, item_cn)

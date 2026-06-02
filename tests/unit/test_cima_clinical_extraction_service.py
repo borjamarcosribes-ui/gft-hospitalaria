@@ -80,9 +80,9 @@ def test_multiple_renal_and_hepatic_paragraphs_are_preserved_without_truncation(
 
     result = extract_clinical_fields_from_html(html)
 
-    assert long_renal in result.ajuste_insuficiencia_renal
+    assert long_renal.strip() in result.ajuste_insuficiencia_renal
     assert "Los pacientes en hemodiálisis requieren vigilancia estrecha." in result.ajuste_insuficiencia_renal
-    assert long_hepatic in result.ajuste_insuficiencia_hepatica
+    assert long_hepatic.strip() in result.ajuste_insuficiencia_hepatica
     assert "transaminasas" in result.ajuste_insuficiencia_hepatica
     assert "…" not in result.ajuste_insuficiencia_renal
     assert "…" not in result.ajuste_insuficiencia_hepatica

@@ -517,9 +517,20 @@ def test_canonical_payload_does_not_replace_manual_with_empty_auto_extraction(db
     from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
     from app.services.gft_canonical_payload_service import build_gft_canonical_payload
 
-    _add_gft(db_session, "820001", published=True)
-    row = db_session.get(GFTEstadoPresentacion, "820001")
-    row.precauciones_embarazo = "Precaución manual de embarazo."
+    db_session.add(
+        GFTEstadoPresentacion(
+            cn="820001",
+            estado_gft="incluido",
+            estado_editorial="publicado",
+            nemonico="N-820001",
+            nombre_comercial_importado="Medicamento 820001",
+            principio_activo_importado="Activo",
+            presentacion_importada="Presentaci?n",
+            forma_farmaceutica_importada="Comprimido",
+            via_administracion_importada="Oral",
+            precauciones_embarazo="Precauci?n manual de embarazo.",
+        )
+    )
     db_session.add(
         GftClinicalSummaryCache(
             cn="820001",
@@ -533,9 +544,8 @@ def test_canonical_payload_does_not_replace_manual_with_empty_auto_extraction(db
 
     payload = build_gft_canonical_payload(db_session, "820001")
 
-    assert payload["precauciones_embarazo"] == "Precaución manual de embarazo."
+    assert payload["precauciones_embarazo"] == "Precauci?n manual de embarazo."
     assert payload["precauciones_lactancia"] == "No informado"
-
 
 def test_all_imported_coverage_separates_useful_not_found_and_errors(db_session, tmp_path):
     for cn in ("830001", "830002", "830003", "830004"):
