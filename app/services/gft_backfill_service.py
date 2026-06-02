@@ -41,6 +41,8 @@ SCOPE_EXCEL_MASTER = "excel-master"
 SCOPE_CHOICES = {SCOPE_GFT_PUBLICADA, SCOPE_EXCEL_MASTER, SCOPE_ALL_IMPORTED}
 MASTER_SCOPES = {SCOPE_EXCEL_MASTER, SCOPE_ALL_IMPORTED}
 DEFAULT_SLEEP_SECONDS = 0.5
+RETRYABLE_SYNC_STATUSES = {"error", "timeout", "rate_limited"}
+NON_RETRYABLE_TERMINAL_STATUSES = {"success", "not_found", "no_data", "unchanged", "skipped_existing", "skipped"}
 
 _CIMA_USEFUL_FIELDS = (
     "nregistro",
@@ -103,6 +105,18 @@ def _snapshot(row: Any | None, fields: Iterable[str]) -> dict[str, Any]:
 
 def _useful_fields(snapshot: dict[str, Any]) -> set[str]:
     return {field for field, value in snapshot.items() if _has_value(value)}
+
+
+def _is_retryable_sync_status(sync_status: str | None) -> bool:
+    return bool(sync_status and sync_status in RETRYABLE_SYNC_STATUSES)
+
+
+def _has_cima_cache_util(row: CimaMedicamentoCache | None) -> bool:
+    return bool(row and row.sync_status == "ok" and _useful_fields(_snapshot(row, _CIMA_USEFUL_FIELDS)))
+
+
+def _has_bifimed_cache_util(row: BifimedCache | None) -> bool:
+    return bool(row and row.sync_status == "ok" and _useful_fields(_snapshot(row, _BIFIMED_USEFUL_FIELDS)))
 
 
 def _restore_useful_fields(row: Any, previous: dict[str, Any]) -> list[str]:
@@ -209,16 +223,30 @@ def _select_published_gft_candidates(
         for item_source in requested_sources:
             reason: str | None = None
             if item_source == "cima":
+                cache = db.get(CimaMedicamentoCache, item_cn)
                 if not only_missing or force:
                     reason = "force_or_full_scan"
-                elif payload.get("estado_cima") != "disponible":
+                elif cache is None:
+                    reason = "sin_cima" if payload.get("estado_cima") != "disponible" else None
+                elif _is_retryable_sync_status(cache.sync_status):
+                    reason = "cima_error_reintentable"
+                elif cache.sync_status == "not_found":
+                    reason = None
+                elif payload.get("estado_cima") != "disponible" and cache.sync_status != "ok":
                     reason = "sin_cima"
                 elif include_incomplete and "indicaciones_ficha_tecnica" in missing_fields:
                     reason = "sin_indicaciones_cima"
             elif item_source == "bifimed":
+                cache = db.get(BifimedCache, item_cn)
                 if not only_missing or force:
                     reason = "force_or_full_scan"
-                elif not payload.get("bifimed_cache_presente"):
+                elif cache is None:
+                    reason = "sin_bifimed_cache" if not payload.get("bifimed_cache_presente") else None
+                elif _is_retryable_sync_status(cache.sync_status):
+                    reason = "bifimed_error_reintentable"
+                elif cache.sync_status == "not_found":
+                    reason = None
+                elif not payload.get("bifimed_cache_presente") and cache.sync_status != "ok":
                     reason = "sin_bifimed_cache"
                 elif include_incomplete and not payload.get("indicaciones_bifimed"):
                     reason = "bifimed_sin_indicaciones"
@@ -267,6 +295,10 @@ def _select_master_candidates(
                     reason = "force_or_full_scan"
                 elif cache is None:
                     reason = "sin_cima"
+                elif _is_retryable_sync_status(cache.sync_status):
+                    reason = "cima_error_reintentable"
+                elif cache.sync_status == "not_found":
+                    reason = None
                 elif include_incomplete and _has_cima_incomplete_cache(cache):
                     reason = "cima_cache_incompleto"
             elif item_source == "bifimed":
@@ -275,6 +307,10 @@ def _select_master_candidates(
                     reason = "force_or_full_scan"
                 elif cache is None:
                     reason = "sin_bifimed_cache"
+                elif _is_retryable_sync_status(cache.sync_status):
+                    reason = "bifimed_error_reintentable"
+                elif cache.sync_status == "not_found":
+                    reason = None
                 elif include_incomplete and not _has_bifimed_indications(cache):
                     reason = "bifimed_sin_indicaciones"
             elif item_source == "clinical":
@@ -355,12 +391,22 @@ def build_backfill_coverage_summary(db: Session, *, scope: str) -> dict[str, int
         cima_by_cn = {row.cn: row for row in db.query(CimaMedicamentoCache).filter(CimaMedicamentoCache.cn.in_(cns)).all()} if cns else {}
         bifimed_by_cn = {row.cn: row for row in db.query(BifimedCache).filter(BifimedCache.cn.in_(cns)).all()} if cns else {}
         total_publicados = sum(1 for row in rows if row.get("estado_gft") == "incluido" and row.get("estado_editorial") == "publicado")
+        cima_scope_rows = [cima_by_cn[cn] for cn in cns if cn in cima_by_cn]
+        bifimed_scope_rows = [bifimed_by_cn[cn] for cn in cns if cn in bifimed_by_cn]
         return {
             "total_universe": len(cns),
             "total_con_cima_cache": sum(1 for cn in cns if cn in cima_by_cn),
             "total_sin_cima_cache": sum(1 for cn in cns if cn not in cima_by_cn),
+            "total_con_cima_cache_util": sum(1 for row in cima_scope_rows if _has_cima_cache_util(row)),
+            "total_cima_not_found": sum(1 for row in cima_scope_rows if row.sync_status == "not_found"),
+            "total_cima_error": sum(1 for row in cima_scope_rows if _is_retryable_sync_status(row.sync_status)),
+            "total_cima_no_data": sum(1 for row in cima_scope_rows if row.sync_status == "ok" and not _has_cima_cache_util(row)),
             "total_con_bifimed_cache": sum(1 for cn in cns if cn in bifimed_by_cn),
             "total_sin_bifimed_cache": sum(1 for cn in cns if cn not in bifimed_by_cn),
+            "total_con_bifimed_cache_util": sum(1 for row in bifimed_scope_rows if _has_bifimed_cache_util(row)),
+            "total_bifimed_not_found": sum(1 for row in bifimed_scope_rows if row.sync_status == "not_found"),
+            "total_bifimed_error": sum(1 for row in bifimed_scope_rows if _is_retryable_sync_status(row.sync_status)),
+            "total_bifimed_no_data": sum(1 for row in bifimed_scope_rows if row.sync_status == "ok" and not _has_bifimed_cache_util(row)),
             "total_con_indicaciones_bifimed": sum(1 for row in bifimed_by_cn.values() if _has_bifimed_indications(row)),
             "total_skipped_invalid_cn": skipped_invalid_cn,
             "total_publicados_gft": total_publicados,
@@ -369,13 +415,26 @@ def build_backfill_coverage_summary(db: Session, *, scope: str) -> dict[str, int
 
     audit = audit_gft_coverage(db)
     summary = audit.get("summary", {})
+    cns = [normalize_cn(item.get("cn")) for item in audit.get("items", []) if normalize_cn(item.get("cn"))]
+    cima_by_cn = {row.cn: row for row in db.query(CimaMedicamentoCache).filter(CimaMedicamentoCache.cn.in_(cns)).all()} if cns else {}
+    bifimed_by_cn = {row.cn: row for row in db.query(BifimedCache).filter(BifimedCache.cn.in_(cns)).all()} if cns else {}
+    cima_scope_rows = [cima_by_cn[cn] for cn in cns if cn in cima_by_cn]
+    bifimed_scope_rows = [bifimed_by_cn[cn] for cn in cns if cn in bifimed_by_cn]
     total_publicados = int(summary.get("total_medicamentos_publicados") or summary.get("total") or len(audit.get("items", [])))
     return {
         "total_universe": total_publicados,
         "total_con_cima_cache": int(summary.get("con_cima") or 0),
         "total_sin_cima_cache": int(summary.get("sin_cima") or 0),
+        "total_con_cima_cache_util": sum(1 for row in cima_scope_rows if _has_cima_cache_util(row)),
+        "total_cima_not_found": sum(1 for row in cima_scope_rows if row.sync_status == "not_found"),
+        "total_cima_error": sum(1 for row in cima_scope_rows if _is_retryable_sync_status(row.sync_status)),
+        "total_cima_no_data": sum(1 for row in cima_scope_rows if row.sync_status == "ok" and not _has_cima_cache_util(row)),
         "total_con_bifimed_cache": int(summary.get("con_bifimed_cache") or 0),
         "total_sin_bifimed_cache": int(summary.get("sin_bifimed_cache") or 0),
+        "total_con_bifimed_cache_util": sum(1 for row in bifimed_scope_rows if _has_bifimed_cache_util(row)),
+        "total_bifimed_not_found": sum(1 for row in bifimed_scope_rows if row.sync_status == "not_found"),
+        "total_bifimed_error": sum(1 for row in bifimed_scope_rows if _is_retryable_sync_status(row.sync_status)),
+        "total_bifimed_no_data": sum(1 for row in bifimed_scope_rows if row.sync_status == "ok" and not _has_bifimed_cache_util(row)),
         "total_con_indicaciones_bifimed": int(summary.get("con_indicaciones_bifimed") or 0),
         "total_skipped_invalid_cn": 0,
         "total_publicados_gft": total_publicados,
@@ -519,8 +578,8 @@ def _status_from_sync_status(sync_status: str | None, *, before_useful: set[str]
         return "success"
     if sync_status == "not_found":
         return "not_found"
-    if sync_status in {"rate_limited", "timeout"}:
-        return "rate_limited"
+    if _is_retryable_sync_status(sync_status):
+        return "error"
     return "error"
 
 
@@ -666,7 +725,7 @@ def recompute_checkpoint_counts(checkpoint: dict[str, Any]) -> None:
     counts = Counter(item.get("status", "pending") for item in checkpoint.get("items", {}).values())
     checkpoint["succeeded"] = counts["success"]
     checkpoint["failed"] = counts["error"] + counts["rate_limited"]
-    checkpoint["skipped"] = counts["skipped_existing"]
+    checkpoint["skipped"] = counts["skipped_existing"] + counts["skipped"]
     checkpoint["processed"] = sum(counts[status] for status in BACKFILL_STATUSES if status != "pending")
 
 
@@ -738,7 +797,7 @@ def run_backfill(
     stopped = False
     for idx, candidate in enumerate(candidates):
         item = checkpoint["items"].setdefault(candidate.key, {"cn": candidate.cn, "source": candidate.source, "status": "pending"})
-        if resume and item.get("status") in {"success", "skipped_existing"}:
+        if resume and item.get("status") in NON_RETRYABLE_TERMINAL_STATUSES:
             continue
         started = time.perf_counter()
         status = "error"
@@ -751,7 +810,7 @@ def run_backfill(
             db.rollback()
             error = f"{type(exc).__name__}: {exc}"[:500]
             message = "candidate failed"
-            status = "rate_limited" if "rate" in error.lower() or "429" in error else "error"
+            status = "error"
         duration_ms = int((time.perf_counter() - started) * 1000)
         item.update(
             {
