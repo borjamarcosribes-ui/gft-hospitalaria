@@ -160,7 +160,22 @@ def main(argv=None) -> int:
             all_syncable_cns, remaining_syncable_candidates, examples_remaining_syncable, auditable_pairs, eligible_cn_map, excluded_existing_unavailable_candidates, remaining_known_unavailable = _candidate_syncable_cns(
                 db, published_cns, args.sections, args.only_missing, args.examples, args.retry_section_unavailable
             )
-            base_cns = all_syncable_cns
+            base_cns = list(all_syncable_cns)
+            if args.confirm_write and args.only_missing:
+                shared_only_cns = []
+                for candidate_cn, candidate_nregistro in eligible_cn_map.items():
+                    if candidate_cn in base_cns:
+                        continue
+                    for section in args.sections:
+                        if (
+                            (candidate_cn, section) in auditable_pairs
+                            and _find_any_ok_row(db, candidate_cn, section) is None
+                            and _find_auditable_row(db, candidate_cn, candidate_nregistro, section) is not None
+                        ):
+                            shared_only_cns.append(candidate_cn)
+                            break
+                if shared_only_cns:
+                    base_cns.extend(shared_only_cns)
             if args.limit is not None:
                 base_cns = base_cns[: max(0, args.limit)]
         else:
@@ -212,7 +227,15 @@ def main(argv=None) -> int:
             for section in args.sections:
                 auditable_before = (cn, section) in auditable_pairs if args.candidate_mode == 'syncable' and args.only_missing else (_find_auditable_row(db, cn, cima.nregistro, section) is not None)
                 if args.only_missing and auditable_before:
-                    by_status['skipped_existing_ok'] += 1
+                    direct_existing_ok = _find_any_ok_row(db, cn, section)
+                    shared_auditable_row = None if direct_existing_ok is not None else _find_auditable_row(db, cn, cima.nregistro, section)
+                    if args.candidate_mode == 'syncable' and direct_existing_ok is None and shared_auditable_row is not None:
+                        by_status['written_new_auditable'] += 1
+                        processed_ops += 1
+                        if len(examples) < args.examples:
+                            examples.append({'cn': cn, 'section': section, 'status': 'ok'})
+                    else:
+                        by_status['skipped_existing_ok'] += 1
                     continue
                 if args.only_missing and not args.retry_section_unavailable and _find_section_unavailable_row(db, cima.nregistro, section) is not None:
                     by_status['skipped_existing_unavailable'] += 1

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import unicodedata
 import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -30,6 +31,16 @@ EMBARAZO_PATTERNS = (r"embarazo", r"embarazada", r"gestaci[oó]n", r"gestante", 
 LACTANCIA_PATTERNS = (r"lactancia", r"leche materna", r"lactante")
 _HEADING_RE = re.compile(r"^(?:secci[oó]n\s*)?(4\.1|4\.2|4\.4|4\.6|5\.2)(?:\s*[.:-]?\s|$)", re.IGNORECASE)
 _ANY_SECTION_RE = re.compile(r"^(?:secci[oó]n\s*)?(\d+(?:\.\d+)+)(?:\s*[.:-]?\s|$)", re.IGNORECASE)
+
+_SECTION_TITLE_PREFIXES = {
+    "4.1": ("Indicaciones terapeuticas",),
+    "4.2": ("Posologia y forma de administracion",),
+    "4.4": ("Advertencias y precauciones especiales de empleo",),
+    "4.6": ("Fertilidad, embarazo y lactancia",),
+    "5.2": ("Propiedades farmacocineticas",),
+}
+
+
 
 
 class _TextHTMLParser(HTMLParser):
@@ -117,6 +128,9 @@ def extract_cima_sections_from_html(html: str | None) -> dict[str, str]:
         any_section = _ANY_SECTION_RE.match(line)
         if heading:
             current = heading.group(1)
+            heading_title = _clean(line[heading.end():])
+            if current in sections and heading_title:
+                sections[current].append(heading_title)
             continue
         if any_section:
             current = None
@@ -144,16 +158,34 @@ def _source_hash(source_sections: dict[str, str], source_text: str) -> str:
     return hashlib.sha256(f"{canonical}\n{source_text}".encode("utf-8")).hexdigest()
 
 
+
+def _fold_title(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text or "")
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
+
+
+def _section_body_without_title(section: str, text: str) -> str:
+    body = _clean(text)
+    folded_body = _fold_title(body)
+    for prefix in _SECTION_TITLE_PREFIXES.get(section, ()):
+        if folded_body.startswith(_fold_title(prefix)):
+            return _clean(body[len(prefix):])
+    return body
+
 def extract_cima_clinical_from_html(html: str | None) -> CimaClinicalExtraction:
     source_sections = extract_cima_sections_from_html(html)
     source_text = _clean(" ".join(_html_to_lines(html)))
+    extract_sections = {
+        section: _section_body_without_title(section, text)
+        for section, text in source_sections.items()
+    }
     warnings: list[str] = []
 
-    indicaciones = source_sections.get("4.1", "")
-    renal = _extract_matching_text([source_sections.get(s, "") for s in ("4.2", "4.4", "5.2")], RENAL_PATTERNS)
-    hepatica = _extract_matching_text([source_sections.get(s, "") for s in ("4.2", "4.4", "5.2")], HEPATIC_PATTERNS)
-    embarazo = _extract_matching_text([source_sections.get("4.6", "")], EMBARAZO_PATTERNS)
-    lactancia = _extract_matching_text([source_sections.get("4.6", "")], LACTANCIA_PATTERNS)
+    indicaciones = extract_sections.get("4.1", "")
+    renal = _extract_matching_text([extract_sections.get(s, "") for s in ("4.2", "4.4", "5.2")], RENAL_PATTERNS)
+    hepatica = _extract_matching_text([extract_sections.get(s, "") for s in ("4.2", "4.4", "5.2")], HEPATIC_PATTERNS)
+    embarazo = _extract_matching_text([extract_sections.get("4.6", "")], EMBARAZO_PATTERNS)
+    lactancia = _extract_matching_text([extract_sections.get("4.6", "")], LACTANCIA_PATTERNS)
 
     values = {
         "indicaciones_ficha_tecnica": indicaciones,
