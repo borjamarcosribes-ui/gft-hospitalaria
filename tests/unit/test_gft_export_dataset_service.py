@@ -21,7 +21,7 @@ def test_export_dataset_enriches_readiness_without_view_readiness_columns(db_ses
     db_session.execute(text('DROP VIEW IF EXISTS v_gft_publicada'))
     db_session.execute(text("""
         CREATE VIEW v_gft_publicada AS
-        SELECT g.cn, NULL::text AS nombre, NULL::text AS principio_activo, NULL::text AS codigo_atc_importado
+        SELECT g.cn, CAST(NULL AS TEXT) AS nombre, CAST(NULL AS TEXT) AS principio_activo, CAST(NULL AS TEXT) AS codigo_atc_importado
         FROM gft_estado_presentacion g
         WHERE g.estado_gft='incluido' AND g.estado_editorial='publicado'
     """))
