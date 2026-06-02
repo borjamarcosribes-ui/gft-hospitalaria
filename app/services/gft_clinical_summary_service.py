@@ -57,6 +57,7 @@ def build_general_summary(source_sections: dict[str, str], warnings: list[str]) 
     s43 = _clean(source_sections.get("4.3"))
     s44 = _clean(source_sections.get("4.4"))
     s46 = _clean(source_sections.get("4.6"))
+    s52 = _clean(source_sections.get("5.2"))
     used: list[str] = []
     parts: list[str] = []
 
@@ -98,12 +99,13 @@ def build_clinical_summary(source_sections: dict[str, str], has_nregistro: bool,
     s43 = _clean(source_sections.get("4.3"))
     s44 = _clean(source_sections.get("4.4"))
     s46 = _clean(source_sections.get("4.6"))
+    s52 = _clean(source_sections.get("5.2"))
 
     if not has_nregistro:
         warnings.append("sin nregistro")
     if not has_cima_ok:
         warnings.append("sin cache CIMA ok")
-    for section in ("4.1", "4.2", "4.3", "4.4", "4.6"):
+    for section in ("4.1", "4.2", "4.3", "4.4", "4.6", "5.2"):
         if not _clean(source_sections.get(section)):
             warnings.append(f"sin sección {section}")
 
@@ -113,14 +115,14 @@ def build_clinical_summary(source_sections: dict[str, str], has_nregistro: bool,
     fuentes["resumen_indicaciones"] = ["4.1"] if s41 else []
     posologia = _truncate(s42, 900, warnings, "resumen_posologia") if s42 else None
     fuentes["resumen_posologia"] = ["4.2"] if s42 else []
-    renal, found_renal = _extract_by_patterns([s42, s44], RENAL_PATTERNS, fallback=MISSING_AUTO)
+    renal, found_renal = _extract_by_patterns([s42, s44, s52], RENAL_PATTERNS, fallback=MISSING_AUTO)
     if not found_renal:
         warnings.append("sin coincidencias renal")
-    fuentes["resumen_ajuste_renal"] = [s for s in ["4.2", "4.4"] if _clean(source_sections.get(s))]
-    hepatico, found_hep = _extract_by_patterns([s42, s44], HEPATIC_PATTERNS, fallback=MISSING_AUTO)
+    fuentes["resumen_ajuste_renal"] = [s for s in ["4.2", "4.4", "5.2"] if _clean(source_sections.get(s))]
+    hepatico, found_hep = _extract_by_patterns([s42, s44, s52], HEPATIC_PATTERNS, fallback=MISSING_AUTO)
     if not found_hep:
         warnings.append("sin coincidencias hepática")
-    fuentes["resumen_ajuste_hepatico"] = [s for s in ["4.2", "4.4"] if _clean(source_sections.get(s))]
+    fuentes["resumen_ajuste_hepatico"] = [s for s in ["4.2", "4.4", "5.2"] if _clean(source_sections.get(s))]
     contra = _truncate(s43, 900, warnings, "resumen_contraindicaciones") if s43 else None
     fuentes["resumen_contraindicaciones"] = ["4.3"] if s43 else []
     adv = _truncate(s44, 1200, warnings, "resumen_advertencias") if s44 else None
@@ -134,6 +136,6 @@ def build_clinical_summary(source_sections: dict[str, str], has_nregistro: bool,
         lact = _truncate(s46, 900, warnings, "resumen_lactancia")
     fuentes["resumen_lactancia"] = ["4.6"] if s46 else []
 
-    available_sections = [s for s in ("4.1", "4.2", "4.3", "4.4", "4.6") if _clean(source_sections.get(s))]
-    source_status = "ok" if len(available_sections) == 5 else "partial" if available_sections else "missing_source"
+    available_sections = [s for s in ("4.1", "4.2", "4.3", "4.4", "4.6", "5.2") if _clean(source_sections.get(s))]
+    source_status = "ok" if len(available_sections) == 6 else "partial" if available_sections else "missing_source"
     return {"source_status": source_status, "generated_at": datetime.now(timezone.utc), "source_sections_json": available_sections, "source_hash": compute_source_hash(source_sections), "resumen_general": resumen_general, "resumen_indicaciones": indicaciones, "resumen_posologia": posologia, "resumen_ajuste_renal": renal, "resumen_ajuste_hepatico": hepatico, "resumen_contraindicaciones": contra, "resumen_advertencias": adv, "resumen_embarazo": emb or None, "resumen_lactancia": lact or None, "resumen_fuente_json": fuentes, "warnings_json": warnings, "error_message": None, "_flags": {"found_renal": found_renal, "found_hep": found_hep, "found_emb": found_emb, "found_lac": found_lac}}

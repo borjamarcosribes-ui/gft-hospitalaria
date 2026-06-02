@@ -80,11 +80,12 @@ def main(argv=None):
         timeout_count=0
         section_delta_sum=sum(delta.get(f"sections_{s.replace('.','_')}",0) for s in a.sections)
         exhausted, known_unavailable = _exhausted_without_candidates(phase_sections, phase_summaries)
+        remaining_syncable = int(phase_sections.get('remaining_syncable_candidates') or 0)
         if err_count>0 or timeout_count>0:
             warning={'code':'phase_error_or_timeout','error_count':err_count,'timeout_count':timeout_count}
         elif int((phase_sections.get('by_status',{}) or {}).get('written_not_auditable',0))>0:
             warning={'code':'written_not_auditable','message':'sections wrote rows that are not auditable'}
-        elif section_delta_sum==0 and delta.get('summaries_con_resumen',0)==0 and not exhausted:
+        elif section_delta_sum==0 and delta.get('summaries_con_resumen',0)==0 and not exhausted and remaining_syncable == 0:
             warning={'code':'no_progress','message':'sections and summaries delta are zero'}
 
         run_elapsed = time.time()-run_started
@@ -115,7 +116,7 @@ def main(argv=None):
             if a.checkpoint_each_run:
                 _checkpoint_payload(checkpoint_path, {'runs':all_runs,'final_audit':after,'total_delta':total_delta,'next_action':next_action})
             break
-        if a.stop_on_no_progress and section_delta_sum==0 and delta.get('summaries_con_resumen',0)==0:
+        if a.stop_on_no_progress and section_delta_sum==0 and delta.get('summaries_con_resumen',0)==0 and int(phase_sections.get('remaining_syncable_candidates') or 0) == 0:
             next_action='stop_no_progress'
             run_obj['next_action']=next_action
             cycle_summary['next_action']=next_action
