@@ -154,13 +154,19 @@ def main(argv=None) -> int:
 
     with SessionLocal() as db:
         published_cns = get_cn_universe(db, args.scope, args.cn)
-        if args.cn:
-            base_cns = published_cns
-        elif args.candidate_mode == 'syncable':
+        remaining_syncable_candidates = None
+        examples_remaining_syncable = []
+        auditable_pairs = set()
+        eligible_cn_map = {}
+        excluded_existing_unavailable_candidates = 0
+        remaining_known_unavailable = 0
+
+        if args.candidate_mode == 'syncable':
             all_syncable_cns, remaining_syncable_candidates, examples_remaining_syncable, auditable_pairs, eligible_cn_map, excluded_existing_unavailable_candidates, remaining_known_unavailable = _candidate_syncable_cns(
                 db, published_cns, args.sections, args.only_missing, args.examples, args.retry_section_unavailable
             )
             base_cns = list(all_syncable_cns)
+
             if args.confirm_write and args.only_missing:
                 shared_only_cns = []
                 for candidate_cn, candidate_nregistro in eligible_cn_map.items():
@@ -176,8 +182,11 @@ def main(argv=None) -> int:
                             break
                 if shared_only_cns:
                     base_cns.extend(shared_only_cns)
+
             if args.limit is not None:
                 base_cns = base_cns[: max(0, args.limit)]
+        elif args.cn:
+            base_cns = published_cns
         else:
             base_cns = published_cns[: max(0, args.limit)] if args.limit is not None else published_cns
 
