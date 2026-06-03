@@ -1,4 +1,5 @@
 from html import escape
+from datetime import timezone
 
 from app.services.gft_pdf_export_service import EXPORT_TITLE, GFTPDFATCGroup, GFTPDFExportData, GFTPDFMedication
 
@@ -13,7 +14,7 @@ def _e(value: object) -> str:
 
 
 def _format_generation_date(export_data: GFTPDFExportData) -> str:
-    return export_data.generated_at.astimezone().strftime("%d/%m/%Y %H:%M UTC")
+    return export_data.generated_at.astimezone(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
 
 
 def _iter_groups(groups: list[GFTPDFATCGroup]):

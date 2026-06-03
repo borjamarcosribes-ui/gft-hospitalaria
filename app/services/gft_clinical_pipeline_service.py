@@ -9,7 +9,7 @@ from app.models.cima_medicamento_cache import CimaMedicamentoCache
 from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.services.gft_clinical_summary_service import build_clinical_summary
 
-TARGET_SECTIONS = ("4.1", "4.2", "4.3", "4.4", "4.6")
+TARGET_SECTIONS = ("4.1", "4.2", "4.3", "4.4", "4.6", "5.2")
 
 @dataclass
 class ClinicalPipelineParams:

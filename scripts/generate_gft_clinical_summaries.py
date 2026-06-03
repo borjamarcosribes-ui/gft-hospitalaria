@@ -87,7 +87,6 @@ def _summary_ready_cns(db, cns: list[str], prioritize_missing_summary: bool = Fa
             continue
         if prioritize_missing_summary and cn in existing_ok_partial:
             skipped_existing_known.append(cn)
-            out.append(cn)
             continue
         if prioritize_missing_summary:
             prioritized_missing.append(cn)
@@ -145,7 +144,7 @@ def main(argv=None) -> int:
             has_cima_ok = bool(cima and cima.sync_status == 'ok')
             has_nregistro = bool(cima and (cima.nregistro or '').strip())
             rows = db.query(CimaFichaTecnicaCache).filter(build_auditable_section_scope_filters([cn], [cima.nregistro if cima else ''], list(TARGET_SECTIONS))).all()
-            summary = build_clinical_summary({r.seccion: (r.contenido_texto or '') for r in rows}, has_nregistro=has_nregistro, has_cima_ok=has_cima_ok)
+            summary = build_clinical_summary({r.seccion: ((r.contenido_texto or '') or (r.contenido_html or '')) for r in rows}, has_nregistro=has_nregistro, has_cima_ok=has_cima_ok)
             source_status = summary.get('source_status', 'error')
             by_source[source_status] += 1
             if args.dry_run:

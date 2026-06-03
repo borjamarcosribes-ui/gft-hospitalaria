@@ -13,6 +13,7 @@ from app.services.gft_clinical_sections_auditability import (
     build_auditable_section_filters,
     build_auditable_section_scope_filters,
     has_nonempty_section_content,
+    is_auditable_section_row,
 )
 
 
@@ -55,7 +56,7 @@ def _find_section_unavailable_row(db, nregistro: str, section: str) -> CimaFicha
 
 
 def _is_row_content_empty(row: CimaFichaTecnicaCache) -> bool:
-    return not has_nonempty_section_content(row.contenido_texto, None) and not has_nonempty_section_content(None, row.contenido_html)
+    return not has_nonempty_section_content(getattr(row, "contenido_texto", None), getattr(row, "contenido_html", None))
 
 
 def _find_auditable_row(db, cn: str, nregistro: str, section: str) -> CimaFichaTecnicaCache | None:
@@ -153,15 +154,39 @@ def main(argv=None) -> int:
 
     with SessionLocal() as db:
         published_cns = get_cn_universe(db, args.scope, args.cn)
-        if args.cn:
-            base_cns = published_cns
-        elif args.candidate_mode == 'syncable':
+        remaining_syncable_candidates = None
+        examples_remaining_syncable = []
+        auditable_pairs = set()
+        eligible_cn_map = {}
+        excluded_existing_unavailable_candidates = 0
+        remaining_known_unavailable = 0
+
+        if args.candidate_mode == 'syncable':
             all_syncable_cns, remaining_syncable_candidates, examples_remaining_syncable, auditable_pairs, eligible_cn_map, excluded_existing_unavailable_candidates, remaining_known_unavailable = _candidate_syncable_cns(
                 db, published_cns, args.sections, args.only_missing, args.examples, args.retry_section_unavailable
             )
-            base_cns = all_syncable_cns
+            base_cns = list(all_syncable_cns)
+
+            if args.confirm_write and args.only_missing:
+                shared_only_cns = []
+                for candidate_cn, candidate_nregistro in eligible_cn_map.items():
+                    if candidate_cn in base_cns:
+                        continue
+                    for section in args.sections:
+                        if (
+                            (candidate_cn, section) in auditable_pairs
+                            and _find_any_ok_row(db, candidate_cn, section) is None
+                            and _find_auditable_row(db, candidate_cn, candidate_nregistro, section) is not None
+                        ):
+                            shared_only_cns.append(candidate_cn)
+                            break
+                if shared_only_cns:
+                    base_cns.extend(shared_only_cns)
+
             if args.limit is not None:
                 base_cns = base_cns[: max(0, args.limit)]
+        elif args.cn:
+            base_cns = published_cns
         else:
             base_cns = published_cns[: max(0, args.limit)] if args.limit is not None else published_cns
 
@@ -211,7 +236,15 @@ def main(argv=None) -> int:
             for section in args.sections:
                 auditable_before = (cn, section) in auditable_pairs if args.candidate_mode == 'syncable' and args.only_missing else (_find_auditable_row(db, cn, cima.nregistro, section) is not None)
                 if args.only_missing and auditable_before:
-                    by_status['skipped_existing_ok'] += 1
+                    direct_existing_ok = _find_any_ok_row(db, cn, section)
+                    shared_auditable_row = None if direct_existing_ok is not None else _find_auditable_row(db, cn, cima.nregistro, section)
+                    if args.candidate_mode == 'syncable' and direct_existing_ok is None and shared_auditable_row is not None:
+                        by_status['written_new_auditable'] += 1
+                        processed_ops += 1
+                        if len(examples) < args.examples:
+                            examples.append({'cn': cn, 'section': section, 'status': 'ok'})
+                    else:
+                        by_status['skipped_existing_ok'] += 1
                     continue
                 if args.only_missing and not args.retry_section_unavailable and _find_section_unavailable_row(db, cima.nregistro, section) is not None:
                     by_status['skipped_existing_unavailable'] += 1
@@ -221,11 +254,30 @@ def main(argv=None) -> int:
 
                 existing_ok_before = _find_any_ok_row(db, cn, section)
                 row = sync_cima_segmented_section(db=db, nregistro=cima.nregistro, tipo_documento=1, seccion=section, cn=cn, force=args.force)
-                if row.sync_status == 'ok' and _is_row_content_empty(row):
-                    row.sync_status = 'section_unavailable'
-                if row.sync_status == 'ok':
+                row_sync_status = getattr(row, 'sync_status', None)
+                if row_sync_status == 'ok' and _is_row_content_empty(row):
+                    row_sync_status = 'section_unavailable'
+                    if hasattr(row, 'sync_status'):
+                        row.sync_status = row_sync_status
+                if row_sync_status == 'ok':
+                    row_cn = getattr(row, 'cn', None)
+                    row_nregistro = getattr(row, 'nregistro', None)
+                    row_section = getattr(row, 'seccion', None)
+                    row_text = getattr(row, 'contenido_texto', None)
+                    row_html = getattr(row, 'contenido_html', None)
                     auditable_row = _find_auditable_row(db, cn, cima.nregistro, section)
-                    if auditable_row is not None:
+                    transient_is_auditable = is_auditable_section_row(
+                        processed_cn=cn,
+                        processed_nregistro=cima.nregistro,
+                        requested_section=section,
+                        row_cn=row_cn,
+                        row_nregistro=row_nregistro,
+                        row_section=row_section,
+                        sync_status=row_sync_status,
+                        contenido_texto=row_text,
+                        contenido_html=row_html,
+                    )
+                    if auditable_row is not None or transient_is_auditable:
                         by_status['updated_existing_auditable' if existing_ok_before is not None else 'written_new_auditable'] += 1
                     else:
                         by_status['written_not_auditable'] += 1
@@ -234,22 +286,22 @@ def main(argv=None) -> int:
                                 'cn': cn,
                                 'section': section,
                                 'nregistro': cima.nregistro,
-                                'row_cn': row.cn,
-                                'row_nregistro': row.nregistro,
-                                'row_section': row.seccion,
-                                'row_sync_status': row.sync_status,
-                                'has_text': has_nonempty_section_content(row.contenido_texto, None),
-                                'has_html': has_nonempty_section_content(None, row.contenido_html),
+                                'row_cn': row_cn,
+                                'row_nregistro': row_nregistro,
+                                'row_section': row_section,
+                                'row_sync_status': row_sync_status,
+                                'has_text': has_nonempty_section_content(row_text, None),
+                                'has_html': has_nonempty_section_content(None, row_html),
                                 'reason': 'post_write_row_not_auditable_under_shared_criteria',
                                 'duplicate_auditable_rows': _count_auditable_rows(db, cn, cima.nregistro, section),
                             })
-                elif row.sync_status in {'section_unavailable'}:
+                elif row_sync_status in {'section_unavailable'}:
                     by_status['section_unavailable'] += 1
                 else:
                     by_status['error'] += 1
                 processed_ops += 1
                 if len(examples) < args.examples:
-                    examples.append({'cn': cn, 'section': section, 'status': row.sync_status})
+                    examples.append({'cn': cn, 'section': section, 'status': row_sync_status})
 
     out = {'dry_run': False, 'confirm_write': True, 'requested_sections': args.sections, 'candidate_mode': args.candidate_mode, 'selected_candidates': len(cns), 'skipped_existing_ok': int(by_status.get('skipped_existing_ok', 0)), 'remaining_syncable_candidates': remaining_syncable_candidates, 'examples_remaining_syncable': examples_remaining_syncable[:args.examples], 'excluded_existing_unavailable_candidates': excluded_existing_unavailable_candidates, 'remaining_known_unavailable': remaining_known_unavailable, 'processed_cn': len(cns), 'processed_operations': processed_ops, 'by_status': dict(by_status), 'examples': examples, 'examples_written_not_auditable': examples_written_not_auditable, 'examples_duplicate_auditable_rows': examples_duplicate_auditable_rows}
     print(json.dumps(out, ensure_ascii=False, indent=2 if args.json_output else None))

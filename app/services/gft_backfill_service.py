@@ -709,7 +709,7 @@ def _run_clinical(db: Session, candidate: BackfillCandidate, *, force: bool) -> 
         list(TARGET_SECTIONS),
     )
     rows = db.query(CimaFichaTecnicaCache).filter(filters).all()
-    summary = build_clinical_summary({r.seccion: (r.contenido_texto or "") for r in rows}, has_nregistro=has_nregistro, has_cima_ok=has_cima_ok)
+    summary = build_clinical_summary({r.seccion: ((r.contenido_texto or '') or (r.contenido_html or '')) for r in rows}, has_nregistro=has_nregistro, has_cima_ok=has_cima_ok)
     source_status = summary.get("source_status", "error")
     if source_status == "missing_source" and before_useful:
         return "unchanged", [], "empty clinical source; preserved existing summary"
@@ -729,6 +729,9 @@ def _run_clinical(db: Session, candidate: BackfillCandidate, *, force: bool) -> 
     row.resumen_lactancia = summary.get("resumen_lactancia")
     row.resumen_fuente_json = summary.get("resumen_fuente_json")
     row.warnings_json = summary.get("warnings_json")
+    restored = _restore_useful_fields(row, {field: before.get(field) for field in _CLINICAL_USEFUL_FIELDS})
+    if restored:
+        row.warnings_json = list((row.warnings_json or [])) + [f"preserved existing useful clinical fields: {', '.join(restored)}"]
     if current is None:
         db.add(row)
     db.commit()
@@ -740,7 +743,10 @@ def _run_clinical(db: Session, candidate: BackfillCandidate, *, force: bool) -> 
         status = "no_data"
     else:
         status = "error"
-    return status, _changed_fields(before, after), f"clinical source_status={source_status}"
+    message = f"clinical source_status={source_status}"
+    if restored:
+        message += f"; restored useful fields: {', '.join(restored)}"
+    return status, _changed_fields(before, after), message
 
 
 def execute_candidate(db: Session, candidate: BackfillCandidate, *, mode: str, only_missing: bool, force: bool) -> tuple[str, list[str], str]:

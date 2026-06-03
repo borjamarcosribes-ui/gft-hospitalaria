@@ -50,7 +50,7 @@ def main(argv=None):
         nregistro_to_cns.setdefault(key, set()).add(cn)
     for r in sec_rows:
       row_cn = str(r.cn or '')
-      if row_cn in cimas:
+      if row_cn in cns:
         cov[r.seccion].add(row_cn)
       for mapped_cn in nregistro_to_cns.get((r.nregistro or '').strip(), set()):
         cov[r.seccion].add(mapped_cn)

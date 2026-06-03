@@ -211,6 +211,22 @@ def _resolve_principio_activo(row, relation: list[dict]) -> tuple[str, str]:
     return _principios_from_view(row)
 
 
+
+def _useful_auto_text(value: Any) -> str | None:
+    text = _text(value)
+    if not text:
+        return None
+    norm = _norm_text(text)
+    if norm in {_norm_text(NO_INFORMADO), "no data", "no_data", "missing_source"}:
+        return None
+    if "no localizado automaticamente" in norm or "no localizado automatic" in norm:
+        return None
+    return text
+
+
+def _manual_or_auto(manual_value: Any, auto_value: Any) -> str | None:
+    return _text(manual_value) or _useful_auto_text(auto_value)
+
 def _available(value: Any) -> bool:
     return _text(value) is not None
 
@@ -253,7 +269,11 @@ def _build_payload(row, relation: list[dict], bifimed: BifimedCache | None, summ
     descripcion_atc = atc[-1].get("nombre") if atc else _text(_row_get(row, "descripcion_atc_importada"))
     vias = _parse_vias(_row_get(row, "vias_administracion_json")) or ([_text(_row_get(row, "via_administracion_importada"))] if _text(_row_get(row, "via_administracion_importada")) else [])
     bifimed_data, bifimed_missing, bifimed_flags = _bifimed_payload(bifimed)
-    indicaciones_cima = _text(_row_get(row, "indicaciones_ficha_tecnica"))
+    indicaciones_cima = _manual_or_auto(_row_get(row, "indicaciones_ficha_tecnica"), getattr(summary, "resumen_indicaciones", None) if summary is not None else None)
+    ajuste_renal = _manual_or_auto(_row_get(row, "ajuste_insuficiencia_renal"), getattr(summary, "resumen_ajuste_renal", None) if summary is not None else None)
+    ajuste_hepatico = _manual_or_auto(_row_get(row, "ajuste_insuficiencia_hepatica"), getattr(summary, "resumen_ajuste_hepatico", None) if summary is not None else None)
+    precauciones_embarazo = _manual_or_auto(_row_get(row, "precauciones_embarazo"), getattr(summary, "resumen_embarazo", None) if summary is not None else None)
+    precauciones_lactancia = _manual_or_auto(_row_get(row, "precauciones_lactancia"), getattr(summary, "resumen_lactancia", None) if summary is not None else None)
     url_ft = _text(_row_get(row, "url_ficha_tecnica")) or _text(_row_get(row, "url_ficha_tecnica_importada"))
     url_pr = _text(_row_get(row, "url_prospecto")) or _text(_row_get(row, "url_prospecto_importado"))
     estado_cima = "disponible" if (indicaciones_cima or url_ft or url_pr) else "no_informado"
@@ -263,10 +283,10 @@ def _build_payload(row, relation: list[dict], bifimed: BifimedCache | None, summ
         "indicaciones_ficha_tecnica": indicaciones_cima,
         "url_ficha_tecnica": url_ft,
         "url_prospecto": url_pr,
-        "ajuste_insuficiencia_renal": _row_get(row, "ajuste_insuficiencia_renal"),
-        "ajuste_insuficiencia_hepatica": _row_get(row, "ajuste_insuficiencia_hepatica"),
-        "precauciones_embarazo": _row_get(row, "precauciones_embarazo"),
-        "precauciones_lactancia": _row_get(row, "precauciones_lactancia"),
+        "ajuste_insuficiencia_renal": ajuste_renal,
+        "ajuste_insuficiencia_hepatica": ajuste_hepatico,
+        "precauciones_embarazo": precauciones_embarazo,
+        "precauciones_lactancia": precauciones_lactancia,
         "restricciones_hospitalarias": _row_get(row, "restricciones_hospitalarias"),
     }.items():
         if not _available(value):
@@ -305,10 +325,10 @@ def _build_payload(row, relation: list[dict], bifimed: BifimedCache | None, summ
         "url_prospecto": url_pr,
         "estado_cima": estado_cima,
         **bifimed_data,
-        "ajuste_insuficiencia_renal": _text(_row_get(row, "ajuste_insuficiencia_renal")) or NO_INFORMADO,
-        "ajuste_insuficiencia_hepatica": _text(_row_get(row, "ajuste_insuficiencia_hepatica")) or NO_INFORMADO,
-        "precauciones_embarazo": _text(_row_get(row, "precauciones_embarazo")) or NO_INFORMADO,
-        "precauciones_lactancia": _text(_row_get(row, "precauciones_lactancia")) or NO_INFORMADO,
+        "ajuste_insuficiencia_renal": ajuste_renal or NO_INFORMADO,
+        "ajuste_insuficiencia_hepatica": ajuste_hepatico or NO_INFORMADO,
+        "precauciones_embarazo": precauciones_embarazo or NO_INFORMADO,
+        "precauciones_lactancia": precauciones_lactancia or NO_INFORMADO,
         "restricciones_hospitalarias": _text(_row_get(row, "restricciones_hospitalarias")) or NO_INFORMADO,
         "resumen_clinico_auto": _build_clinical_summary_payload(summary),
         "estado_resumen_clinico": summary.source_status if summary is not None else "no_informado",
