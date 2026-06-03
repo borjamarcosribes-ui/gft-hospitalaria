@@ -423,10 +423,19 @@ def list_medicamentos(
     enriched = []
     for row in rows:
         principios = principios_by_cn.get(row["cn"], [])
-        enriched.append((principios[0]["nombre"].lower() if principios else "", _row_to_list_item(row, principios)))
+        item = _row_to_list_item(row, principios)
+        atc_codes = [
+            _normalize_atc_code(str(atc_item.get("codigo") or ""))
+            for atc_item in item.get("atc", [])
+            if isinstance(atc_item, Mapping)
+        ]
+        primary_atc = min((code for code in atc_codes if code), default="ZZZ")
+        primary_principio = principios[0]["nombre"].casefold() if principios else ""
+        nombre = (item.get("nombre") or "").casefold()
+        enriched.append((primary_atc, primary_principio, nombre, item["cn"], item))
 
-    enriched.sort(key=lambda x: (x[0], (x[1].get("nombre") or "").lower(), x[1]["cn"]))
-    ordered_items = [item for _, item in enriched]
+    enriched.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
+    ordered_items = [item for *_, item in enriched]
     q_norm = (q or "").strip().lower()
     letra_norm = (letra or "").strip().lower()[:1]
     principio_raw = (principio_activo or "").strip()
