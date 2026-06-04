@@ -252,15 +252,40 @@ function BifimedIndicacionesCanonicalList({ indicaciones }: { indicaciones: GFTC
   );
 }
 
-function documentLabel(documento: GFTDocumentoCimaRef): string {
-  for (const value of [documento.titulo, documento.nombre, documento.secc]) {
-    if (typeof value !== 'string') continue;
-    const normalized = normalizeDisplayText(value)?.trim();
-    if (normalized && !/^(?:true|false|null|undefined)$/i.test(normalized)) {
-      return normalized;
-    }
+function normalizeDocumentHint(documento: GFTDocumentoCimaRef): string {
+  return [documento.tipo, documento.titulo, documento.nombre, documento.secc, documento.urlHtml, documento.url]
+    .map((value) => normalizeDisplayText(value == null ? null : String(value))?.trim() ?? '')
+    .filter(Boolean)
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[\\u0300-\\u036f]/g, '')
+    .toLowerCase();
+}
+
+function documentLabel(documento: GFTDocumentoCimaRef): string | null {
+  const hint = normalizeDocumentHint(documento);
+  const tipo = String(documento.tipo ?? '').trim().toLowerCase();
+
+  if (hint.includes('prospecto') || tipo === '2' || tipo === 'p') {
+    return 'Prospecto HTML';
   }
-  return 'Documento CIMA';
+
+  if (hint.includes('ficha tecnica') || hint.includes('fichatecnica') || tipo === '1' || tipo === 'ft') {
+    return 'Ficha t\u00e9cnica HTML';
+  }
+
+  if (
+    hint.includes('ipe') ||
+    hint.includes('evaluacion') ||
+    hint.includes('informe publico') ||
+    hint.includes('posicionamiento') ||
+    tipo === '3' ||
+    tipo === 'ipe'
+  ) {
+    return 'Evaluaci\u00f3n EMA';
+  }
+
+  return null;
 }
 
 function usableUrl(value: unknown): string | null {
@@ -276,8 +301,12 @@ function usableUrl(value: unknown): string | null {
 
 function GftCimaDocuments({ documentos }: { documentos: GFTDocumentoCimaRef[] }) {
   const availableDocuments = documentos
-    .map((documento) => ({ ...documento, href: usableUrl(documento.urlHtml) ?? usableUrl(documento.url) }))
-    .filter((documento) => documento.href);
+    .map((documento) => {
+      const href = usableUrl(documento.urlHtml) ?? usableUrl(documento.url);
+      const label = documentLabel(documento);
+      return { ...documento, href, label };
+    })
+    .filter((documento): documento is GFTDocumentoCimaRef & { href: string; label: string } => Boolean(documento.href && documento.label));
 
   if (availableDocuments.length === 0) {
     return <p className="gft-card__muted">No hay documentos CIMA enlazados.</p>;
@@ -290,8 +319,8 @@ function GftCimaDocuments({ documentos }: { documentos: GFTDocumentoCimaRef[] })
 
         return (
           <li key={`${documento.href}-${index}`}>
-            <a href={documento.href ?? undefined} target="_blank" rel="noreferrer">
-              {documentLabel(documento)}
+            <a href={documento.href} target="_blank" rel="noreferrer">
+              {documento.label}
             </a>
             {date ? <span>{date}</span> : null}
           </li>
