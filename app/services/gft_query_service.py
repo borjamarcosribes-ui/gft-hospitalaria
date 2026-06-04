@@ -447,9 +447,9 @@ def list_medicamentos(
         def _normalized(value) -> str:
             return str(value or "").strip().casefold()
 
-        def _is_exact_or_prefix(value) -> bool:
+        def _matches_search_text(value) -> bool:
             text_value = _normalized(value)
-            return bool(text_value) and (text_value == q_norm or text_value.startswith(q_norm))
+            return bool(text_value) and q_norm in text_value
 
         def _matches_q(item: dict) -> bool:
             principles = item.get("principios_activos", [])
@@ -461,7 +461,7 @@ def list_medicamentos(
                 *[p.get("nombre") for p in principles if isinstance(p, Mapping)],
             ]
 
-            return any(_is_exact_or_prefix(value) for value in candidate_fields)
+            return any(_matches_search_text(value) for value in candidate_fields)
 
         filtered_items = [item for item in filtered_items if _matches_q(item)]
 
