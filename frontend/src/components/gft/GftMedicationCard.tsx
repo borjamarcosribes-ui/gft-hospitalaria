@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { GFTAtcRef, GFTMedicamentoListItem, GFTPrincipioActivoRef } from '../../types/gft';
 import { GftDocumentLinks } from './GftDocumentLinks';
 
@@ -7,8 +6,6 @@ interface GftMedicationCardProps {
   selected?: boolean;
   onViewDetail(cn: string): void;
 }
-
-const INDICACIONES_PREVIEW_LENGTH = 320;
 
 function joinPrincipios(principios: GFTPrincipioActivoRef[]): string {
   return principios.length > 0 ? principios.map((principio) => principio.nombre).join(', ') : 'No informado';
@@ -60,15 +57,9 @@ function getAtcResumen(atc: GFTAtcRef[]): string {
 }
 
 export function GftMedicationCard({ medicamento, selected = false, onViewDetail }: GftMedicationCardProps) {
-  const [expandedIndicaciones, setExpandedIndicaciones] = useState(false);
   const title = medicamento.nombre ?? 'Medicamento sin nombre informado';
   const principioActivo = joinPrincipios(medicamento.principios_activos);
   const forma = medicamento.forma_farmaceutica_simplificada ?? medicamento.forma_farmaceutica ?? 'No informada';
-  const indicaciones = medicamento.indicaciones_ficha_tecnica?.trim() ?? '';
-  const showIndicacionesToggle = indicaciones.length > INDICACIONES_PREVIEW_LENGTH;
-  const indicacionesPreview = showIndicacionesToggle && !expandedIndicaciones
-    ? `${indicaciones.slice(0, INDICACIONES_PREVIEW_LENGTH).trimEnd()}…`
-    : indicaciones;
 
   return (
     <article className={`gft-card${selected ? ' gft-card--selected' : ''}`} aria-current={selected ? 'true' : undefined}>
@@ -99,16 +90,6 @@ export function GftMedicationCard({ medicamento, selected = false, onViewDetail 
         <dl className="gft-card__details gft-card__details--single">
           <div><dt>Ruta ATC</dt><dd>{getAtcRoute(medicamento.atc)}</dd></div>
         </dl>
-      </section>
-
-      <section className="gft-card__section">
-        <h4>Indicaciones (ficha técnica 4.1)</h4>
-        <p className="gft-card__text">{indicacionesPreview || 'No disponible en la fuente actual'}</p>
-        {showIndicacionesToggle ? (
-          <button className="gft-button gft-button--secondary" type="button" onClick={() => setExpandedIndicaciones((value) => !value)}>
-            {expandedIndicaciones ? 'Ver menos' : 'Ver indicaciones completas'}
-          </button>
-        ) : null}
       </section>
 
       <section className="gft-card__section">
