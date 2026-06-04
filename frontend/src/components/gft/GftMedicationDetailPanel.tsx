@@ -126,11 +126,16 @@ function FieldRow({ label, value }: { label: string; value: string | number | bo
 }
 
 function ClinicalField({ label, value }: { label: string; value: string | null | undefined }) {
+  const informative = isInformative(value);
+
   return (
-    <div className="gft-clinical-field">
-      <h4>{label}</h4>
-      <p className={!isInformative(value) ? 'gft-clinical-field__missing' : undefined}>{normalizeDisplayValue(value)}</p>
-    </div>
+    <details className="gft-clinical-field gft-clinical-field--collapsible">
+      <summary className="gft-clinical-field__summary">
+        <span>{label}</span>
+        <span className="gft-clinical-field__chevron" aria-hidden="true" />
+      </summary>
+      <p className={!informative ? 'gft-clinical-field__missing' : undefined}>{normalizeDisplayValue(value)}</p>
+    </details>
   );
 }
 
@@ -244,23 +249,6 @@ function BifimedIndicacionesCanonicalList({ indicaciones }: { indicaciones: GFTC
         </article>
       ))}
     </div>
-  );
-}
-
-function SourceCoveragePanel({ canonical }: { canonical: GFTCanonicalPayload }) {
-  return (
-    <details className="gft-source-coverage">
-      <summary>
-        <span>Cobertura y calidad de datos</span>
-        <span>Ver detalles técnicos</span>
-      </summary>
-      <dl className="gft-detail__grid gft-detail__grid--compact">
-        <FieldRow label="Fuentes disponibles" value={canonical.fuentes_disponibles.join(', ')} />
-        <FieldRow label="Campos faltantes" value={canonical.campos_faltantes.join(', ')} />
-        <FieldRow label="Warnings" value={canonical.warnings.join(', ')} />
-        <FieldRow label="data_quality_flags" value={canonical.data_quality_flags.join(', ')} />
-      </dl>
-    </details>
   );
 }
 
@@ -419,7 +407,6 @@ export function GftMedicationDetailPanel({ cn, detail, loading, error, onClose }
             </div>
           </section>
 
-          <SourceCoveragePanel canonical={canonical} />
 
           <details className="gft-detail__section gft-collapsible-section gft-detail__section--traceability">
             <summary className="gft-collapsible-section__summary">

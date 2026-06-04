@@ -1433,3 +1433,100 @@
     flex-direction: column;
   }
 }
+
+
+.gft-clinical-field--collapsible {
+  padding: 0;
+}
+
+.gft-clinical-field__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  padding: 1rem;
+  list-style: none;
+}
+
+.gft-clinical-field__summary::-webkit-details-marker {
+  display: none;
+}
+
+.gft-clinical-field__summary::after {
+  content: "?";
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.gft-clinical-field--collapsible[open] .gft-clinical-field__summary::after {
+  transform: rotate(180deg);
+}
+
+.gft-clinical-field--collapsible p {
+  padding: 0 1rem 1rem;
+  margin-top: 0;
+}
+
+.gft-clinical-field__status {
+  color: var(--gft-muted-text);
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.gft-clinical-field__status--missing {
+  color: var(--gft-warning-text, var(--gft-muted-text));
+}
+
+
+/* Clinical detail accordions: title + CSS chevron only */
+.gft-clinical-field--collapsible {
+  padding: 0;
+}
+
+.gft-clinical-field__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  padding: 1rem;
+  list-style: none;
+}
+
+.gft-clinical-field__summary::-webkit-details-marker {
+  display: none;
+}
+
+.gft-clinical-field__summary::marker {
+  content: "";
+}
+
+.gft-clinical-field__summary::after {
+  content: none !important;
+  display: none !important;
+}
+
+.gft-clinical-field__chevron {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+  flex: 0 0 auto;
+  margin-right: 0.25rem;
+}
+
+.gft-clinical-field--collapsible[open] .gft-clinical-field__chevron {
+  transform: rotate(-135deg);
+}
+
+.gft-clinical-field--collapsible p {
+  padding: 0 1rem 1rem;
+  margin-top: 0;
+}
+
