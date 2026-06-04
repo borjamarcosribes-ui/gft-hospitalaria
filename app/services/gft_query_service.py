@@ -456,7 +456,6 @@ def list_medicamentos(
             candidate_fields = [
                 item.get("cn"),
                 item.get("nombre"),
-                item.get("presentacion"),
                 item.get("nemonico"),
                 item.get("principio_activo_importado"),
                 *[p.get("nombre") for p in principles if isinstance(p, Mapping)],
