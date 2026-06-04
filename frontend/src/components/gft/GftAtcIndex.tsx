@@ -135,9 +135,6 @@ function collectDefaultExpandedCodes(nodes: AtcNode[], selectedAtc: string): Set
   function walk(node: AtcNode, ancestors: string[]) {
     if (selectedAtc && selectedAtc.startsWith(node.code)) {
       ancestors.forEach((ancestor) => expanded.add(ancestor));
-      if (node.children.length > 0) {
-        expanded.add(node.code);
-      }
     }
 
     node.children.forEach((child) => walk(child, [...ancestors, node.code]));

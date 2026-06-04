@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getPaginationRange } from '../utils/pagination';
+import { ATC_TITLES } from '../data/atcTitles';
 import { GftActiveFilters } from '../components/gft/GftActiveFilters';
 import { GftAtcFilter } from '../components/gft/GftAtcFilter';
 import { GftAtcIndex } from '../components/gft/GftAtcIndex';
@@ -132,6 +133,13 @@ export function GftPage() {
 
   const paginationRange = useMemo(() => getPaginationRange(data?.total ?? 0, data?.limit ?? PAGE_SIZE, data?.offset ?? 0), [data]);
 
+  const atcItems = useMemo(() => {
+    return (atcData?.items ?? []).map((item) => ({
+      ...item,
+      nombre: item.nombre ?? ATC_TITLES[item.codigo.toUpperCase()] ?? null,
+    }));
+  }, [atcData]);
+
   const atcLabel = useMemo(() => {
     const selectedAtc = atcData?.items.find((item) => item.codigo === atc);
 
@@ -261,14 +269,14 @@ export function GftPage() {
               onChange={handlePrincipioActivoChange}
             />
             <GftAtcFilter
-              items={atcData?.items ?? []}
+              items={atcItems}
               value={atc}
               loading={filtersLoading}
               error={filtersError}
               onChange={handleAtcChange}
             />
           </div>
-          <GftAtcIndex items={atcData?.items ?? []} selectedAtc={atc} onSelectAtc={handleAtcChange} />
+          <GftAtcIndex items={atcItems} selectedAtc={atc} onSelectAtc={handleAtcChange} />
         </section>
 
         <GftActiveFilters
