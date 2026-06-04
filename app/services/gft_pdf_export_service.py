@@ -7,7 +7,14 @@ from sqlalchemy.orm import Session
 
 from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.services.gft_query_service import _build_clinical_summary_payload
-from app.services.gft_query_service import _get_principios_for_cns, _parse_atc, _parse_vias, _row_get
+from app.services.gft_query_service import (
+    _extract_atc_items_from_row,
+    _get_principios_for_cns,
+    _infer_atc_level,
+    _normalize_atc_code,
+    _parse_vias,
+    _row_get,
+)
 
 NO_INFORMADO = "No informado"
 EXPORT_TITLE = "Guía Farmacoterapéutica Hospitalaria"
@@ -77,91 +84,211 @@ def _primary_atc(atc_items: list[dict]) -> dict[str, str | None]:
     return atc_items[0]
 
 
-def _atc_group_data(atc_items: list[dict]) -> tuple[dict[str, str], dict[str, str] | None]:
-    primary = _primary_atc(atc_items)
-    raw_code = str(primary.get("codigo") or "").strip().upper()
-    raw_name = primary.get("nombre")
-    name = str(raw_name).strip() if raw_name is not None else ""
+def _atc_name_by_code(atc_items: list[dict]) -> dict[str, str]:
+    names: dict[str, str] = {}
+    for item in atc_items:
+        code = _normalize_atc_code(str(item.get("codigo") or ""))
+        name = str(item.get("nombre") or "").strip()
+        if code and name:
+            names.setdefault(code, name)
+    return names
 
-    if not raw_code:
-        return {"codigo": NO_INFORMADO, "nombre": NO_INFORMADO, "nivel": "L1"}, None
 
-    l1 = {"codigo": raw_code[:1], "nombre": name if len(raw_code) == 1 and name else NO_INFORMADO, "nivel": "L1"}
-    if len(raw_code) >= 3:
-        l2 = {"codigo": raw_code[:3], "nombre": name if len(raw_code) == 3 and name else NO_INFORMADO, "nivel": "L2"}
-        return l1, l2
-    return l1, None
+def _atc_hierarchy_from_code(
+    code: str | None, atc_items: list[dict]
+) -> list[dict[str, str]]:
+    normalized_code = _normalize_atc_code(code)
+    if not normalized_code:
+        return [{"codigo": NO_INFORMADO, "nombre": NO_INFORMADO, "nivel": "L1"}]
+
+    names = _atc_name_by_code(atc_items)
+    hierarchy: list[dict[str, str]] = []
+    for length in (1, 3, 4, 5, 7):
+        if len(normalized_code) < length:
+            continue
+        prefix = normalized_code[:length]
+        level = _infer_atc_level(prefix)
+        if level is None:
+            continue
+        hierarchy.append(
+            {
+                "codigo": prefix,
+                "nombre": names.get(prefix, NO_INFORMADO),
+                "nivel": level,
+            }
+        )
+
+    if not hierarchy:
+        return [
+            {
+                "codigo": normalized_code,
+                "nombre": names.get(normalized_code, NO_INFORMADO),
+                "nivel": "L1",
+            }
+        ]
+
+    most_specific = hierarchy[-1]
+    if (
+        most_specific["codigo"] == normalized_code
+        and most_specific["nombre"] == NO_INFORMADO
+    ):
+        full_name = (
+            names.get(normalized_code)
+            or str(_primary_atc(atc_items).get("nombre") or "").strip()
+        )
+        if full_name:
+            most_specific["nombre"] = full_name
+    return hierarchy
 
 
 def _row_to_medication(
-    row, principios: list[dict], mode: str, resumen_clinico_auto: dict[str, Any] | None = None
-) -> tuple[GFTPDFMedication, dict[str, str], dict[str, str] | None]:
-    atc_items = _parse_atc(row["atc_json"])
+    row,
+    principios: list[dict],
+    mode: str,
+    resumen_clinico_auto: dict[str, Any] | None = None,
+) -> tuple[GFTPDFMedication, list[dict[str, str]]]:
+    atc_items = _extract_atc_items_from_row(row)
     primary_atc = _primary_atc(atc_items)
-    l1_data, l2_data = _atc_group_data(atc_items)
+    primary_atc_code = _normalize_atc_code(str(primary_atc.get("codigo") or ""))
+    atc_hierarchy = _atc_hierarchy_from_code(primary_atc_code, atc_items)
 
     principio_activo = _join_public_text(
-        [str(principio.get("nombre") or "") for principio in principios if isinstance(principio, dict)]
+        [
+            str(principio.get("nombre") or "")
+            for principio in principios
+            if isinstance(principio, dict)
+        ]
     )
-    via_administracion = _join_public_text(_parse_vias(row["vias_administracion_json"]))
+    if principio_activo == NO_INFORMADO:
+        principio_activo = _public_text(_row_get(row, "principio_activo_importado"))
+
+    via_administracion = _join_public_text(
+        _parse_vias(_row_get(row, "vias_administracion_json"))
+    )
+    if via_administracion == NO_INFORMADO:
+        via_administracion = _public_text(_row_get(row, "via_administracion_importada"))
 
     include_long_fields = mode in {"full", "narrative"}
     medication = GFTPDFMedication(
-        nombre_comercial=_public_text(row["nombre"]),
+        nombre_comercial=_public_text(
+            _row_get(row, "nombre") or _row_get(row, "nombre_comercial_importado")
+        ),
         principio_activo=principio_activo,
-        forma_farmaceutica=_public_text(row["forma_farmaceutica"]),
+        forma_farmaceutica=_public_text(
+            _row_get(row, "forma_farmaceutica")
+            or _row_get(row, "forma_farmaceutica_importada")
+        ),
         via_administracion=via_administracion,
-        nemonico=_public_text(row["nemonico"]),
-        cn=_public_text(row["cn"]),
-        codigo_atc=_public_text(primary_atc.get("codigo")),
-        descripcion_atc=_public_text(primary_atc.get("nombre")),
-        indicaciones_ficha_tecnica=_public_text(_row_get(row, "indicaciones_ficha_tecnica")) if include_long_fields else "",
-        ajuste_insuficiencia_renal=_public_text(_row_get(row, "ajuste_insuficiencia_renal")) if include_long_fields else "",
-        ajuste_insuficiencia_hepatica=_public_text(_row_get(row, "ajuste_insuficiencia_hepatica")) if include_long_fields else "",
-        precauciones_embarazo=_public_text(_row_get(row, "precauciones_embarazo")) if include_long_fields else "",
-        precauciones_lactancia=_public_text(_row_get(row, "precauciones_lactancia")) if include_long_fields else "",
-        restricciones_hospitalarias=_public_text(row["restricciones_hospitalarias"]) if include_long_fields else "",
-        observaciones_publicables=_public_text(_row_get(row, "observaciones_publicables")) if include_long_fields else "",
+        nemonico=_public_text(_row_get(row, "nemonico")),
+        cn=_public_text(_row_get(row, "cn")),
+        codigo_atc=_public_text(primary_atc_code),
+        descripcion_atc=_public_text(
+            primary_atc.get("nombre") or _row_get(row, "descripcion_atc_importada")
+        ),
+        indicaciones_ficha_tecnica=(
+            _public_text(_row_get(row, "indicaciones_ficha_tecnica"))
+            if include_long_fields
+            else ""
+        ),
+        ajuste_insuficiencia_renal=(
+            _public_text(_row_get(row, "ajuste_insuficiencia_renal"))
+            if include_long_fields
+            else ""
+        ),
+        ajuste_insuficiencia_hepatica=(
+            _public_text(_row_get(row, "ajuste_insuficiencia_hepatica"))
+            if include_long_fields
+            else ""
+        ),
+        precauciones_embarazo=(
+            _public_text(_row_get(row, "precauciones_embarazo"))
+            if include_long_fields
+            else ""
+        ),
+        precauciones_lactancia=(
+            _public_text(_row_get(row, "precauciones_lactancia"))
+            if include_long_fields
+            else ""
+        ),
+        restricciones_hospitalarias=(
+            _public_text(_row_get(row, "restricciones_hospitalarias"))
+            if include_long_fields
+            else ""
+        ),
+        observaciones_publicables=(
+            _public_text(_row_get(row, "observaciones_publicables"))
+            if include_long_fields
+            else ""
+        ),
         resumen_clinico_auto=resumen_clinico_auto,
-        situacion_financiacion_bifimed=_public_text(_row_get(row, "situacion_financiacion")),
-        url_ficha_tecnica=_public_text(row["url_ficha_tecnica"]),
-        url_prospecto=_public_text(row["url_prospecto"]),
+        situacion_financiacion_bifimed=_public_text(
+            _row_get(row, "situacion_financiacion")
+        ),
+        url_ficha_tecnica=_public_text(
+            _row_get(row, "url_ficha_tecnica")
+            or _row_get(row, "url_ficha_tecnica_importada")
+        ),
+        url_prospecto=_public_text(
+            _row_get(row, "url_prospecto") or _row_get(row, "url_prospecto_importado")
+        ),
     )
-    return medication, l1_data, l2_data
+    return medication, atc_hierarchy
 
 
-def _medication_sort_key(item: tuple[GFTPDFMedication, dict[str, str], dict[str, str] | None]):
-    medication, l1_data, l2_data = item
+def _medication_sort_key(item: tuple[GFTPDFMedication, list[dict[str, str]]]):
+    medication, hierarchy = item
+    hierarchy_codes = tuple(_atc_sort_code(level["codigo"]) for level in hierarchy)
     return (
-        _atc_sort_code(l1_data["codigo"]),
+        hierarchy_codes,
         _atc_sort_code(medication.codigo_atc),
-        _atc_sort_code(l2_data["codigo"] if l2_data is not None else ""),
         medication.principio_activo.casefold(),
         medication.nombre_comercial.casefold(),
         medication.cn.casefold(),
     )
 
 
+def _find_or_create_child(
+    parent: GFTPDFATCGroup, group_data: dict[str, str]
+) -> GFTPDFATCGroup:
+    child = next(
+        (
+            candidate
+            for candidate in parent.children
+            if candidate.codigo == group_data["codigo"]
+        ),
+        None,
+    )
+    if child is not None:
+        return child
+    child = GFTPDFATCGroup(
+        codigo=group_data["codigo"],
+        nombre=group_data["nombre"],
+        nivel=group_data["nivel"],
+    )
+    parent.children.append(child)
+    return child
+
+
 def _append_to_groups(
     groups_by_code: dict[str, GFTPDFATCGroup],
     medication: GFTPDFMedication,
-    l1_data: dict[str, str],
-    l2_data: dict[str, str] | None,
+    hierarchy: list[dict[str, str]],
 ) -> None:
-    l1_group = groups_by_code.setdefault(
+    l1_data = (
+        hierarchy[0]
+        if hierarchy
+        else {"codigo": NO_INFORMADO, "nombre": NO_INFORMADO, "nivel": "L1"}
+    )
+    current_group = groups_by_code.setdefault(
         l1_data["codigo"],
-        GFTPDFATCGroup(codigo=l1_data["codigo"], nombre=l1_data["nombre"], nivel=l1_data["nivel"]),
+        GFTPDFATCGroup(
+            codigo=l1_data["codigo"], nombre=l1_data["nombre"], nivel=l1_data["nivel"]
+        ),
     )
 
-    if l2_data is None:
-        l1_group.medicamentos.append(medication)
-        return
-
-    l2_group = next((child for child in l1_group.children if child.codigo == l2_data["codigo"]), None)
-    if l2_group is None:
-        l2_group = GFTPDFATCGroup(codigo=l2_data["codigo"], nombre=l2_data["nombre"], nivel=l2_data["nivel"])
-        l1_group.children.append(l2_group)
-    l2_group.medicamentos.append(medication)
+    for group_data in hierarchy[1:]:
+        current_group = _find_or_create_child(current_group, group_data)
+    current_group.medicamentos.append(medication)
 
 
 def _finalize_counts(group: GFTPDFATCGroup) -> int:
@@ -174,13 +301,17 @@ def _finalize_counts(group: GFTPDFATCGroup) -> int:
 def build_gft_pdf_export_data(db: Session, mode: str = "narrative") -> GFTPDFExportData:
     normalized_mode = "table" if mode == "compact" else mode
     if normalized_mode not in {"narrative", "table", "full"}:
-        raise ValueError("Invalid mode. Allowed values: narrative, table, full, compact.")
+        raise ValueError(
+            "Invalid mode. Allowed values: narrative, table, full, compact."
+        )
     rows = db.execute(text("SELECT * FROM v_gft_publicada")).mappings().all()
     cns = [str(row["cn"] or "").strip() for row in rows if str(row["cn"] or "").strip()]
     principios_by_cn = _get_principios_for_cns(db, cns)
     summaries_by_cn = {
         row.cn: _build_clinical_summary_payload(row)
-        for row in db.query(GftClinicalSummaryCache).filter(GftClinicalSummaryCache.cn.in_(cns)).all()
+        for row in db.query(GftClinicalSummaryCache)
+        .filter(GftClinicalSummaryCache.cn.in_(cns))
+        .all()
     }
 
     export_rows = []
@@ -198,10 +329,12 @@ def build_gft_pdf_export_data(db: Session, mode: str = "narrative") -> GFTPDFExp
     export_rows.sort(key=_medication_sort_key)
 
     groups_by_code: dict[str, GFTPDFATCGroup] = {}
-    for medication, l1_data, l2_data in export_rows:
-        _append_to_groups(groups_by_code, medication, l1_data, l2_data)
+    for medication, hierarchy in export_rows:
+        _append_to_groups(groups_by_code, medication, hierarchy)
 
-    groups = sorted(groups_by_code.values(), key=lambda group: _atc_sort_code(group.codigo))
+    groups = sorted(
+        groups_by_code.values(), key=lambda group: _atc_sort_code(group.codigo)
+    )
     for group in groups:
         _finalize_counts(group)
 

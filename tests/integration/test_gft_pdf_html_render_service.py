@@ -7,7 +7,6 @@ from app.services.gft_pdf_export_service import (
 )
 from app.services.gft_pdf_html_render_service import render_gft_pdf_html
 
-
 FORBIDDEN_INTERNAL_FIELDS = [
     "raw_data",
     "sync_status",
@@ -104,13 +103,26 @@ def test_render_gft_pdf_html_renders_atc_groups_and_medications():
     assert "Dolor y fiebre" in html
     assert "Ajustar si procede" in html
     assert "Precaución en insuficiencia hepática" in html
-    assert "https://example.test/ficha/123456" in html
-    assert "https://example.test/prospecto/123456" in html
+    assert "Ficha técnica CIMA disponible" in html
+    assert "Prospecto CIMA disponible" in html
+    assert "https://example.test/ficha/123456" not in html
+    assert "https://example.test/prospecto/123456" not in html
+
+
+def test_render_gft_pdf_html_does_not_render_visible_http_urls():
+    html = render_gft_pdf_html(_export_data(), mode="table")
+
+    assert "http://" not in html
+    assert "https://" not in html
 
 
 def test_render_gft_pdf_html_preserves_no_informado_values():
     html = render_gft_pdf_html(
-        _export_data(_medication(forma_farmaceutica="No informado", url_ficha_tecnica="No informado"))
+        _export_data(
+            _medication(
+                forma_farmaceutica="No informado", url_ficha_tecnica="No informado"
+            )
+        )
     )
 
     assert "No informado" not in html
@@ -149,8 +161,8 @@ def test_render_gft_pdf_html_escapes_malicious_html_content():
     )
 
     assert '<script>alert("x")</script>' not in html
-    assert '&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;' in html
-    assert 'https://example.test/?q=&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;' in html
+    assert "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;" in html
+    assert "https://example.test/?q=" not in html
 
 
 def test_render_gft_pdf_html_excludes_forbidden_internal_field_names():

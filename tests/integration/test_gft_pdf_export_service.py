@@ -15,13 +15,20 @@ from app.services.gft_pdf_export_service import build_gft_pdf_export_data
 
 def _create_view(db_session):
     db_session.execute(text("DROP VIEW IF EXISTS v_gft_publicada"))
-    db_session.execute(
-        text(
-            """
+    db_session.execute(text("""
             CREATE VIEW v_gft_publicada AS
             SELECT
               g.cn,
               g.nemonico,
+              g.nombre_comercial_importado,
+              g.principio_activo_importado,
+              g.presentacion_importada,
+              g.forma_farmaceutica_importada,
+              g.via_administracion_importada,
+              g.codigo_atc_importado,
+              g.descripcion_atc_importada,
+              g.url_ficha_tecnica_importada,
+              g.url_prospecto_importado,
               c.nombre,
               c.presentacion,
               c.forma_farmaceutica,
@@ -57,9 +64,7 @@ def _create_view(db_session):
              AND ft41.sync_status = 'ok'
             WHERE g.estado_gft = 'incluido'
               AND g.estado_editorial = 'publicado'
-            """
-        )
-    )
+            """))
     db_session.commit()
 
 
@@ -81,6 +86,8 @@ def _insert_medicamento(
     precauciones_embarazo: str | None = "Precaución embarazo",
     precauciones_lactancia: str | None = "Precaución lactancia",
     situacion_financiacion: str | None = "Financiado",
+    codigo_atc_importado: str | None = None,
+    descripcion_atc_importada: str | None = None,
 ):
     db_session.add(
         GFTEstadoPresentacion(
@@ -88,6 +95,19 @@ def _insert_medicamento(
             estado_gft=estado_gft,
             estado_editorial=estado_editorial,
             nemonico=nemonico if nemonico is not None else f"NEM-{cn}",
+            nombre_comercial_importado=f"Nombre importado {cn}",
+            principio_activo_importado=principio_activo,
+            presentacion_importada=f"Presentación importada {cn}",
+            forma_farmaceutica_importada=forma_farmaceutica,
+            via_administracion_importada=(
+                "Vía oral importada" if vias_administracion_json is None else None
+            ),
+            codigo_atc_importado=codigo_atc_importado,
+            descripcion_atc_importada=descripcion_atc_importada,
+            url_ficha_tecnica_importada=(
+                f"https://example.com/ft-importada/{cn}" if cn != "900001" else ""
+            ),
+            url_prospecto_importado=f"https://example.com/pr-importado/{cn}",
             restricciones_hospitalarias=restricciones_hospitalarias,
             ajuste_insuficiencia_renal=ajuste_insuficiencia_renal,
             ajuste_insuficiencia_hepatica=ajuste_insuficiencia_hepatica,
@@ -107,11 +127,19 @@ def _insert_medicamento(
             presentacion=f"Presentación {cn}",
             forma_farmaceutica=forma_farmaceutica,
             forma_farmaceutica_simplificada="comprimido",
-            vias_administracion_json=vias_administracion_json
-            if vias_administracion_json is not None
-            else [{"nombre": "Vía oral"}],
-            atc_json=atc_json if atc_json is not None else [{"codigo": "A01AA01", "nombre": "ATC test", "nivel": "L5"}],
-            principios_activos_json=[{"nombre": principio_activo}] if principio_activo else [],
+            vias_administracion_json=(
+                vias_administracion_json
+                if vias_administracion_json is not None
+                else [{"nombre": "Vía oral"}]
+            ),
+            atc_json=(
+                atc_json
+                if atc_json is not None
+                else [{"codigo": "A01AA01", "nombre": "ATC test", "nivel": "L5"}]
+            ),
+            principios_activos_json=(
+                [{"nombre": principio_activo}] if principio_activo else []
+            ),
             documentos_json=[{"tipo": 1, "url": "https://example.com/doc"}],
             url_ficha_tecnica=f"https://example.com/ft/{cn}" if cn != "900001" else "",
             url_prospecto=f"https://example.com/pr/{cn}",
@@ -140,7 +168,9 @@ def _insert_medicamento(
         )
         db_session.add(principio)
         db_session.flush()
-        db_session.add(MedicamentoPrincipioActivo(cn=cn, principio_activo_id=principio.id, orden=1))
+        db_session.add(
+            MedicamentoPrincipioActivo(cn=cn, principio_activo_id=principio.id, orden=1)
+        )
     db_session.commit()
 
 
@@ -163,10 +193,14 @@ def _add_indicaciones_cache(db_session, cn: str, contenido_texto: str):
 
 def _all_medicamentos(export_data):
     medicamentos = []
-    for group in export_data.groups:
+
+    def collect(group):
         medicamentos.extend(group.medicamentos)
         for child in group.children:
-            medicamentos.extend(child.medicamentos)
+            collect(child)
+
+    for group in export_data.groups:
+        collect(group)
     return medicamentos
 
 
@@ -210,10 +244,14 @@ def test_gft_pdf_export_sorts_deterministically(db_session):
 
     export_data = build_gft_pdf_export_data(db_session)
 
-    assert [med.cn for med in _all_medicamentos(export_data)] == ["200001", "200002", "200003"]
+    assert [med.cn for med in _all_medicamentos(export_data)] == [
+        "200001",
+        "200002",
+        "200003",
+    ]
 
 
-def test_gft_pdf_export_groups_by_atc_l1_l2_when_available(db_session):
+def test_gft_pdf_export_groups_by_atc_l1_to_l5_when_available(db_session):
     _insert_medicamento(
         db_session,
         "300001",
@@ -235,6 +273,41 @@ def test_gft_pdf_export_groups_by_atc_l1_l2_when_available(db_session):
     assert [child.codigo for child in n_group.children] == ["N02", "N05"]
     assert [child.nivel for child in n_group.children] == ["L2", "L2"]
     assert [child.count for child in n_group.children] == [1, 1]
+    n02 = n_group.children[0]
+    assert n02.children[0].codigo == "N02B"
+    assert n02.children[0].nivel == "L3"
+    assert n02.children[0].children[0].codigo == "N02BE"
+    assert n02.children[0].children[0].nivel == "L4"
+    assert n02.children[0].children[0].children[0].codigo == "N02BE01"
+    assert n02.children[0].children[0].children[0].nivel == "L5"
+    assert [med.cn for med in n02.children[0].children[0].children[0].medicamentos] == [
+        "300001"
+    ]
+
+
+def test_gft_pdf_export_uses_same_atc_fallback_as_public_web_when_atc_json_is_empty(
+    db_session,
+):
+    _insert_medicamento(
+        db_session,
+        "300003",
+        atc_json=[],
+        codigo_atc_importado="C09AA05",
+        descripcion_atc_importada="Ramipril",
+    )
+    _create_view(db_session)
+
+    export_data = build_gft_pdf_export_data(db_session)
+    medication = _all_medicamentos(export_data)[0]
+
+    assert medication.codigo_atc == "C09AA05"
+    assert medication.descripcion_atc == "Ramipril"
+    assert [group.codigo for group in export_data.groups] == ["C"]
+    c_group = export_data.groups[0]
+    assert c_group.children[0].codigo == "C09"
+    assert c_group.children[0].children[0].codigo == "C09A"
+    assert c_group.children[0].children[0].children[0].codigo == "C09AA"
+    assert c_group.children[0].children[0].children[0].children[0].codigo == "C09AA05"
 
 
 def test_gft_pdf_export_uses_no_informado_for_empty_fields(db_session):
@@ -277,7 +350,9 @@ def test_gft_pdf_export_includes_indicaciones_ficha_tecnica(db_session):
     _add_indicaciones_cache(db_session, "400001", "Indicación pública para PDF")
     _create_view(db_session)
 
-    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="full"))[0]
+    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="full"))[
+        0
+    ]
 
     assert medication.indicaciones_ficha_tecnica == "Indicación pública para PDF"
 
@@ -287,7 +362,9 @@ def test_gft_pdf_export_table_omits_long_fields(db_session):
     _add_indicaciones_cache(db_session, "400002", "Indicación pública para PDF")
     _create_view(db_session)
 
-    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="table"))[0]
+    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="table"))[
+        0
+    ]
     assert medication.indicaciones_ficha_tecnica == ""
     assert medication.ajuste_insuficiencia_renal == ""
 
@@ -307,13 +384,20 @@ def test_gft_pdf_export_loads_resumen_clinico_from_cache(db_session):
     db_session.commit()
     _create_view(db_session)
 
-    medication = _all_medicamentos(build_gft_pdf_export_data(db_session, mode="narrative"))[0]
+    medication = _all_medicamentos(
+        build_gft_pdf_export_data(db_session, mode="narrative")
+    )[0]
     assert medication.resumen_clinico_auto is not None
     assert medication.resumen_clinico_auto["ajuste_renal"] == "Ajuste renal automático"
-    assert medication.resumen_clinico_auto["ajuste_hepatico"] == "Ajuste hepático automático"
+    assert (
+        medication.resumen_clinico_auto["ajuste_hepatico"]
+        == "Ajuste hepático automático"
+    )
 
 
-def test_gft_pdf_export_serializable_structure_excludes_internal_technical_fields(db_session):
+def test_gft_pdf_export_serializable_structure_excludes_internal_technical_fields(
+    db_session,
+):
     _insert_medicamento(db_session, "500001")
     _add_indicaciones_cache(db_session, "500001", "Indicación exportable")
     _create_view(db_session)
@@ -339,7 +423,11 @@ def test_gft_pdf_export_serializable_structure_excludes_internal_technical_field
 
 def test_gft_pdf_export_total_matches_structured_medicamentos(db_session):
     _insert_medicamento(db_session, "600001")
-    _insert_medicamento(db_session, "600002", atc_json=[{"codigo": "B01AA03", "nombre": "Warfarina", "nivel": "L5"}])
+    _insert_medicamento(
+        db_session,
+        "600002",
+        atc_json=[{"codigo": "B01AA03", "nombre": "Warfarina", "nivel": "L5"}],
+    )
     _create_view(db_session)
 
     export_data = build_gft_pdf_export_data(db_session)
