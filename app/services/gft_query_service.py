@@ -436,7 +436,7 @@ def list_medicamentos(
 
     enriched.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
     ordered_items = [item for *_, item in enriched]
-    q_norm = (q or "").strip().lower()
+    q_norm = (q or "").strip().casefold()
     letra_norm = (letra or "").strip().lower()[:1]
     principio_raw = (principio_activo or "").strip()
     principio_slug_norm = principio_raw.lower()
@@ -444,20 +444,25 @@ def list_medicamentos(
 
     filtered_items = ordered_items
     if q_norm:
+        def _normalized(value) -> str:
+            return str(value or "").strip().casefold()
+
+        def _is_exact_or_prefix(value) -> bool:
+            text_value = _normalized(value)
+            return bool(text_value) and (text_value == q_norm or text_value.startswith(q_norm))
+
         def _matches_q(item: dict) -> bool:
             principles = item.get("principios_activos", [])
-            fields = [
+            candidate_fields = [
                 item.get("cn"),
                 item.get("nombre"),
                 item.get("presentacion"),
-                item.get("forma_farmaceutica"),
                 item.get("nemonico"),
-                item.get("restricciones_hospitalarias"),
-                _non_empty(_row_get(item, "principio_activo_importado")),
+                item.get("principio_activo_importado"),
                 *[p.get("nombre") for p in principles if isinstance(p, Mapping)],
             ]
-            haystack = " ".join(str(value).lower() for value in fields if value)
-            return q_norm in haystack
+
+            return any(_is_exact_or_prefix(value) for value in candidate_fields)
 
         filtered_items = [item for item in filtered_items if _matches_q(item)]
 

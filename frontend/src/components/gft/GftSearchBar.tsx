@@ -4,10 +4,11 @@ interface GftSearchBarProps {
   value: string;
   loading: boolean;
   onSearch: (value: string) => void;
+  onInputChange: (value: string) => void;
   onClear: () => void;
 }
 
-export function GftSearchBar({ value, loading, onSearch, onClear }: GftSearchBarProps) {
+export function GftSearchBar({ value, loading, onSearch, onInputChange, onClear }: GftSearchBarProps) {
   const [draft, setDraft] = useState(value);
 
   useEffect(() => {
@@ -35,7 +36,11 @@ export function GftSearchBar({ value, loading, onSearch, onClear }: GftSearchBar
           className="gft-search__input"
           type="search"
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            setDraft(nextValue);
+            onInputChange(nextValue);
+          }}
           placeholder="Buscar por CN, medicamento, principio activo o nemónico"
         />
         <button className="gft-button gft-button--primary" type="submit" disabled={loading}>
