@@ -9,6 +9,10 @@ from app.schemas.gft import (
     GFTPrincipioActivoIndexResponse,
 )
 from app.services.gft_pdf_binary_service import GFTPDFRenderingError, render_gft_pdf_bytes
+from app.services.gft_pdf_cache_service import (
+    PDF_CACHE_FILENAME,
+    get_or_render_cached_gft_pdf_bytes,
+)
 from app.services.gft_pdf_export_service import build_gft_pdf_export_data
 from app.services.gft_pdf_html_render_service import render_gft_pdf_html
 from app.services.gft_canonical_payload_service import audit_gft_coverage, build_gft_canonical_payload
@@ -36,9 +40,13 @@ def gft_export_pdf(mode: str = Query(default="narrative"), db: Session = Depends
     if mode not in {"narrative", "table", "full", "compact"}:
         raise HTTPException(status_code=400, detail="Invalid mode. Allowed values: narrative, table, full, compact.")
     export_data = build_gft_pdf_export_data(db, mode=mode)
-    html = render_gft_pdf_html(export_data, mode=mode)
     try:
-        pdf_bytes = render_gft_pdf_bytes(html)
+        pdf_bytes = get_or_render_cached_gft_pdf_bytes(
+            export_data,
+            mode=mode,
+            html_renderer=render_gft_pdf_html,
+            pdf_renderer=render_gft_pdf_bytes,
+        )
     except GFTPDFRenderingError as exc:
         raise HTTPException(
             status_code=503,
@@ -50,7 +58,7 @@ def gft_export_pdf(mode: str = Query(default="narrative"), db: Session = Depends
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="gft-hospitalaria.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="{PDF_CACHE_FILENAME}"'},
     )
 
 

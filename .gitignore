@@ -218,3 +218,6 @@ __marimo__/
 .streamlit/secrets.toml
 
 reports/
+
+# GFT PDF export cache
+.gft_pdf_cache/
