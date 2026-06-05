@@ -7,6 +7,11 @@ from tests.integration.test_gft_pdf_html_export_api import FORBIDDEN_INTERNAL_FI
 from tests.integration.test_gft_pdf_export_service import _create_view, _insert_medicamento
 
 
+@pytest.fixture(autouse=True)
+def _isolated_pdf_cache_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("GFT_PDF_CACHE_DIR", str(tmp_path / "pdf-cache"))
+
+
 def test_gft_export_pdf_endpoint_returns_attachment_pdf(client, db_session, monkeypatch):
     _insert_medicamento(db_session, "800001", nombre="Medicamento PDF")
     _create_view(db_session)
@@ -113,6 +118,29 @@ def test_gft_export_pdf_endpoint_returns_valid_empty_pdf(client, db_session, mon
     assert response.content.startswith(b"%PDF")
     assert "No hay medicamentos publicados." in captured["html"]
     assert "Total de medicamentos publicados:</strong> 0" in captured["html"]
+
+
+def test_gft_export_pdf_endpoint_reuses_cached_pdf_for_same_data(
+    client, db_session, monkeypatch
+):
+    _insert_medicamento(db_session, "840001", nombre="Medicamento cacheado")
+    _create_view(db_session)
+    calls = {"pdf": 0}
+
+    def fake_pdf_bytes(html):
+        calls["pdf"] += 1
+        assert "Medicamento cacheado" in html
+        return b"%PDF-1.7\ncached-endpoint\n"
+
+    monkeypatch.setattr(gft_routes, "render_gft_pdf_bytes", fake_pdf_bytes)
+
+    first = client.get("/gft/export/pdf")
+    second = client.get("/gft/export/pdf")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.content == second.content
+    assert calls["pdf"] == 1
 
 
 def test_gft_export_pdf_rejects_invalid_mode(client):

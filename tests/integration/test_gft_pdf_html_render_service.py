@@ -188,3 +188,25 @@ def test_render_gft_pdf_html_narrative_uses_auto_summary_values():
         )
     )
     assert "Ajuste renal automático" in html
+
+
+def test_render_gft_pdf_html_narrative_contract_keeps_required_pdf_content():
+    html = render_gft_pdf_html(
+        _export_data(
+            _medication(
+                restricciones_hospitalarias="",
+                codigo_atc="A01AA01",
+                descripcion_atc="Estomatológicos",
+            )
+        )
+    )
+
+    assert "http://" not in html
+    assert "https://" not in html
+    assert "<table" not in html
+    assert "Restricciones hospitalarias" in html
+    assert "No informado" in html
+    assert "Sistema nervioso" in html
+    assert "A - No informado" not in html
+    assert "�" not in html
+    assert "text-align: justify" in html
