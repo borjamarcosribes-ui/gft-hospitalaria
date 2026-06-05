@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
+from app.services.gft_atc_titles import get_atc_title
 from app.services.gft_query_service import _build_clinical_summary_payload
 from app.services.gft_query_service import (
     _extract_atc_items_from_row,
@@ -113,7 +114,7 @@ def _atc_hierarchy_from_code(
         hierarchy.append(
             {
                 "codigo": prefix,
-                "nombre": names.get(prefix, NO_INFORMADO),
+                "nombre": get_atc_title(prefix) or names.get(prefix, NO_INFORMADO),
                 "nivel": level,
             }
         )
@@ -122,7 +123,7 @@ def _atc_hierarchy_from_code(
         return [
             {
                 "codigo": normalized_code,
-                "nombre": names.get(normalized_code, NO_INFORMADO),
+                "nombre": get_atc_title(normalized_code) or names.get(normalized_code, NO_INFORMADO),
                 "nivel": "L1",
             }
         ]
@@ -133,7 +134,8 @@ def _atc_hierarchy_from_code(
         and most_specific["nombre"] == NO_INFORMADO
     ):
         full_name = (
-            names.get(normalized_code)
+            get_atc_title(normalized_code)
+            or names.get(normalized_code)
             or str(_primary_atc(atc_items).get("nombre") or "").strip()
         )
         if full_name:
