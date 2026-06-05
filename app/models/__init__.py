@@ -8,3 +8,4 @@ from .gft_clinical_summary_cache import GftClinicalSummaryCache
 from .principio_activo import PrincipioActivo
 from .principio_activo_alias import PrincipioActivoAlias
 from .medicamento_principio_activo import MedicamentoPrincipioActivo
+from .atc_code import AtcCode

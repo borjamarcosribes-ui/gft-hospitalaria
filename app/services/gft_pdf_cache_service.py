@@ -8,6 +8,7 @@ from pathlib import Path
 import tempfile
 from typing import Callable
 
+from app.services.atc_catalog_service import atc_catalog_fingerprint
 from app.services.gft_pdf_export_service import GFTPDFExportData
 from app.services.gft_pdf_html_render_service import render_gft_pdf_html
 from app.services.gft_pdf_binary_service import render_gft_pdf_bytes
@@ -20,7 +21,7 @@ _RELEVANT_SERVICE_FILES = (
     "gft_pdf_export_service.py",
     "gft_pdf_html_render_service.py",
     "gft_pdf_binary_service.py",
-    "gft_atc_titles.py",
+    "atc_catalog_service.py",
 )
 
 
@@ -57,6 +58,7 @@ def build_gft_pdf_cache_fingerprint(export_data: GFTPDFExportData, mode: str = "
         "cache_version": PDF_CACHE_LOGICAL_VERSION,
         "mode": _normalize_mode(mode),
         "template_services": _service_source_fingerprint(),
+        "atc_catalog": atc_catalog_fingerprint(),
         "export_data": _export_payload(export_data),
     }
     canonical_payload = json.dumps(

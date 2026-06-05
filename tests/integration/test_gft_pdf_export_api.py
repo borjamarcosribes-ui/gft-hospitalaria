@@ -213,3 +213,12 @@ def test_render_gft_pdf_bytes_raises_clear_error_when_weasyprint_import_fails(mo
 
     with pytest.raises(GFTPDFRenderingError, match="could not be loaded"):
         render_gft_pdf_bytes("<!doctype html><html><body>import failure</body></html>")
+
+
+def test_gft_atc_catalog_endpoint_returns_backend_catalog(client):
+    response = client.get("/gft/atc/catalog")
+
+    assert response.status_code == 200
+    items = {item["code"]: item for item in response.json()["items"]}
+    assert items["A"]["title"] == "Tracto alimentario y metabolismo"
+    assert items["A02"]["title"] == "Agentes para el tratamiento de alteraciones causadas por ácidos"

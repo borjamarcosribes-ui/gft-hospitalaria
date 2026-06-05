@@ -3,11 +3,13 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.schemas.gft import (
+    GFTAtcCatalogResponse,
     GFTAtcIndexResponse,
     GFTListResponse,
     GFTMedicamentoDetail,
     GFTPrincipioActivoIndexResponse,
 )
+from app.services.atc_catalog_service import get_atc_catalog
 from app.services.gft_pdf_binary_service import GFTPDFRenderingError, render_gft_pdf_bytes
 from app.services.gft_pdf_cache_service import (
     PDF_CACHE_FILENAME,
@@ -86,6 +88,11 @@ def gft_list_medicamentos(
 @router.get("/atc", response_model=GFTAtcIndexResponse)
 def gft_atc_index(db: Session = Depends(get_db)):
     return list_atc_index(db)
+
+
+@router.get("/atc/catalog", response_model=GFTAtcCatalogResponse)
+def gft_atc_catalog(db: Session = Depends(get_db)):
+    return {"items": get_atc_catalog(db)}
 
 
 @router.get("/principios-activos", response_model=GFTPrincipioActivoIndexResponse)

@@ -73,3 +73,23 @@ def test_gft_pdf_cache_fingerprint_separates_export_modes():
     assert build_gft_pdf_cache_fingerprint(
         export_data, mode="compact"
     ) == build_gft_pdf_cache_fingerprint(export_data, mode="table")
+
+
+def test_gft_pdf_cache_fingerprint_changes_when_atc_title_changes():
+    original = _export_data()
+    changed = _export_data()
+    changed.groups[0].children[0].nombre = "Analgésicos modificados"
+
+    assert build_gft_pdf_cache_fingerprint(original) != build_gft_pdf_cache_fingerprint(changed)
+
+
+def test_gft_pdf_cache_fingerprint_changes_when_atc_catalog_source_changes(monkeypatch):
+    export_data = _export_data()
+    original = build_gft_pdf_cache_fingerprint(export_data)
+
+    monkeypatch.setattr(
+        "app.services.gft_pdf_cache_service.atc_catalog_fingerprint",
+        lambda: "catalogo-atc-modificado",
+    )
+
+    assert build_gft_pdf_cache_fingerprint(export_data) != original

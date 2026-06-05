@@ -9,6 +9,7 @@ from app.models.bifimed_cache import BifimedCache
 from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
 from app.models.medicamento_principio_activo import MedicamentoPrincipioActivo
 from app.models.principio_activo import PrincipioActivo
+from app.services.atc_catalog_service import get_atc_title
 from app.services.normalization_service import normalize_cn
 
 
@@ -603,7 +604,7 @@ def list_atc_index(db: Session) -> dict:
                 if codigo in seen_for_cn:
                     continue
                 seen_for_cn.add(codigo)
-                nombre = exact_name if codigo == raw_code else None
+                nombre = get_atc_title(codigo, db) or (exact_name if codigo == raw_code else None)
                 _merge_atc_index_entry(index, codigo, nivel, cn, nombre=nombre)
 
     items = []
