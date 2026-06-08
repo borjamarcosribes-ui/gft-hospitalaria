@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getPaginationRange } from '../utils/pagination';
-import { ATC_TITLES } from '../data/atcTitles';
 import { GftActiveFilters } from '../components/gft/GftActiveFilters';
 import { GftAtcFilter } from '../components/gft/GftAtcFilter';
 import { GftAtcIndex } from '../components/gft/GftAtcIndex';
@@ -133,22 +132,17 @@ export function GftPage() {
 
   const paginationRange = useMemo(() => getPaginationRange(data?.total ?? 0, data?.limit ?? PAGE_SIZE, data?.offset ?? 0), [data]);
 
-  const atcItems = useMemo(() => {
-    return (atcData?.items ?? []).map((item) => ({
-      ...item,
-      nombre: item.nombre ?? ATC_TITLES[item.codigo.toUpperCase()] ?? null,
-    }));
-  }, [atcData]);
+  const atcItems = useMemo(() => atcData?.items ?? [], [atcData]);
 
   const atcLabel = useMemo(() => {
-    const selectedAtc = atcData?.items.find((item) => item.codigo === atc);
+    const selectedAtc = atcItems.find((item) => item.codigo === atc);
 
     if (!selectedAtc) {
       return '';
     }
 
     return selectedAtc.nombre ? `${selectedAtc.codigo} — ${selectedAtc.nombre}` : selectedAtc.codigo;
-  }, [atcData, atc]);
+  }, [atcItems, atc]);
 
   function handleSearch(value: string) {
     const cleanValue = value.trim();

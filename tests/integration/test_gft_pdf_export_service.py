@@ -283,6 +283,11 @@ def test_gft_pdf_export_groups_by_atc_l1_to_l5_when_available(db_session):
     assert [med.cn for med in n02.children[0].children[0].children[0].medicamentos] == [
         "300001"
     ]
+    assert n_group.nombre == "Sistema nervioso"
+    assert n02.nombre == "Analgésicos"
+    assert n02.children[0].nombre == "Otros analgésicos y antipiréticos"
+    assert n02.children[0].children[0].nombre == "Anilidas"
+
 
 
 def test_gft_pdf_export_uses_same_atc_fallback_as_public_web_when_atc_json_is_empty(
@@ -308,6 +313,9 @@ def test_gft_pdf_export_uses_same_atc_fallback_as_public_web_when_atc_json_is_em
     assert c_group.children[0].children[0].codigo == "C09A"
     assert c_group.children[0].children[0].children[0].codigo == "C09AA"
     assert c_group.children[0].children[0].children[0].children[0].codigo == "C09AA05"
+    assert c_group.nombre != "No informado"
+    assert c_group.children[0].nombre != "No informado"
+
 
 
 def test_gft_pdf_export_uses_no_informado_for_empty_fields(db_session):

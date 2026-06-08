@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.gft_clinical_summary_cache import GftClinicalSummaryCache
-from app.services.gft_atc_titles import get_atc_title
+from app.services.atc_catalog_service import get_atc_title
 from app.services.gft_query_service import _build_clinical_summary_payload
 from app.services.gft_query_service import (
     _extract_atc_items_from_row,
@@ -96,7 +96,7 @@ def _atc_name_by_code(atc_items: list[dict]) -> dict[str, str]:
 
 
 def _atc_hierarchy_from_code(
-    code: str | None, atc_items: list[dict]
+    code: str | None, atc_items: list[dict], db: Session | None = None
 ) -> list[dict[str, str]]:
     normalized_code = _normalize_atc_code(code)
     if not normalized_code:
@@ -114,7 +114,7 @@ def _atc_hierarchy_from_code(
         hierarchy.append(
             {
                 "codigo": prefix,
-                "nombre": get_atc_title(prefix) or names.get(prefix, NO_INFORMADO),
+                "nombre": get_atc_title(prefix, db) or names.get(prefix, NO_INFORMADO),
                 "nivel": level,
             }
         )
@@ -123,7 +123,7 @@ def _atc_hierarchy_from_code(
         return [
             {
                 "codigo": normalized_code,
-                "nombre": get_atc_title(normalized_code) or names.get(normalized_code, NO_INFORMADO),
+                "nombre": get_atc_title(normalized_code, db) or names.get(normalized_code, NO_INFORMADO),
                 "nivel": "L1",
             }
         ]
@@ -134,7 +134,7 @@ def _atc_hierarchy_from_code(
         and most_specific["nombre"] == NO_INFORMADO
     ):
         full_name = (
-            get_atc_title(normalized_code)
+            get_atc_title(normalized_code, db)
             or names.get(normalized_code)
             or str(_primary_atc(atc_items).get("nombre") or "").strip()
         )
@@ -148,11 +148,12 @@ def _row_to_medication(
     principios: list[dict],
     mode: str,
     resumen_clinico_auto: dict[str, Any] | None = None,
+    db: Session | None = None,
 ) -> tuple[GFTPDFMedication, list[dict[str, str]]]:
     atc_items = _extract_atc_items_from_row(row)
     primary_atc = _primary_atc(atc_items)
     primary_atc_code = _normalize_atc_code(str(primary_atc.get("codigo") or ""))
-    atc_hierarchy = _atc_hierarchy_from_code(primary_atc_code, atc_items)
+    atc_hierarchy = _atc_hierarchy_from_code(primary_atc_code, atc_items, db)
 
     principio_activo = _join_public_text(
         [
@@ -185,7 +186,9 @@ def _row_to_medication(
         cn=_public_text(_row_get(row, "cn")),
         codigo_atc=_public_text(primary_atc_code),
         descripcion_atc=_public_text(
-            primary_atc.get("nombre") or _row_get(row, "descripcion_atc_importada")
+            get_atc_title(primary_atc_code, db)
+            or primary_atc.get("nombre")
+            or _row_get(row, "descripcion_atc_importada")
         ),
         indicaciones_ficha_tecnica=(
             _public_text(_row_get(row, "indicaciones_ficha_tecnica"))
@@ -325,6 +328,7 @@ def build_gft_pdf_export_data(db: Session, mode: str = "narrative") -> GFTPDFExp
                 principios_by_cn.get(cn, []),
                 mode=normalized_mode,
                 resumen_clinico_auto=summaries_by_cn.get(cn),
+                db=db,
             )
         )
 

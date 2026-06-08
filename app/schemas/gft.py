@@ -39,6 +39,19 @@ class GFTAtcIndexResponse(BaseModel):
     items: list[GFTAtcIndexItem] = Field(default_factory=list)
 
 
+
+
+class GFTAtcCatalogItem(BaseModel):
+    code: str
+    level: int
+    title: str
+    parent_code: str | None = None
+
+
+class GFTAtcCatalogResponse(BaseModel):
+    items: list[GFTAtcCatalogItem] = Field(default_factory=list)
+
+
 class GFTDocumentoCimaRef(BaseModel):
     tipo: int | str | None = None
     url: str | None = None

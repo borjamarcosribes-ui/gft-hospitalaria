@@ -1,6 +1,7 @@
 from dataclasses import replace
 from datetime import datetime, timezone
 
+from app.models.atc_code import AtcCode
 from app.services.gft_pdf_cache_service import (
     build_gft_pdf_cache_fingerprint,
     get_cached_gft_pdf_bytes,
@@ -73,3 +74,35 @@ def test_gft_pdf_cache_fingerprint_separates_export_modes():
     assert build_gft_pdf_cache_fingerprint(
         export_data, mode="compact"
     ) == build_gft_pdf_cache_fingerprint(export_data, mode="table")
+
+
+def test_gft_pdf_cache_fingerprint_changes_when_atc_title_changes():
+    original = _export_data()
+    changed = _export_data()
+    changed.groups[0].children[0].nombre = "Analgésicos modificados"
+
+    assert build_gft_pdf_cache_fingerprint(original) != build_gft_pdf_cache_fingerprint(changed)
+
+
+def test_gft_pdf_cache_fingerprint_changes_when_atc_catalog_source_changes(monkeypatch):
+    export_data = _export_data()
+    original = build_gft_pdf_cache_fingerprint(export_data)
+
+    monkeypatch.setattr(
+        "app.services.gft_pdf_cache_service.atc_catalog_fingerprint",
+        lambda db=None: "catalogo-atc-modificado",
+    )
+
+    assert build_gft_pdf_cache_fingerprint(export_data) != original
+
+
+def test_gft_pdf_cache_fingerprint_with_db_changes_when_atc_db_title_changes(db_session):
+    export_data = _export_data()
+    original = build_gft_pdf_cache_fingerprint(export_data, db=db_session)
+
+    atc_code = db_session.get(AtcCode, "A")
+    assert atc_code is not None
+    atc_code.title = "Tracto alimentario y metabolismo modificado"
+    db_session.flush()
+
+    assert build_gft_pdf_cache_fingerprint(export_data, db=db_session) != original

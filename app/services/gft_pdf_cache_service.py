@@ -8,6 +8,9 @@ from pathlib import Path
 import tempfile
 from typing import Callable
 
+from sqlalchemy.orm import Session
+
+from app.services.atc_catalog_service import atc_catalog_fingerprint
 from app.services.gft_pdf_export_service import GFTPDFExportData
 from app.services.gft_pdf_html_render_service import render_gft_pdf_html
 from app.services.gft_pdf_binary_service import render_gft_pdf_bytes
@@ -20,7 +23,7 @@ _RELEVANT_SERVICE_FILES = (
     "gft_pdf_export_service.py",
     "gft_pdf_html_render_service.py",
     "gft_pdf_binary_service.py",
-    "gft_atc_titles.py",
+    "atc_catalog_service.py",
 )
 
 
@@ -52,11 +55,16 @@ def _export_payload(export_data: GFTPDFExportData) -> dict:
     return payload
 
 
-def build_gft_pdf_cache_fingerprint(export_data: GFTPDFExportData, mode: str = "narrative") -> str:
+def build_gft_pdf_cache_fingerprint(
+    export_data: GFTPDFExportData,
+    mode: str = "narrative",
+    db: Session | None = None,
+) -> str:
     fingerprint_payload = {
         "cache_version": PDF_CACHE_LOGICAL_VERSION,
         "mode": _normalize_mode(mode),
         "template_services": _service_source_fingerprint(),
+        "atc_catalog": atc_catalog_fingerprint(db),
         "export_data": _export_payload(export_data),
     }
     canonical_payload = json.dumps(
@@ -79,8 +87,9 @@ def get_cached_gft_pdf_bytes(
     mode: str = "narrative",
     *,
     cache_dir: Path | None = None,
+    db: Session | None = None,
 ) -> bytes | None:
-    path = _cache_path(build_gft_pdf_cache_fingerprint(export_data, mode), cache_dir)
+    path = _cache_path(build_gft_pdf_cache_fingerprint(export_data, mode, db), cache_dir)
     if not path.is_file():
         return None
     return path.read_bytes()
@@ -93,8 +102,9 @@ def get_or_render_cached_gft_pdf_bytes(
     html_renderer: Callable[[GFTPDFExportData, str], str] = render_gft_pdf_html,
     pdf_renderer: Callable[[str], bytes] = render_gft_pdf_bytes,
     cache_dir: Path | None = None,
+    db: Session | None = None,
 ) -> bytes:
-    fingerprint = build_gft_pdf_cache_fingerprint(export_data, mode)
+    fingerprint = build_gft_pdf_cache_fingerprint(export_data, mode, db)
     path = _cache_path(fingerprint, cache_dir)
     if path.is_file():
         return path.read_bytes()
