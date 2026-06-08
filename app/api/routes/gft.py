@@ -48,6 +48,7 @@ def gft_export_pdf(mode: str = Query(default="narrative"), db: Session = Depends
             mode=mode,
             html_renderer=render_gft_pdf_html,
             pdf_renderer=render_gft_pdf_bytes,
+            db=db,
         )
     except GFTPDFRenderingError as exc:
         raise HTTPException(

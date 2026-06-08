@@ -1,6 +1,7 @@
 from dataclasses import replace
 from datetime import datetime, timezone
 
+from app.models.atc_code import AtcCode
 from app.services.gft_pdf_cache_service import (
     build_gft_pdf_cache_fingerprint,
     get_cached_gft_pdf_bytes,
@@ -89,7 +90,19 @@ def test_gft_pdf_cache_fingerprint_changes_when_atc_catalog_source_changes(monke
 
     monkeypatch.setattr(
         "app.services.gft_pdf_cache_service.atc_catalog_fingerprint",
-        lambda: "catalogo-atc-modificado",
+        lambda db=None: "catalogo-atc-modificado",
     )
 
     assert build_gft_pdf_cache_fingerprint(export_data) != original
+
+
+def test_gft_pdf_cache_fingerprint_with_db_changes_when_atc_db_title_changes(db_session):
+    export_data = _export_data()
+    original = build_gft_pdf_cache_fingerprint(export_data, db=db_session)
+
+    atc_code = db_session.get(AtcCode, "A")
+    assert atc_code is not None
+    atc_code.title = "Tracto alimentario y metabolismo modificado"
+    db_session.flush()
+
+    assert build_gft_pdf_cache_fingerprint(export_data, db=db_session) != original
