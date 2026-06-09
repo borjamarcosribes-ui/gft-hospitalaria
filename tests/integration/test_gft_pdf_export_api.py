@@ -183,13 +183,12 @@ def test_gft_export_pdf_html_passed_to_engine_does_not_expose_internal_fields(cl
 
 
 def test_render_gft_pdf_bytes_returns_pdf_when_weasyprint_is_available():
-    try:
-        pytest.importorskip("weasyprint", reason="WeasyPrint is not installed in this environment")
-    except OSError as exc:
-        pytest.skip(f"WeasyPrint native libraries are not available in this environment: {exc}")
+    pytest.importorskip("weasyprint", reason="WeasyPrint is not installed in this environment")
 
-    pdf = render_gft_pdf_bytes("<h1>Gu?a</h1>")
+    pdf = render_gft_pdf_bytes("<!doctype html><html><body><h1>GFT test</h1></body></html>")
+
     assert pdf.startswith(b"%PDF")
+
 
 def test_render_gft_pdf_bytes_raises_clear_error_when_weasyprint_is_missing(monkeypatch):
     monkeypatch.setattr(binary_service, "find_spec", lambda name: None if name == "weasyprint" else None)

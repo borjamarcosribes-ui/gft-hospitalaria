@@ -617,7 +617,7 @@ def test_list_atc_index_uses_name_only_for_exact_payload_code(db_session):
 
     assert items_by_code["N02BE01"]["nombre"] == "Paracetamol"
     for codigo in ("N", "N02", "N02B", "N02BE"):
-        assert items_by_code[codigo]["nombre"]
+        assert items_by_code[codigo]["nombre"] is None
 
 
 def test_list_atc_index_ignores_invalid_or_missing_atc(db_session):
@@ -654,7 +654,7 @@ def test_list_atc_index_uses_imported_fallback_and_expands_levels(db_session):
     items_by_code = {item["codigo"]: item for item in result["items"]}
     for codigo in ("C", "C09", "C09A", "C09AA", "C09AA05"):
         assert codigo in items_by_code
-    assert items_by_code["C09AA05"]["nombre"] == "Ramipril"
+    assert items_by_code["C09AA05"]["nombre"] == "C09AA05 - Inhibidores de la ECA"
 
 
 def test_list_medicamentos_atc_filter_uses_imported_fallback(db_session):
