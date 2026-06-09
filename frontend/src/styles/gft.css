@@ -1485,3 +1485,9 @@
   margin-top: 0;
 }
 
+
+/* Oculta los selectores secundarios de filtros: principio activo y grupo ATC.
+   Se mantiene intacto el buscador, A-Z, herramientas e índice ATC. */
+.gft-filters-panel__selectors {
+  display: none;
+}
