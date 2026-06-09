@@ -188,7 +188,7 @@ def test_render_gft_pdf_bytes_returns_pdf_when_weasyprint_is_available():
     except OSError as exc:
         pytest.skip(f"WeasyPrint native libraries are not available in this environment: {exc}")
 
-    pdf = render_gft_pdf_bytes("<h1>GFT test</h1>")
+    pdf = render_gft_pdf_bytes("<h1>Gu?a</h1>")
     assert pdf.startswith(b"%PDF")
 
 def test_render_gft_pdf_bytes_raises_clear_error_when_weasyprint_is_missing(monkeypatch):
